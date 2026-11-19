@@ -13,7 +13,7 @@ import {
     Scissors, Stethoscope, Droplets, Building2, Flame, Check,
     AlertCircle, FileText, ArrowUpRight, ArrowDownRight, Layers, UserCheck,
     BookOpen, HelpCircle, X, Search, Info, FileSpreadsheet, Download,
-    Lock, Unlock, Filter, Sun
+    Lock, Unlock, Filter, Sun, Edit3, Plus, Trash2, Save, RotateCcw
 } from 'lucide-react';
 import HospitalDeDiaDashboard from './HospitalDeDiaDashboard';
 import {
@@ -774,6 +774,213 @@ const BLOQUES_DATA = BLOQUES_CONFIG.map(b => ({
     nota: b.nota,
     ambito: b.ambito
 }));
+
+const BLOQUES_LOCAL_STORAGE_KEY = 'sa_quirofano_bloques_config_v2';
+
+function normalizeAccents(str) {
+    return String(str || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toUpperCase()
+        .trim();
+}
+
+function parseTimeToMinutes(tStr, defaultMin = 480) {
+    if (!tStr) return defaultMin;
+    const m = String(tStr).match(/(\d{1,2}):(\d{2})/);
+    if (!m) return defaultMin;
+    return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
+}
+
+function inferBloqueScheduleFields(b) {
+    let horaInicio = b.horaInicio || '';
+    let horaFin = b.horaFin || '';
+    if (!horaInicio || !horaFin) {
+        const matches = String(b.horario || '').match(/(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})/);
+        if (matches) {
+            if (!horaInicio) horaInicio = matches[1].padStart(5, '0');
+            if (!horaFin) horaFin = matches[2].padStart(5, '0');
+        } else {
+            horaInicio = horaInicio || '08:00';
+            horaFin = horaFin || '13:00';
+        }
+    }
+    let diasSemana = Array.isArray(b.diasSemana) && b.diasSemana.length > 0 ? b.diasSemana : [];
+    if (diasSemana.length === 0) {
+        const dNorm = normalizeAccents(b.dia || '');
+        if (dNorm.includes('LUN')) diasSemana.push(1);
+        if (dNorm.includes('MAR')) diasSemana.push(2);
+        if (dNorm.includes('MIE')) diasSemana.push(3);
+        if (dNorm.includes('JUE')) diasSemana.push(4);
+        if (dNorm.includes('VIE')) diasSemana.push(5);
+        if (dNorm.includes('SAB')) diasSemana.push(6);
+        if (diasSemana.length === 0) diasSemana = [b.diaIdx || 1];
+    }
+    return {
+        ...b,
+        horaInicio,
+        horaFin,
+        diasSemana,
+        diaIdx: diasSemana[0] || b.diaIdx || 1
+    };
+}
+
+function doesSurgeonMatchTitular(surgCirujano, cirujanoMatch) {
+    if (!surgCirujano || !cirujanoMatch) return false;
+    const sNorm = normalizeAccents(surgCirujano);
+    const patterns = String(cirujanoMatch)
+        .split(/[|;]/)
+        .map(p => normalizeAccents(p))
+        .filter(Boolean);
+    for (const pat of patterns) {
+        if (sNorm.includes(pat)) return true;
+        const tokens = pat.split(/[\s,]+/).filter(t => t.length >= 3);
+        if (tokens.length > 0 && tokens.every(t => sNorm.includes(t))) return true;
+    }
+    return false;
+}
+
+function doesSurgeryMatchBloqueSala(surgSala, bloqueQuirofano, bloqueAmbito) {
+    const sNorm = normalizeAccents(surgSala);
+    const qNorm = normalizeAccents(bloqueQuirofano);
+    if (qNorm.includes('6') && (sNorm.includes('6') || sNorm.includes('5') || sNorm.includes('HDD'))) {
+        // En Hospital de Día (Qx 5 / Qx 6), las endoscopías y bloques HdD rotan entre Qx 5 y Qx 6
+        return sNorm.includes('6') || sNorm.includes('5') || sNorm.includes('HDD');
+    }
+    if (qNorm.includes('5') && (sNorm.includes('5') || sNorm.includes('HDD'))) return true;
+    if (qNorm.includes('PARTO') && sNorm.includes('PARTO')) return true;
+    for (const num of ['1', '2', '3', '4']) {
+        if (qNorm.includes(`QX ${num}`) || qNorm === num) {
+            return sNorm.includes(`QX ${num}`);
+        }
+    }
+    if (bloqueAmbito === 'HDD') return sNorm.includes('HDD') || sNorm.includes('5') || sNorm.includes('6');
+    return sNorm === qNorm;
+}
+
+function isSurgeryWithinBloqueHorario(surgHora, bloque) {
+    const { horaInicio, horaFin } = inferBloqueScheduleFields(bloque);
+    const startMin = parseTimeToMinutes(horaInicio, 480);
+    const endMin = parseTimeToMinutes(horaFin, 780);
+    const surgMin = parseTimeToMinutes(surgHora, -1);
+    if (surgMin < 0) return true;
+    // Margen operativo de 60 min previo al inicio (ej. turno 13:00 en bloque vespertino 14:00-19:00) y hasta el cierre de la franja
+    return surgMin >= (startMin - 60) && surgMin <= (endMin + 15);
+}
+
+function buildAutoSemanasForBloqueMonth(bloque, ymPrefix, universeRows) {
+    const b = inferBloqueScheduleFields(bloque);
+    const [yearStr, monthStr] = ymPrefix.split('-');
+    const year = parseInt(yearStr, 10);
+    const monthIdx = parseInt(monthStr, 10) - 1;
+    const daysInMonth = new Date(year, monthIdx + 1, 0).getDate();
+    const DAY_SHORT = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+
+    const isQuincenal = normalizeAccents(b.dia).includes('2 AL MES') || normalizeAccents(b.horario).includes('QUINCENAL');
+    const isMultiDay = b.diasSemana.length > 1;
+
+    const matchingDates = [];
+    for (let d = 1; d <= daysInMonth; d++) {
+        const dt = new Date(year, monthIdx, d, 12, 0, 0);
+        const dow = dt.getDay();
+        if (b.diasSemana.includes(dow)) {
+            const iso = `${ymPrefix}-${String(d).padStart(2, '0')}`;
+            const labelFecha = `${DAY_SHORT[dow]} ${String(d).padStart(2, '0')}/${monthStr}`;
+            matchingDates.push({ iso, labelFecha, dow, dayNum: d });
+        }
+    }
+
+    if (isMultiDay) {
+        // Agrupar por semanas del mes (4 bloques semanales)
+        const weeks = [
+            { sem: 1, startDay: 1, endDay: 7 },
+            { sem: 2, startDay: 8, endDay: 14 },
+            { sem: 3, startDay: 15, endDay: 22 },
+            { sem: 4, startDay: 23, endDay: daysInMonth }
+        ];
+        const semanas = weeks.map(w => {
+            const rangoInicio = `${ymPrefix}-${String(w.startDay).padStart(2, '0')}`;
+            const rangoFin = `${ymPrefix}-${String(w.endDay).padStart(2, '0')}`;
+            const cxTitular = universeRows.filter(r =>
+                r.fechaISO >= rangoInicio &&
+                r.fechaISO <= rangoFin &&
+                doesSurgeonMatchTitular(r.cirujano, b.cirujanoMatch) &&
+                isSurgeryWithinBloqueHorario(r.hora, b)
+            );
+            const hsReal = Number((cxTitular.reduce((acc, r) => acc + (r.durOcupacionMin || 75), 0) / 60).toFixed(1));
+            const usada = cxTitular.length > 0;
+            return {
+                sem: w.sem,
+                label: `Sem ${w.sem}`,
+                fecha: `${String(w.startDay).padStart(2, '0')}/${monthStr} - ${String(w.endDay).padStart(2, '0')}/${monthStr}`,
+                rangoInicio,
+                rangoFin,
+                hs: usada ? Number(b.horasSemanales) || hsReal : 0.0,
+                usada,
+                detalle: usada
+                    ? `Operado (${cxTitular.length} cx por titular en franja · ${hsReal}h Foja+30m)`
+                    : `Sin cirugías del titular en la franja horaria (${b.horaInicio}-${b.horaFin})`
+            };
+        });
+        const usedCount = semanas.filter(s => s.usada).length;
+        const pct = semanas.length > 0 ? Number(((usedCount / semanas.length) * 100).toFixed(1)) : 0;
+        return { semanas, pct };
+    }
+
+    // Días individuales (semanal o quincenal)
+    let slots = matchingDates.slice(0, 4);
+    if (isQuincenal && matchingDates.length >= 2) {
+        // Seleccionar los 2 días del mes con actividad del titular o el 1° y 3° del mes
+        const withActivity = matchingDates.filter(md =>
+            universeRows.some(r =>
+                r.fechaISO === md.iso &&
+                doesSurgeonMatchTitular(r.cirujano, b.cirujanoMatch) &&
+                isSurgeryWithinBloqueHorario(r.hora, b)
+            )
+        );
+        if (withActivity.length === 2) {
+            slots = withActivity;
+        } else if (withActivity.length === 1) {
+            const other = matchingDates.find(md => md.iso !== withActivity[0].iso && Math.abs(md.dayNum - withActivity[0].dayNum) >= 12) || matchingDates.find(md => md.iso !== withActivity[0].iso);
+            slots = [withActivity[0], other].filter(Boolean).sort((a, b2) => a.iso.localeCompare(b2.iso));
+        } else {
+            slots = [matchingDates[0], matchingDates[2] || matchingDates[1]].filter(Boolean);
+        }
+    }
+
+    const slotHours = isQuincenal ? Number((b.horasMes / Math.max(1, slots.length)).toFixed(1)) : Number(b.horasSemanales) || 5.0;
+    const semanas = slots.map((md, idx) => {
+        const cxTitular = universeRows.filter(r =>
+            r.fechaISO === md.iso &&
+            doesSurgeonMatchTitular(r.cirujano, b.cirujanoMatch) &&
+            isSurgeryWithinBloqueHorario(r.hora, b)
+        );
+        const cxOtros = universeRows.filter(r =>
+            r.fechaISO === md.iso &&
+            !doesSurgeonMatchTitular(r.cirujano, b.cirujanoMatch) &&
+            doesSurgeryMatchBloqueSala(r.sala, b.quirofano, b.ambito) &&
+            isSurgeryWithinBloqueHorario(r.hora, b)
+        );
+        const hsReal = Number((cxTitular.reduce((acc, r) => acc + (r.durOcupacionMin || 75), 0) / 60).toFixed(1));
+        const usada = cxTitular.length > 0;
+        return {
+            sem: idx + 1,
+            label: isQuincenal ? `Bloque ${idx + 1}` : `Sem ${idx + 1}`,
+            fecha: md.labelFecha,
+            fechaISO: md.iso,
+            hs: usada ? slotHours : 0.0,
+            usada,
+            detalle: usada
+                ? `Operado ${md.labelFecha} (${cxTitular.length} cx titular en ${b.quirofano} · ${hsReal}h Foja+30m)`
+                : cxOtros.length > 0
+                    ? `Ocioso para titular (0h) · Sala ${b.quirofano} utilizada por otros prestadores (${cxOtros.length} cx en franja ${b.horaInicio}-${b.horaFin})`
+                    : `Ocioso en bloque (${md.labelFecha} · 0h sin actividad en ${b.quirofano} ${b.horaInicio}-${b.horaFin})`
+        };
+    });
+    const usedCount = semanas.filter(s => s.usada).length;
+    const pct = semanas.length > 0 ? Number(((usedCount / semanas.length) * 100).toFixed(1)) : 0;
+    return { semanas, pct };
+}
 
 // ─── CATÁLOGO DIDÁCTICO Y CLÍNICO DE EXPLICACIÓN DE GRÁFICOS (QUIRÓFANO) ───
 const CHART_HELP_CATALOGO = {
@@ -1579,9 +1786,206 @@ export default function QuirofanoDashboard({
     const [bloquesMesFiltro, setBloquesMesFiltro] = useState('auto'); // 'auto' | 'AGO' | 'SEP' | 'PROMEDIO'
     const [bloquesAmbitoFiltro, setBloquesAmbitoFiltro] = useState('TODOS'); // 'TODOS' | 'CENTRAL' | 'HDD'
     const [selectedBloqueDetail, setSelectedBloqueDetail] = useState(null); // { bloque, semana }
+    const [bloqueDetailViewFilter, setBloqueDetailViewFilter] = useState('FRANJA_TODAS'); // 'FRANJA_TODAS' | 'TITULAR_EN_BLOQUE' | 'OTROS_EN_BLOQUE' | 'TITULAR_FUERA_BLOQUE' | 'SALA_OTRO_HORARIO'
+    const [bloqueDetailScope, setBloqueDetailScope] = useState('SEMANA'); // 'SEMANA' | 'MES'
+    const [editingBloque, setEditingBloque] = useState(null); // null | bloque object being edited/created
+    const [editingBloqueMesTab, setEditingBloqueMesTab] = useState('OCT'); // 'AGO' | 'SEP' | 'OCT' | 'NOV'
+    const [savingBloquesConfig, setSavingBloquesConfig] = useState(false);
+    const [bloquesConfigList, setBloquesConfigList] = useState(() => {
+        try {
+            const raw = localStorage.getItem(BLOQUES_LOCAL_STORAGE_KEY);
+            if (raw) {
+                const parsed = JSON.parse(raw);
+                if (Array.isArray(parsed) && parsed.length > 0) {
+                    return parsed.map(inferBloqueScheduleFields);
+                }
+            }
+        } catch (_) {}
+        return BLOQUES_CONFIG.map(inferBloqueScheduleFields);
+    });
     const [asistenciaAnioFiltro, setAsistenciaAnioFiltro] = useState('2026'); // '2026' | '2025' | 'TODOS'
     const [asistenciaVistaModo, setAsistenciaVistaModo] = useState('todos'); // 'todos' | 'suspensiones'
     const [salusAsistenciaRows, setSalusAsistenciaRows] = useState(SALUS_QUIROFANO_ASISTENCIA_MENSUAL);
+
+    // Catálogo de cirujanos disponibles en SALUS para autocompletar al editar/crear bloques
+    const availableSalusSurgeons = useMemo(() => {
+        const set = new Set();
+        for (const r of SALUS_BLOQUES_CIRUGIAS_REALES) {
+            if (r.cirujano) set.add(r.cirujano.trim());
+        }
+        for (const c of CIRUJANOS_DATA) {
+            if (c.nombre) set.add(c.nombre.trim());
+        }
+        return Array.from(set).sort((a, b) => a.localeCompare(b));
+    }, []);
+
+    // Cargar configuración personalizada de Bloques Quirúrgicos desde Supabase app_config si existe
+    useEffect(() => {
+        let active = true;
+        supabase
+            .from('app_config')
+            .select('value')
+            .eq('key', 'quirofano_bloques_config')
+            .maybeSingle()
+            .then(({ data }) => {
+                if (!active || !data?.value) return;
+                let parsed = data.value;
+                if (typeof parsed === 'string') {
+                    try { parsed = JSON.parse(parsed); } catch (_) { parsed = null; }
+                }
+                if (Array.isArray(parsed) && parsed.length > 0) {
+                    const normalized = parsed.map(inferBloqueScheduleFields);
+                    setBloquesConfigList(normalized);
+                    try { localStorage.setItem(BLOQUES_LOCAL_STORAGE_KEY, JSON.stringify(normalized)); } catch (_) {}
+                }
+            })
+            .catch(() => {});
+        return () => { active = false; };
+    }, []);
+
+    const persistBloquesConfig = async (nextList, successMessage = 'Configuración de bloques quirúrgicos guardada') => {
+        const normalized = nextList.map(inferBloqueScheduleFields);
+        setBloquesConfigList(normalized);
+        try {
+            localStorage.setItem(BLOQUES_LOCAL_STORAGE_KEY, JSON.stringify(normalized));
+        } catch (_) {}
+        setSavingBloquesConfig(true);
+        try {
+            await supabase
+                .from('app_config')
+                .upsert({
+                    key: 'quirofano_bloques_config',
+                    value: JSON.stringify(normalized),
+                    label: 'Configuración Editable de Bloques Quirúrgicos (Sanatorio Argentino)',
+                    category: 'quirofano',
+                    is_secret: false,
+                    updated_at: new Date().toISOString(),
+                    updated_by: 'Gobernanza Quirófano'
+                }, { onConflict: 'key' });
+            addToast?.(successMessage, 'success');
+        } catch (err) {
+            console.error('Error guardando bloques en Supabase:', err);
+            addToast?.(`${successMessage} (guardado localmente)`, 'info');
+        } finally {
+            setSavingBloquesConfig(false);
+        }
+    };
+
+    const handleOpenEditBloque = (bloqueItem = null) => {
+        if (!bloqueItem) {
+            // Crear nuevo bloque
+            const newId = `bloque_${Date.now()}`;
+            const draft = inferBloqueScheduleFields({
+                id: newId,
+                isNew: true,
+                cirujano: '',
+                cirujanoMatch: '',
+                ambito: bloquesAmbitoFiltro === 'HDD' ? 'HDD' : 'CENTRAL',
+                quirofano: bloquesAmbitoFiltro === 'HDD' ? 'HdD (Qx 6)' : 'Qx 1',
+                dia: 'Lunes',
+                diaIdx: 1,
+                diasSemana: [1],
+                horaInicio: '08:00',
+                horaFin: '13:00',
+                horario: '08:00 - 13:00 (5h)',
+                horasSemanales: 5.0,
+                horasMes: 20.0,
+                ocupacionAgo: 0.0,
+                ocupacionSep: 0.0,
+                ocupacionOct: 0.0,
+                ocupacionNov: 0.0,
+                semanasAgo: [],
+                semanasSep: [],
+                semanasOct: [],
+                semanasNov: [],
+                color: '#DBEAFE',
+                textColor: '#1E40AF',
+                nota: 'Bloque configurado en plataforma'
+            });
+            // Pre-generar semanas desde SALUS
+            for (const [ym, keySem] of [['2026-08', 'semanasAgo'], ['2026-09', 'semanasSep'], ['2026-10', 'semanasOct'], ['2026-11', 'semanasNov']]) {
+                const auto = buildAutoSemanasForBloqueMonth(draft, ym, SALUS_BLOQUES_CIRUGIAS_REALES);
+                draft[keySem] = auto.semanas;
+            }
+            setEditingBloque(draft);
+        } else {
+            // Buscar en bloquesConfigList el objeto fuente completo
+            const source = bloquesConfigList.find(b => b.id === bloqueItem.id) || bloqueItem;
+            const copy = JSON.parse(JSON.stringify(inferBloqueScheduleFields(source)));
+            setEditingBloque(copy);
+        }
+        const pUpper = (effectiveBloquesPeriod || '').toUpperCase();
+        if (pUpper.includes('NOV')) setEditingBloqueMesTab('NOV');
+        else if (pUpper.includes('SEP')) setEditingBloqueMesTab('SEP');
+        else if (pUpper.includes('AGO') && !pUpper.includes('TRIMESTRE')) setEditingBloqueMesTab('AGO');
+        else setEditingBloqueMesTab('OCT');
+    };
+
+    const handleAutocalcularBloqueFromSalus = (draftBloque, targetMonthOnly = null) => {
+        const updated = { ...inferBloqueScheduleFields(draftBloque) };
+        const monthMap = [
+            { tab: 'AGO', ym: '2026-08', semKey: 'semanasAgo', pctKey: 'ocupacionAgo' },
+            { tab: 'SEP', ym: '2026-09', semKey: 'semanasSep', pctKey: 'ocupacionSep' },
+            { tab: 'OCT', ym: '2026-10', semKey: 'semanasOct', pctKey: 'ocupacionOct' },
+            { tab: 'NOV', ym: '2026-11', semKey: 'semanasNov', pctKey: 'ocupacionNov' }
+        ];
+        for (const m of monthMap) {
+            if (targetMonthOnly && m.tab !== targetMonthOnly) continue;
+            const res = buildAutoSemanasForBloqueMonth(updated, m.ym, SALUS_BLOQUES_CIRUGIAS_REALES);
+            updated[m.semKey] = res.semanas;
+            updated[m.pctKey] = res.pct;
+        }
+        setEditingBloque(updated);
+        addToast?.(
+            targetMonthOnly
+                ? `Ocupación y semanas de ${targetMonthOnly} recalculadas desde SALUS`
+                : 'Ocupación y semanas (Ago-Nov 2026) recalculadas automáticamente desde SALUS',
+            'info'
+        );
+    };
+
+    const handleSaveEditingBloque = async () => {
+        if (!editingBloque) return;
+        if (!editingBloque.cirujano || !editingBloque.cirujano.trim()) {
+            addToast?.('Ingresa el nombre del cirujano titular o servicio del bloque', 'warning');
+            return;
+        }
+        const clean = inferBloqueScheduleFields({
+            ...editingBloque,
+            cirujano: editingBloque.cirujano.trim(),
+            cirujanoMatch: (editingBloque.cirujanoMatch || editingBloque.cirujano).trim(),
+            horasSemanales: Number(editingBloque.horasSemanales) || 5,
+            horasMes: Number(editingBloque.horasMes) || 20,
+            ocupacionAgo: Number(editingBloque.ocupacionAgo) || 0,
+            ocupacionSep: Number(editingBloque.ocupacionSep) || 0,
+            ocupacionOct: Number(editingBloque.ocupacionOct) || 0,
+            ocupacionNov: Number(editingBloque.ocupacionNov) || 0
+        });
+        delete clean.isNew;
+
+        const exists = bloquesConfigList.some(b => b.id === clean.id);
+        const nextList = exists
+            ? bloquesConfigList.map(b => (b.id === clean.id ? clean : b))
+            : [...bloquesConfigList, clean];
+
+        await persistBloquesConfig(nextList, exists ? `Bloque de ${clean.cirujano} actualizado` : `Nuevo bloque de ${clean.cirujano} creado`);
+        setEditingBloque(null);
+    };
+
+    const handleDeleteBloque = async (bloqueId, cirujanoNombre) => {
+        if (!window.confirm(`¿Estás seguro de eliminar el bloque quirúrgico de ${cirujanoNombre}?`)) return;
+        const nextList = bloquesConfigList.filter(b => b.id !== bloqueId);
+        await persistBloquesConfig(nextList, `Bloque de ${cirujanoNombre} eliminado`);
+        if (editingBloque?.id === bloqueId) setEditingBloque(null);
+        if (selectedBloqueDetail?.bloque?.id === bloqueId) setSelectedBloqueDetail(null);
+    };
+
+    const handleResetBloquesDefault = async () => {
+        if (!window.confirm('¿Restaurar todos los bloques quirúrgicos a la Matriz Oficial auditada de Sanatorio Argentino?')) return;
+        const defaults = BLOQUES_CONFIG.map(inferBloqueScheduleFields);
+        await persistBloquesConfig(defaults, 'Matriz oficial de bloques quirúrgicos restaurada');
+        setEditingBloque(null);
+    };
 
     // Cargar caché actualizado de Asistencia Mensual SALUS si existe en app_config
     useEffect(() => {
@@ -2215,7 +2619,7 @@ export default function QuirofanoDashboard({
         return 'Octubre 2026'; // Benchmark base de auditoría (último mes cerrado completo)
     }, [bloquesMesFiltro, activePeriodLabel, effectiveDesde]);
 
-    // Matriz de bloques reactiva con cálculos de horas titular, horas ociosas, alerta 7d y pacientes nominales SALUS
+    // Matriz de bloques reactiva con cálculos de horas titular, horas ociosas, alerta 7d y desglose completo de la franja horaria (Titular vs Otros Prestadores)
     const activeBloquesData = useMemo(() => {
         const isNov = effectiveBloquesPeriod.includes('Noviembre');
         const isOct = effectiveBloquesPeriod.includes('Octubre');
@@ -2224,25 +2628,31 @@ export default function QuirofanoDashboard({
 
         const ymPrefix = isNov ? '2026-11' : isOct ? '2026-10' : isSep ? '2026-09' : '2026-08';
 
-        let rawConfig = BLOQUES_CONFIG;
+        const periodUniverse = isTrimestre
+            ? SALUS_BLOQUES_CIRUGIAS_REALES.filter(r => r.fechaISO >= '2026-08-01' && r.fechaISO <= '2026-10-31')
+            : SALUS_BLOQUES_CIRUGIAS_REALES.filter(r => (r.fechaISO || '').startsWith(ymPrefix));
+
+        const baseList = (bloquesConfigList && bloquesConfigList.length > 0 ? bloquesConfigList : BLOQUES_CONFIG).map(inferBloqueScheduleFields);
+
+        let rawConfig = baseList;
         if (bloquesAmbitoFiltro === 'CENTRAL') {
-            rawConfig = BLOQUES_CONFIG.filter(b => b.ambito === 'CENTRAL');
+            rawConfig = baseList.filter(b => b.ambito === 'CENTRAL');
         } else if (bloquesAmbitoFiltro === 'HDD') {
-            rawConfig = BLOQUES_CONFIG.filter(b => b.ambito === 'HDD');
+            rawConfig = baseList.filter(b => b.ambito === 'HDD');
         }
 
         return rawConfig.map(b => {
-            let pct = b.ocupacionOct ?? b.ocupacionAgo;
+            let pct = b.ocupacionOct ?? b.ocupacionAgo ?? 0;
             let rawSemanas = b.semanasOct || b.semanasAgo || [];
 
             if (isNov) {
-                pct = b.ocupacionNov ?? b.ocupacionOct ?? b.ocupacionAgo;
+                pct = b.ocupacionNov ?? b.ocupacionOct ?? b.ocupacionAgo ?? 0;
                 rawSemanas = b.semanasNov || b.semanasOct || [];
             } else if (isOct) {
-                pct = b.ocupacionOct ?? b.ocupacionAgo;
+                pct = b.ocupacionOct ?? b.ocupacionAgo ?? 0;
                 rawSemanas = b.semanasOct || b.semanasAgo || [];
             } else if (isSep) {
-                pct = b.ocupacionSep;
+                pct = b.ocupacionSep ?? 0;
                 rawSemanas = b.semanasSep || b.semanasAgo || [];
             } else if (isTrimestre) {
                 pct = Number((((b.ocupacionAgo || 0) + (b.ocupacionSep || 0) + (b.ocupacionOct || 0)) / 3).toFixed(1));
@@ -2252,35 +2662,130 @@ export default function QuirofanoDashboard({
                     ...(b.semanasOct || []).map(s => ({ ...s, label: `Oct ${s.label}` }))
                 ];
             } else {
-                pct = b.ocupacionAgo;
+                pct = b.ocupacionAgo ?? 0;
                 rawSemanas = b.semanasAgo || [];
             }
 
-            // Cruzar cirugías reales nominales de SALUS para este titular
-            const matchKey = (b.cirujanoMatch || '').toUpperCase();
-            const cirugiasTitular = matchKey
-                ? SALUS_BLOQUES_CIRUGIAS_REALES.filter(r => (r.cirujano || '').toUpperCase().includes(matchKey))
-                : [];
+            // Si un bloque recién creado no tiene semanas definidas para ese mes, autogenerarlas desde SALUS
+            if ((!rawSemanas || rawSemanas.length === 0) && !isTrimestre) {
+                const auto = buildAutoSemanasForBloqueMonth(b, ymPrefix, SALUS_BLOQUES_CIRUGIAS_REALES);
+                rawSemanas = auto.semanas;
+            }
 
-            const pacientesMes = isTrimestre
-                ? cirugiasTitular.filter(r => r.fechaISO >= '2026-08-01' && r.fechaISO <= '2026-10-31')
-                : cirugiasTitular.filter(r => (r.fechaISO || '').startsWith(ymPrefix));
+            const enrichRow = (r, extra = {}) => {
+                const esTitular = doesSurgeonMatchTitular(r.cirujano, b.cirujanoMatch);
+                const enSalaAsignada = doesSurgeryMatchBloqueSala(r.sala, b.quirofano, b.ambito);
+                const enHorarioBloque = isSurgeryWithinBloqueHorario(r.hora, b);
+                let tipoUso = 'OTRO_PRESTADOR_EN_FRANJA';
+                if (esTitular && enHorarioBloque && enSalaAsignada) tipoUso = 'TITULAR_EN_BLOQUE';
+                else if (esTitular && enHorarioBloque && !enSalaAsignada) tipoUso = 'TITULAR_SALA_ALTERNATIVA';
+                else if (esTitular && !enHorarioBloque) tipoUso = 'TITULAR_FUERA_BLOQUE';
+                else if (!esTitular && enHorarioBloque && enSalaAsignada) tipoUso = 'OTRO_PRESTADOR_EN_FRANJA';
+                else tipoUso = 'SALA_OTRO_HORARIO';
+
+                return {
+                    ...r,
+                    esTitular,
+                    enSalaAsignada,
+                    enHorarioBloque,
+                    tipoUso,
+                    ...extra
+                };
+            };
+
+            // Todas las cirugías del titular en el período
+            const pacientesMes = periodUniverse
+                .filter(r => doesSurgeonMatchTitular(r.cirujano, b.cirujanoMatch))
+                .map(r => enrichRow(r));
+
+            const isMultiDay = Array.isArray(b.diasSemana) && b.diasSemana.length > 1;
+            const seenFranjaKeys = new Set();
+            const cirugiasFranjaMes = [];
+            const cirugiasSalaOtroHorarioMes = [];
 
             const semanas = rawSemanas.map(sem => {
-                let pacientesSemana = [];
-                if (sem.rangoInicio && sem.rangoFin) {
-                    pacientesSemana = cirugiasTitular.filter(r => r.fechaISO >= sem.rangoInicio && r.fechaISO <= sem.rangoFin);
-                } else if (sem.fechaISO) {
-                    pacientesSemana = cirugiasTitular.filter(r => r.fechaISO === sem.fechaISO);
+                // Determinar qué filas del universo corresponden al día(s) del bloque en esta semana
+                const isDateInBlockWeek = (fechaISO) => {
+                    if (!fechaISO) return false;
+                    if (isMultiDay && sem.rangoInicio && sem.rangoFin) {
+                        if (fechaISO < sem.rangoInicio || fechaISO > sem.rangoFin) return false;
+                        const dow = new Date(fechaISO + 'T12:00:00').getDay();
+                        return b.diasSemana.includes(dow);
+                    }
+                    if (sem.fechaISO) {
+                        return fechaISO === sem.fechaISO;
+                    }
+                    if (sem.rangoInicio && sem.rangoFin) {
+                        if (fechaISO < sem.rangoInicio || fechaISO > sem.rangoFin) return false;
+                        const dow = new Date(fechaISO + 'T12:00:00').getDay();
+                        return b.diasSemana.includes(dow);
+                    }
+                    return false;
+                };
+
+                // Cirugías realizadas en el día del bloque dentro de la Franja Horaria (en la Sala del bloque, o por el Titular en sala alternativa en ese horario)
+                const cirugiasFranja = periodUniverse
+                    .filter(r => {
+                        if (!isDateInBlockWeek(r.fechaISO)) return false;
+                        const inTime = isSurgeryWithinBloqueHorario(r.hora, b);
+                        if (!inTime) return false;
+                        const inRoom = doesSurgeryMatchBloqueSala(r.sala, b.quirofano, b.ambito);
+                        const isTit = doesSurgeonMatchTitular(r.cirujano, b.cirujanoMatch);
+                        return inRoom || isTit;
+                    })
+                    .map(r => enrichRow(r, { semanaLabel: sem.label }));
+
+                // Cirugías en esa misma sala y día del bloque pero en otro horario (fuera de la franja del bloque)
+                const cirugiasSalaOtroHorario = periodUniverse
+                    .filter(r => {
+                        if (!isDateInBlockWeek(r.fechaISO)) return false;
+                        const inTime = isSurgeryWithinBloqueHorario(r.hora, b);
+                        const inRoom = doesSurgeryMatchBloqueSala(r.sala, b.quirofano, b.ambito);
+                        return inRoom && !inTime;
+                    })
+                    .map(r => enrichRow(r, { tipoUso: 'SALA_OTRO_HORARIO', semanaLabel: sem.label }));
+
+                // Si la semana tiene rangoInicio/rangoFin (reprogramación dentro de la semana), cirugías del titular en esa semana
+                const cirugiasTitularSemana = (sem.rangoInicio && sem.rangoFin)
+                    ? pacientesMes.filter(r => r.fechaISO >= sem.rangoInicio && r.fechaISO <= sem.rangoFin)
+                    : sem.fechaISO
+                        ? pacientesMes.filter(r => r.fechaISO === sem.fechaISO)
+                        : [];
+
+                const cirugiasTitularEnFranja = cirugiasFranja.filter(r => r.esTitular);
+                const cirugiasOtrosEnFranja = cirugiasFranja.filter(r => !r.esTitular);
+
+                for (const cf of cirugiasFranja) {
+                    const k = `${cf.fechaISO}_${cf.hora}_${cf.dni}_${cf.procedimiento}`;
+                    if (!seenFranjaKeys.has(k)) {
+                        seenFranjaKeys.add(k);
+                        cirugiasFranjaMes.push(cf);
+                    }
                 }
+                for (const co of cirugiasSalaOtroHorario) {
+                    cirugiasSalaOtroHorarioMes.push(co);
+                }
+
                 return {
                     ...sem,
-                    pacientesReales: pacientesSemana
+                    cirugiasFranja,
+                    cirugiasTitularEnFranja,
+                    cirugiasOtrosEnFranja,
+                    cirugiasSalaOtroHorario,
+                    pacientesReales: cirugiasTitularEnFranja.length > 0 ? cirugiasTitularEnFranja : cirugiasTitularSemana
                 };
             });
 
+            const cirugiasTitularFranjaMes = cirugiasFranjaMes.filter(r => r.esTitular);
+            const cirugiasOtrosFranjaMes = cirugiasFranjaMes.filter(r => !r.esTitular);
+            const titularFranjaKeys = new Set(cirugiasTitularFranjaMes.map(cf => `${cf.fechaISO}_${cf.hora}_${cf.dni}_${cf.procedimiento}`));
+            const cirugiasTitularFueraBloqueMes = pacientesMes
+                .filter(r => !titularFranjaKeys.has(`${r.fechaISO}_${r.hora}_${r.dni}_${r.procedimiento}`))
+                .map(r => ({ ...r, tipoUso: 'TITULAR_FUERA_BLOQUE', enHorarioBloque: false }));
+
             const horasTitular = Number(((b.horasMes * pct) / 100).toFixed(1));
             const horasOciosas = Number(Math.max(0, b.horasMes - horasTitular).toFixed(1));
+            const horasOtrosEnFranja = Number((cirugiasOtrosFranjaMes.reduce((acc, r) => acc + (r.durOcupacionMin || 75), 0) / 60).toFixed(1));
             const horasPerdida = 0.0;
             const alerta = pct < 45.0; // Umbral de alerta para liberación de sala a 7 días
             const estado7dias = alerta ? 'LIBERAR' : 'CONFIRMADO';
@@ -2293,12 +2798,16 @@ export default function QuirofanoDashboard({
                 quirofano: b.quirofano,
                 dia: b.dia,
                 diaIdx: b.diaIdx,
+                diasSemana: b.diasSemana,
+                horaInicio: b.horaInicio,
+                horaFin: b.horaFin,
                 horario: b.horario,
                 horasSemanales: b.horasSemanales,
                 horasMes: b.horasMes,
                 horasTitular,
                 horasPerdida,
                 horasOciosas,
+                horasOtrosEnFranja,
                 ocupacionTitularPct: pct,
                 ocupacionAgo: b.ocupacionAgo,
                 ocupacionSep: b.ocupacionSep,
@@ -2306,18 +2815,23 @@ export default function QuirofanoDashboard({
                 ocupacionNov: b.ocupacionNov,
                 semanas,
                 pacientesMes,
+                cirugiasFranjaMes,
+                cirugiasTitularFranjaMes,
+                cirugiasOtrosFranjaMes,
+                cirugiasTitularFueraBloqueMes,
+                cirugiasSalaOtroHorarioMes,
                 semanasAgo: b.semanasAgo || [],
                 semanasSep: b.semanasSep || [],
                 semanasOct: b.semanasOct || [],
                 semanasNov: b.semanasNov || [],
-                color: b.color,
-                textColor: b.textColor,
+                color: b.color || '#DBEAFE',
+                textColor: b.textColor || '#1E40AF',
                 alerta,
                 estado7dias,
                 nota: b.nota
             };
         });
-    }, [effectiveBloquesPeriod, bloquesAmbitoFiltro]);
+    }, [effectiveBloquesPeriod, bloquesAmbitoFiltro, bloquesConfigList]);
 
     // Resumen cuantitativo para las 4 KPI Cards superiores de Bloques
     const bloquesMetricsSummary = useMemo(() => {
@@ -2825,36 +3339,39 @@ export default function QuirofanoDashboard({
             ];
             XLSX.utils.book_append_sheet(wb, wsDetalle, 'Desglose_Semanal');
 
-            // 3. Hoja 3: Trazabilidad Nominal 1x1 de Pacientes Operados por Titulares de Bloque (SALUS)
-            const targetMonthPrefix = effectiveBloquesPeriod === '2026-08' ? '2026-08'
-                : effectiveBloquesPeriod === '2026-09' ? '2026-09'
-                : effectiveBloquesPeriod === '2026-11' ? '2026-11'
-                : '2026-10';
-            const rowsNominales = SALUS_BLOQUES_CIRUGIAS_REALES
-                .filter(r => String(r.fecha || '').startsWith(targetMonthPrefix))
-                .map((r, idx) => ({
-                    'N°': idx + 1,
-                    'Bloque ID': r.bloqueId,
-                    'Fecha': r.fecha,
-                    'Hora': r.hora,
-                    'Cirujano en SALUS': r.doctor,
-                    'Paciente': r.paciente,
-                    'NHC / Visita': r.nhc || r.idVisita,
-                    'Procedimiento / Módulo': r.modulo,
-                    'Quirófano Real': r.quirofano,
-                    'Estado Asistencia': r.estado,
-                    'Duración Foja (min)': r.duracionFojaMin,
-                    'Ocupación Real Foja+30m (min)': r.duracionOcupacionMin,
-                    'Financiador / Obra Social': r.cliente
-                }));
+            // 3. Hoja 3: Desglose Nominal 1x1 de Cirugías en la Franja Horaria de cada Bloque (Titular vs Otros Prestadores)
+            const rowsNominales = [];
+            let nomIdx = 1;
+            activeBloquesData.forEach((b) => {
+                (b.cirugiasFranjaMes || []).forEach((r) => {
+                    rowsNominales.push({
+                        'N°': nomIdx++,
+                        'Bloque Quirúrgico': b.cirujano,
+                        'Sala Bloque': b.quirofano,
+                        'Franja Bloque': `${b.dia} (${b.horaInicio}-${b.horaFin})`,
+                        'Fecha Cirugía': r.fechaLegible,
+                        'Hora': (r.hora || '').slice(0, 5),
+                        'Sala Real': r.sala,
+                        'Prestador que Operó': r.cirujano,
+                        'Auditoría de Uso': r.esTitular ? 'USADO POR TITULAR DEL BLOQUE' : 'USADO POR OTRO PRESTADOR EN FRANJA',
+                        'Paciente': r.paciente,
+                        'DNI': r.dni,
+                        'Obra Social': r.obraSocial,
+                        'Procedimiento (CX)': r.procedimiento,
+                        'Duración Foja (min)': r.durFojaMin,
+                        'Ocupación Foja+30m (min)': r.durOcupacionMin
+                    });
+                });
+            });
 
             if (rowsNominales.length > 0) {
                 const wsNominal = XLSX.utils.json_to_sheet(rowsNominales);
                 wsNominal['!cols'] = [
-                    { wch: 6 }, { wch: 16 }, { wch: 14 }, { wch: 10 }, { wch: 30 }, { wch: 32 },
-                    { wch: 16 }, { wch: 38 }, { wch: 18 }, { wch: 16 }, { wch: 18 }, { wch: 24 }, { wch: 28 }
+                    { wch: 6 }, { wch: 28 }, { wch: 14 }, { wch: 24 }, { wch: 14 }, { wch: 10 },
+                    { wch: 14 }, { wch: 30 }, { wch: 34 }, { wch: 30 }, { wch: 14 }, { wch: 26 },
+                    { wch: 42 }, { wch: 18 }, { wch: 22 }
                 ];
-                XLSX.utils.book_append_sheet(wb, wsNominal, 'Pacientes_1x1_SALUS');
+                XLSX.utils.book_append_sheet(wb, wsNominal, 'Desglose_Franja_1x1');
             }
 
             const cleanPeriod = effectiveBloquesPeriod.replace(/[^a-zA-Z0-9]/g, '_');
@@ -5765,10 +6282,51 @@ export default function QuirofanoDashboard({
                                         Matriz de Ocupación de Bloques vs. Horas Ociosas ({effectiveBloquesPeriod})
                                     </h3>
                                     <p style={{ margin: '2px 0 0 0', fontSize: '0.78rem', color: '#64748B' }}>
-                                        Haz clic en cualquier semana para inspeccionar el <strong>listado nominal 1x1 de pacientes reales operados en SALUS</strong> por ese cirujano.
+                                        Haz clic en <strong>Desglose Horario</strong> o en cualquier semana para auditar <strong>todas las cirugías realizadas en esa franja horaria (Titular vs. Otros Prestadores)</strong>, o edita los bloques directamente.
                                     </p>
                                 </div>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                    <button
+                                        type="button"
+                                        onClick={() => handleOpenEditBloque(null)}
+                                        style={{
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: '6px',
+                                            padding: '7px 14px',
+                                            borderRadius: '8px',
+                                            background: '#2563EB',
+                                            border: 'none',
+                                            color: '#FFFFFF',
+                                            fontSize: '0.76rem',
+                                            fontWeight: 800,
+                                            cursor: 'pointer',
+                                            boxShadow: '0 2px 6px rgba(37, 99, 235, 0.28)'
+                                        }}
+                                        title="Crear un nuevo bloque quirúrgico institucional"
+                                    >
+                                        <Plus size={15} /> Nuevo Bloque
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={handleResetBloquesDefault}
+                                        style={{
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: '6px',
+                                            padding: '7px 12px',
+                                            borderRadius: '8px',
+                                            background: '#F8FAFC',
+                                            border: '1px solid #CBD5E1',
+                                            color: '#334155',
+                                            fontSize: '0.74rem',
+                                            fontWeight: 700,
+                                            cursor: 'pointer'
+                                        }}
+                                        title="Restaurar los 10 bloques quirúrgicos a los valores oficiales auditados"
+                                    >
+                                        <RotateCcw size={13} /> Restaurar Base Oficial
+                                    </button>
                                     <button
                                         type="button"
                                         onClick={handleExportBloquesExcel}
@@ -5804,118 +6362,192 @@ export default function QuirofanoDashboard({
                                             <th style={{ padding: '10px 12px' }}>Cirujano Titular / Servicio</th>
                                             <th style={{ padding: '10px 12px' }}>Ámbito</th>
                                             <th style={{ padding: '10px 12px' }}>Sala</th>
-                                            <th style={{ padding: '10px 12px' }}>Día y Franja</th>
+                                            <th style={{ padding: '10px 12px' }}>Día y Franja Horaria</th>
                                             <th style={{ padding: '10px 12px', textAlign: 'right' }}>Hs Asignadas</th>
                                             <th style={{ padding: '10px 12px', textAlign: 'right', background: '#F0FDF4', color: '#166534' }}>Hs Titular</th>
                                             <th style={{ padding: '10px 12px', textAlign: 'right' }}>Hs Ociosas</th>
                                             <th style={{ padding: '10px 12px', textAlign: 'right' }}>% Ocupación</th>
-                                            <th style={{ padding: '10px 12px' }}>Desglose Semanal (Clic p/ Ver Pacientes)</th>
+                                            <th style={{ padding: '10px 12px' }}>Desglose Semanal y Uso de Franja (Clic p/ Auditar)</th>
                                             <th style={{ padding: '10px 12px', textAlign: 'center' }}>Alerta 7d</th>
                                             <th style={{ padding: '10px 12px' }}>Condición Operativa</th>
+                                            <th style={{ padding: '10px 12px', textAlign: 'center' }}>Auditoría / Edición</th>
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {activeBloquesData.map((b) => (
-                                            <tr key={b.id} style={{ borderBottom: '1px solid #E2E8F0', background: b.alerta ? '#FFFBEB' : '#FFFFFF' }}>
-                                                <td style={{ padding: '10px 12px', fontWeight: 700, color: '#0F172A' }}>
-                                                    <div>{b.cirujano}</div>
-                                                    {b.pacientesMes && b.pacientesMes.length > 0 && (
-                                                        <span style={{ fontSize: '0.66rem', color: '#0284C7', fontWeight: 700 }}>
-                                                            {b.pacientesMes.length} cirugías nominales en período
+                                        {activeBloquesData.map((b) => {
+                                            const cntTitularFranja = (b.cirugiasTitularFranjaMes || []).length;
+                                            const cntOtrosFranja = (b.cirugiasOtrosFranjaMes || []).length;
+                                            const cntTitularFuera = (b.cirugiasTitularFueraBloqueMes || []).length;
+                                            return (
+                                                <tr key={b.id} style={{ borderBottom: '1px solid #E2E8F0', background: b.alerta ? '#FFFBEB' : '#FFFFFF' }}>
+                                                    <td style={{ padding: '10px 12px', fontWeight: 700, color: '#0F172A' }}>
+                                                        <div>{b.cirujano}</div>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap', marginTop: '3px' }}>
+                                                            <span style={{ fontSize: '0.64rem', background: cntTitularFranja > 0 ? '#DCFCE7' : '#F1F5F9', color: cntTitularFranja > 0 ? '#15803D' : '#64748B', padding: '1px 6px', borderRadius: '4px', fontWeight: 800 }}>
+                                                                ✓ {cntTitularFranja} cx titular en bloque
+                                                            </span>
+                                                            {cntOtrosFranja > 0 && (
+                                                                <span style={{ fontSize: '0.64rem', background: '#FEF3C7', color: '#B45309', padding: '1px 6px', borderRadius: '4px', fontWeight: 800, border: '1px solid #FDE68A' }}>
+                                                                    ⚠️ {cntOtrosFranja} cx otros en su franja
+                                                                </span>
+                                                            )}
+                                                            {cntTitularFuera > 0 && (
+                                                                <span style={{ fontSize: '0.64rem', background: '#EFF6FF', color: '#1D4ED8', padding: '1px 6px', borderRadius: '4px', fontWeight: 700 }}>
+                                                                    📅 {cntTitularFuera} cx fuera de bloque
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </td>
+                                                    <td style={{ padding: '10px 12px' }}>
+                                                        <span style={{
+                                                            fontSize: '0.68rem',
+                                                            padding: '2px 6px',
+                                                            borderRadius: '4px',
+                                                            fontWeight: 800,
+                                                            background: b.ambito === 'CENTRAL' ? '#EFF6FF' : '#ECFDF5',
+                                                            color: b.ambito === 'CENTRAL' ? '#1D4ED8' : '#047857',
+                                                            border: `1px solid ${b.ambito === 'CENTRAL' ? '#BFDBFE' : '#A7F3D0'}`
+                                                        }}>
+                                                            {b.ambito === 'CENTRAL' ? 'CENTRAL' : 'HOSP. DÍA'}
                                                         </span>
-                                                    )}
-                                                </td>
-                                                <td style={{ padding: '10px 12px' }}>
-                                                    <span style={{
-                                                        fontSize: '0.68rem',
-                                                        padding: '2px 6px',
-                                                        borderRadius: '4px',
-                                                        fontWeight: 800,
-                                                        background: b.ambito === 'CENTRAL' ? '#EFF6FF' : '#ECFDF5',
-                                                        color: b.ambito === 'CENTRAL' ? '#1D4ED8' : '#047857',
-                                                        border: `1px solid ${b.ambito === 'CENTRAL' ? '#BFDBFE' : '#A7F3D0'}`
-                                                    }}>
-                                                        {b.ambito === 'CENTRAL' ? 'CENTRAL' : 'HOSP. DÍA'}
-                                                    </span>
-                                                </td>
-                                                <td style={{ padding: '10px 12px', fontWeight: 800, color: '#1E40AF' }}>
-                                                    {b.quirofano}
-                                                </td>
-                                                <td style={{ padding: '10px 12px', color: '#475569' }}>
-                                                    <strong>{b.dia}</strong> · {b.horario}
-                                                </td>
-                                                <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700 }}>
-                                                    {b.horasMes}h
-                                                </td>
-                                                <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 800, color: '#15803D', background: '#F0FDF4' }}>
-                                                    {b.horasTitular}h
-                                                </td>
-                                                <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 800, color: b.horasOciosas > 5 ? '#DC2626' : '#64748B' }}>
-                                                    {b.horasOciosas}h
-                                                </td>
-                                                <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 900, color: b.ocupacionTitularPct >= 75 ? '#15803D' : b.ocupacionTitularPct >= 50 ? '#D97706' : '#DC2626' }}>
-                                                    {b.ocupacionTitularPct}%
-                                                </td>
-                                                <td style={{ padding: '8px 12px' }}>
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flexWrap: 'wrap' }}>
-                                                        {(b.semanas || []).map((sem, sIdx) => {
-                                                            const isUsada = sem.usada;
-                                                            const cntPac = (sem.pacientesReales || []).length;
-                                                            return (
-                                                                <button
-                                                                    key={sIdx}
-                                                                    type="button"
-                                                                    onClick={() => setSelectedBloqueDetail({ bloque: b, semana: sem })}
-                                                                    title={`${b.cirujano} • ${sem.label} (${sem.fecha || ''}): ${isUsada ? '✓ Utilizado (' + sem.hs + 'h)' : '✗ Ocioso (0h)'}. Clic para ver pacientes reales operados.`}
-                                                                    style={{
-                                                                        display: 'inline-flex',
-                                                                        alignItems: 'center',
-                                                                        gap: '3px',
-                                                                        padding: '3px 8px',
-                                                                        borderRadius: '6px',
-                                                                        fontSize: '0.70rem',
-                                                                        fontWeight: 700,
-                                                                        border: isUsada ? '1px solid #86EFAC' : '1px solid #FCA5A5',
-                                                                        background: isUsada ? '#DCFCE7' : '#FEE2E2',
-                                                                        color: isUsada ? '#15803D' : '#DC2626',
-                                                                        cursor: 'pointer',
-                                                                        boxShadow: '0 1px 2px rgba(0,0,0,0.03)',
-                                                                        transition: 'all 0.15s ease'
-                                                                    }}
-                                                                >
-                                                                    <span style={{ fontSize: '0.65rem', opacity: 0.85 }}>{sem.label}:</span>
-                                                                    {isUsada ? (
-                                                                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '2px', fontWeight: 800 }}>
-                                                                            <Check size={11} strokeWidth={3} /> {sem.hs}h {cntPac > 0 ? `(${cntPac} cx)` : ''}
-                                                                        </span>
-                                                                    ) : (
-                                                                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '2px', fontWeight: 800 }}>
-                                                                            <X size={11} strokeWidth={3} /> 0h
-                                                                        </span>
-                                                                    )}
-                                                                </button>
-                                                            );
-                                                        })}
-                                                    </div>
-                                                </td>
-                                                <td style={{ padding: '10px 12px', textAlign: 'center' }}>
-                                                    {b.alerta ? (
-                                                        <span style={{ background: '#FEE2E2', color: '#DC2626', padding: '3px 8px', borderRadius: '4px', fontWeight: 800, fontSize: '0.70rem', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
-                                                            <AlertCircle size={11} />
-                                                            LIBERAR
-                                                        </span>
-                                                    ) : (
-                                                        <span style={{ background: '#DCFCE7', color: '#15803D', padding: '3px 8px', borderRadius: '4px', fontWeight: 800, fontSize: '0.70rem', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
-                                                            <Check size={11} />
-                                                            CONFIRMADO
-                                                        </span>
-                                                    )}
-                                                </td>
-                                                <td style={{ padding: '10px 12px', fontSize: '0.72rem', color: '#475569' }}>
-                                                    {b.nota}
-                                                </td>
-                                            </tr>
-                                        ))}
+                                                    </td>
+                                                    <td style={{ padding: '10px 12px', fontWeight: 800, color: '#1E40AF' }}>
+                                                        {b.quirofano}
+                                                    </td>
+                                                    <td style={{ padding: '10px 12px', color: '#475569' }}>
+                                                        <strong>{b.dia}</strong> · {b.horario}
+                                                    </td>
+                                                    <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700 }}>
+                                                        {b.horasMes}h
+                                                    </td>
+                                                    <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 800, color: '#15803D', background: '#F0FDF4' }}>
+                                                        {b.horasTitular}h
+                                                    </td>
+                                                    <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 800, color: b.horasOciosas > 5 ? '#DC2626' : '#64748B' }}>
+                                                        {b.horasOciosas}h
+                                                    </td>
+                                                    <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 900, color: b.ocupacionTitularPct >= 75 ? '#15803D' : b.ocupacionTitularPct >= 50 ? '#D97706' : '#DC2626' }}>
+                                                        {b.ocupacionTitularPct}%
+                                                    </td>
+                                                    <td style={{ padding: '8px 12px' }}>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flexWrap: 'wrap' }}>
+                                                            {(b.semanas || []).map((sem, sIdx) => {
+                                                                const isUsada = sem.usada;
+                                                                const cntTit = (sem.cirugiasTitularEnFranja || []).length;
+                                                                const cntOtr = (sem.cirugiasOtrosEnFranja || []).length;
+                                                                const cntPac = cntTit > 0 ? cntTit : (sem.pacientesReales || []).length;
+                                                                return (
+                                                                    <button
+                                                                        key={sIdx}
+                                                                        type="button"
+                                                                        onClick={() => {
+                                                                            setBloqueDetailScope('SEMANA');
+                                                                            setBloqueDetailViewFilter('FRANJA_TODAS');
+                                                                            setSelectedBloqueDetail({ bloque: b, semana: sem });
+                                                                        }}
+                                                                        title={`${b.cirujano} • ${sem.label} (${sem.fecha || ''}): ${isUsada ? '✓ Utilizado por titular (' + sem.hs + 'h)' : '✗ No utilizado por titular (0h)'}${cntOtr > 0 ? ' · ' + cntOtr + ' cx realizadas por otros prestadores en esa franja' : ''}. Clic para ver el desglose completo de cirugías del bloque horario.`}
+                                                                        style={{
+                                                                            display: 'inline-flex',
+                                                                            alignItems: 'center',
+                                                                            gap: '3px',
+                                                                            padding: '3px 8px',
+                                                                            borderRadius: '6px',
+                                                                            fontSize: '0.70rem',
+                                                                            fontWeight: 700,
+                                                                            border: isUsada ? '1px solid #86EFAC' : cntOtr > 0 ? '1px solid #F59E0B' : '1px solid #FCA5A5',
+                                                                            background: isUsada ? '#DCFCE7' : cntOtr > 0 ? '#FEF3C7' : '#FEE2E2',
+                                                                            color: isUsada ? '#15803D' : cntOtr > 0 ? '#B45309' : '#DC2626',
+                                                                            cursor: 'pointer',
+                                                                            boxShadow: '0 1px 2px rgba(0,0,0,0.03)',
+                                                                            transition: 'all 0.15s ease'
+                                                                        }}
+                                                                    >
+                                                                        <span style={{ fontSize: '0.65rem', opacity: 0.85 }}>{sem.label}:</span>
+                                                                        {isUsada ? (
+                                                                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '2px', fontWeight: 800 }}>
+                                                                                <Check size={11} strokeWidth={3} /> {sem.hs}h {cntPac > 0 ? `(${cntPac} cx)` : ''}
+                                                                                {cntOtr > 0 ? ` +${cntOtr} otro` : ''}
+                                                                            </span>
+                                                                        ) : (
+                                                                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '2px', fontWeight: 800 }}>
+                                                                                <X size={11} strokeWidth={3} /> 0h{cntOtr > 0 ? ` (${cntOtr} cx otro)` : ''}
+                                                                            </span>
+                                                                        )}
+                                                                    </button>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    </td>
+                                                    <td style={{ padding: '10px 12px', textAlign: 'center' }}>
+                                                        {b.alerta ? (
+                                                            <span style={{ background: '#FEE2E2', color: '#DC2626', padding: '3px 8px', borderRadius: '4px', fontWeight: 800, fontSize: '0.70rem', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                                                                <AlertCircle size={11} />
+                                                                LIBERAR
+                                                            </span>
+                                                        ) : (
+                                                            <span style={{ background: '#DCFCE7', color: '#15803D', padding: '3px 8px', borderRadius: '4px', fontWeight: 800, fontSize: '0.70rem', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                                                                <Check size={11} />
+                                                                CONFIRMADO
+                                                            </span>
+                                                        )}
+                                                    </td>
+                                                    <td style={{ padding: '10px 12px', fontSize: '0.72rem', color: '#475569' }}>
+                                                        {b.nota}
+                                                    </td>
+                                                    <td style={{ padding: '8px 10px', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                                                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    setBloqueDetailScope('MES');
+                                                                    setBloqueDetailViewFilter('FRANJA_TODAS');
+                                                                    setSelectedBloqueDetail({
+                                                                        bloque: b,
+                                                                        semana: (b.semanas && b.semanas[0]) || { label: 'Mes Completo', fecha: effectiveBloquesPeriod, hs: b.horasTitular, usada: b.ocupacionTitularPct > 0, detalle: b.nota }
+                                                                    });
+                                                                }}
+                                                                style={{
+                                                                    display: 'inline-flex',
+                                                                    alignItems: 'center',
+                                                                    gap: '4px',
+                                                                    padding: '4px 9px',
+                                                                    borderRadius: '6px',
+                                                                    background: '#EFF6FF',
+                                                                    border: '1px solid #BFDBFE',
+                                                                    color: '#1D4ED8',
+                                                                    fontSize: '0.69rem',
+                                                                    fontWeight: 800,
+                                                                    cursor: 'pointer'
+                                                                }}
+                                                                title="Ver todas las cirugías realizadas en este bloque horario (Titular vs Otros Prestadores)"
+                                                            >
+                                                                <Eye size={12} /> Desglose ({(b.cirugiasFranjaMes || []).length})
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleOpenEditBloque(b)}
+                                                                style={{
+                                                                    display: 'inline-flex',
+                                                                    alignItems: 'center',
+                                                                    gap: '4px',
+                                                                    padding: '4px 8px',
+                                                                    borderRadius: '6px',
+                                                                    background: '#F8FAFC',
+                                                                    border: '1px solid #CBD5E1',
+                                                                    color: '#334155',
+                                                                    fontSize: '0.69rem',
+                                                                    fontWeight: 700,
+                                                                    cursor: 'pointer'
+                                                                }}
+                                                                title="Editar configuración, horario, sala o semanas de este bloque quirúrgico"
+                                                            >
+                                                                <Edit3 size={12} /> Editar
+                                                            </button>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
                                     </tbody>
                                     <tfoot>
                                         <tr style={{ background: '#F8FAFC', borderTop: '2px solid #CBD5E1', fontWeight: 800, color: '#0F172A' }}>
@@ -5924,9 +6556,9 @@ export default function QuirofanoDashboard({
                                             <td style={{ padding: '10px 12px', textAlign: 'right', color: '#15803D' }}>{bloquesMetricsSummary.totalTitular}h</td>
                                             <td style={{ padding: '10px 12px', textAlign: 'right', color: '#DC2626' }}>{bloquesMetricsSummary.totalOciosas}h</td>
                                             <td style={{ padding: '10px 12px', textAlign: 'right', color: '#15803D' }}>{bloquesMetricsSummary.pctUsoTitular}%</td>
-                                            <td style={{ padding: '10px 12px', fontSize: '0.72rem', color: '#64748B' }}>Auditado por semanas</td>
+                                            <td style={{ padding: '10px 12px', fontSize: '0.72rem', color: '#64748B' }}>Auditado por franja horaria</td>
                                             <td style={{ padding: '10px 12px', textAlign: 'center', color: '#DC2626' }}>{bloquesMetricsSummary.alertasLiberar} a liberar</td>
-                                            <td style={{ padding: '10px 12px' }}>{activeBloquesData.length} Bloques Institucionales</td>
+                                            <td style={{ padding: '10px 12px' }} colSpan={2}>{activeBloquesData.length} Bloques Institucionales</td>
                                         </tr>
                                     </tfoot>
                                 </table>
@@ -5934,7 +6566,7 @@ export default function QuirofanoDashboard({
                         </div>
                     )}
 
-                    {/* VISTA 2: GRILLA SEMANAL VISUAL (REPRODUCCIÓN EXACTA EXCEL INSTITUCIONAL) */}
+                    {/* VISTA 2: GRILLA SEMANAL VISUAL DINÁMICA (CONECTADA A BLOQUES EDITABLES) */}
                     {vistaBloques === 'grilla' && (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
                             <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: '12px', padding: '12px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
@@ -5943,10 +6575,29 @@ export default function QuirofanoDashboard({
                                         Distribución Semanal de Bloques: Quirófano Central vs Hospital de Día
                                     </h4>
                                     <span style={{ fontSize: '0.74rem', color: '#64748B' }}>
-                                        Diagrama oficial de franjas horarias y porcentajes de ocupación auditados en SALUS (Agosto - Noviembre 2026)
+                                        Haz clic en cualquier tarjeta para auditar las cirugías de esa franja horaria o editar el bloque
                                     </span>
                                 </div>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '0.72rem' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', fontSize: '0.72rem' }}>
+                                    <button
+                                        type="button"
+                                        onClick={() => handleOpenEditBloque(null)}
+                                        style={{
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: '5px',
+                                            padding: '5px 12px',
+                                            borderRadius: '7px',
+                                            background: '#2563EB',
+                                            border: 'none',
+                                            color: '#FFFFFF',
+                                            fontSize: '0.72rem',
+                                            fontWeight: 800,
+                                            cursor: 'pointer'
+                                        }}
+                                    >
+                                        <Plus size={13} /> Nuevo Bloque
+                                    </button>
                                     <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
                                         <span style={{ width: '12px', height: '12px', borderRadius: '3px', background: '#DCFCE7', border: '1px solid #86EFAC' }}></span>
                                         Alta Ocupación (≥75%)
@@ -5963,494 +6614,1229 @@ export default function QuirofanoDashboard({
                             </div>
 
                             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(520px, 1fr))', gap: '18px' }}>
-                                
-                                {/* 1. QUIRÓFANO CENTRAL */}
-                                <div style={{ background: '#FFFFFF', borderRadius: '14px', border: '1.5px solid #BFDBFE', overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
-                                    <div style={{ background: 'linear-gradient(135deg, #1E40AF 0%, #3B82F6 100%)', color: '#FFFFFF', padding: '12px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                            <Building2 size={18} />
-                                            <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 800 }}>QUIRÓFANO CENTRAL</h4>
-                                        </div>
-                                        <span style={{ fontSize: '0.70rem', background: 'rgba(255,255,255,0.2)', padding: '3px 8px', borderRadius: '6px', fontWeight: 700 }}>
-                                            Salas Qx 1 a Qx 4
-                                        </span>
-                                    </div>
-
-                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', borderBottom: '1px solid #E2E8F0', background: '#F8FAFC', textAlign: 'center', fontSize: '0.75rem', fontWeight: 800, color: '#334155' }}>
-                                        <div style={{ padding: '8px 4px', borderRight: '1px solid #E2E8F0' }}>LUNES</div>
-                                        <div style={{ padding: '8px 4px', borderRight: '1px solid #E2E8F0' }}>MARTES</div>
-                                        <div style={{ padding: '8px 4px', borderRight: '1px solid #E2E8F0' }}>MIÉRCOLES</div>
-                                        <div style={{ padding: '8px 4px', borderRight: '1px solid #E2E8F0' }}>JUEVES</div>
-                                        <div style={{ padding: '8px 4px' }}>VIERNES</div>
-                                    </div>
-
-                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', minHeight: '440px', fontSize: '0.72rem' }}>
-                                        
-                                        {/* Lunes Central */}
-                                        <div style={{ padding: '8px 6px', borderRight: '1px solid #E2E8F0', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                                            {/* Dr Pons */}
-                                            <div style={{ background: '#FECDD3', border: '1.5px solid #FDA4AF', borderRadius: '8px', padding: '8px', color: '#9F1239' }}>
-                                                <div style={{ fontWeight: 900, fontSize: '0.75rem' }}>DR PONS, RODRIGO</div>
-                                                <div style={{ fontWeight: 800, fontSize: '0.70rem' }}>(Qx 1)</div>
-                                                <div style={{ fontSize: '0.68rem', margin: '4px 0', opacity: 0.9 }}>08:00 - 13:00 (5h)</div>
-                                                <div style={{ background: '#FEF08A', color: '#854D0E', padding: '2px 4px', borderRadius: '4px', fontWeight: 800, fontSize: '0.65rem', textAlign: 'center' }}>
-                                                    AGO: 100% · SEP: 100%<br />OCT: 75% · NOV: 50%
+                                {[
+                                    { ambitoKey: 'CENTRAL', titulo: 'QUIRÓFANO CENTRAL', subtitulo: 'Salas Qx 1 a Qx 4', borderColor: '#BFDBFE', headerBg: 'linear-gradient(135deg, #1E40AF 0%, #3B82F6 100%)', IconComp: Building2, emptyMsg: 'Disponibilidad abierta para cirugías programadas y urgencias' },
+                                    { ambitoKey: 'HDD', titulo: 'HOSPITAL DE DÍA', subtitulo: 'Quirófano HdD (Qx 5-6)', borderColor: '#A7F3D0', headerBg: 'linear-gradient(135deg, #059669 0%, #10B981 100%)', IconComp: Activity, emptyMsg: 'Hospital de Día disponible para endoscopías ambulatorias' }
+                                ].map(panel => {
+                                    const bloquesPanel = activeBloquesData.filter(b => b.ambito === panel.ambitoKey);
+                                    const PanelIcon = panel.IconComp;
+                                    return (
+                                        <div key={panel.ambitoKey} style={{ background: '#FFFFFF', borderRadius: '14px', border: `1.5px solid ${panel.borderColor}`, overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
+                                            <div style={{ background: panel.headerBg, color: '#FFFFFF', padding: '12px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                    <PanelIcon size={18} />
+                                                    <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 800 }}>{panel.titulo}</h4>
                                                 </div>
+                                                <span style={{ fontSize: '0.70rem', background: 'rgba(255,255,255,0.2)', padding: '3px 8px', borderRadius: '6px', fontWeight: 700 }}>
+                                                    {panel.subtitulo}
+                                                </span>
                                             </div>
 
-                                            {/* Dr Molina */}
-                                            <div style={{ background: '#E2E8F0', border: '1.5px solid #CBD5E1', borderRadius: '8px', padding: '8px', color: '#334155' }}>
-                                                <div style={{ fontWeight: 900, fontSize: '0.75rem' }}>DR MOLINA, MAURICIO</div>
-                                                <div style={{ fontWeight: 800, fontSize: '0.70rem' }}>(Qx 1)</div>
-                                                <div style={{ fontSize: '0.68rem', margin: '4px 0', opacity: 0.9 }}>14:00 - 19:00 (5h)</div>
-                                                <div style={{ background: '#FEF3C7', color: '#92400E', padding: '2px 4px', borderRadius: '4px', fontWeight: 800, fontSize: '0.65rem', textAlign: 'center' }}>
-                                                    AGO: 25% · SEP: 0%<br />OCT: 75% · NOV: 25%
-                                                </div>
-                                                <div style={{ fontSize: '0.63rem', color: '#DC2626', marginTop: '3px', fontWeight: 700, textAlign: 'center' }}>
-                                                    Desde Nov pasa a Guardia Trauma
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        {/* Martes Central */}
-                                        <div style={{ padding: '8px 6px', borderRight: '1px solid #E2E8F0', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                            {/* Dr Azuri */}
-                                            <div style={{ background: '#DCFCE7', border: '1.5px solid #86EFAC', borderRadius: '8px', padding: '8px', color: '#166534' }}>
-                                                <div style={{ fontWeight: 900, fontSize: '0.75rem' }}>DR AZURI, WADI</div>
-                                                <div style={{ fontWeight: 800, fontSize: '0.70rem' }}>(Qx 1) · 2 mensuales</div>
-                                                <div style={{ fontSize: '0.68rem', margin: '3px 0', opacity: 0.9 }}>08:00 - 13:00 (5h quincenal)</div>
-                                                <div style={{ background: '#FEF08A', color: '#854D0E', padding: '2px 4px', borderRadius: '4px', fontWeight: 800, fontSize: '0.65rem', textAlign: 'center' }}>
-                                                    AGO: 75% · SEP: 60%<br />OCT: 100% · NOV: 100%
-                                                </div>
+                                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', borderBottom: '1px solid #E2E8F0', background: '#F8FAFC', textAlign: 'center', fontSize: '0.75rem', fontWeight: 800, color: '#334155' }}>
+                                                <div style={{ padding: '8px 4px', borderRight: '1px solid #E2E8F0' }}>LUNES</div>
+                                                <div style={{ padding: '8px 4px', borderRight: '1px solid #E2E8F0' }}>MARTES</div>
+                                                <div style={{ padding: '8px 4px', borderRight: '1px solid #E2E8F0' }}>MIÉRCOLES</div>
+                                                <div style={{ padding: '8px 4px', borderRight: '1px solid #E2E8F0' }}>JUEVES</div>
+                                                <div style={{ padding: '8px 4px' }}>VIERNES</div>
                                             </div>
 
-                                            {/* Dr Peñate */}
-                                            <div style={{ background: '#F3E8FF', border: '1.5px solid #D8B4FE', borderRadius: '8px', padding: '8px', color: '#6B21A8' }}>
-                                                <div style={{ fontWeight: 900, fontSize: '0.75rem' }}>DR PEÑATE, JAVIER</div>
-                                                <div style={{ fontWeight: 800, fontSize: '0.70rem' }}>(Qx 4) · 2 mensuales</div>
-                                                <div style={{ fontSize: '0.68rem', margin: '3px 0', opacity: 0.9 }}>08:00 - 13:00 (5h quincenal)</div>
-                                                <div style={{ background: '#FEF08A', color: '#854D0E', padding: '2px 4px', borderRadius: '4px', fontWeight: 800, fontSize: '0.65rem', textAlign: 'center' }}>
-                                                    AGO: 100% · SEP: 50%<br />OCT: 0% · NOV: 50%
-                                                </div>
-                                            </div>
-
-                                            {/* Dr Scarso */}
-                                            <div style={{ background: '#DBEAFE', border: '1.5px solid #93C5FD', borderRadius: '8px', padding: '8px', color: '#1E40AF', marginTop: 'auto' }}>
-                                                <div style={{ fontWeight: 900, fontSize: '0.75rem' }}>DR SCARSO, CARLOS</div>
-                                                <div style={{ fontWeight: 800, fontSize: '0.70rem' }}>(Qx 4)</div>
-                                                <div style={{ fontSize: '0.68rem', margin: '3px 0', opacity: 0.9 }}>16:00 - 20:00 (4h)</div>
-                                                <div style={{ background: '#FEF08A', color: '#854D0E', padding: '2px 4px', borderRadius: '4px', fontWeight: 800, fontSize: '0.65rem', textAlign: 'center' }}>
-                                                    AGO: 100% · SEP: 60%<br />OCT: 50% · NOV: 50%
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        {/* Miércoles Central */}
-                                        <div style={{ padding: '8px 6px', borderRight: '1px solid #E2E8F0', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                            {/* Dr Muñoz Carratú */}
-                                            <div style={{ background: '#FEF3C7', border: '1.5px solid #FCD34D', borderRadius: '8px', padding: '8px', color: '#92400E' }}>
-                                                <div style={{ fontWeight: 900, fontSize: '0.75rem' }}>DR MUÑOZ, MATIAS</div>
-                                                <div style={{ fontWeight: 800, fontSize: '0.70rem' }}>(Qx 1)</div>
-                                                <div style={{ fontSize: '0.68rem', margin: '4px 0', opacity: 0.9 }}>08:30 - 14:00 (5.5h)</div>
-                                                <div style={{ background: '#FEF08A', color: '#854D0E', padding: '2px 4px', borderRadius: '4px', fontWeight: 800, fontSize: '0.65rem', textAlign: 'center' }}>
-                                                    AGO: 75% · SEP: 100%<br />OCT: 75% · NOV: 25%
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        {/* Jueves Central */}
-                                        <div style={{ padding: '8px 6px', borderRight: '1px solid #E2E8F0', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                            {/* CCV */}
-                                            <div style={{ background: '#FCA5A5', border: '1.5px solid #F87171', borderRadius: '8px', padding: '8px', color: '#991B1B' }}>
-                                                <div style={{ fontWeight: 900, fontSize: '0.75rem' }}>CCV - DR MARTÍN MAURICIO</div>
-                                                <div style={{ fontWeight: 800, fontSize: '0.68rem' }}>(Qx 1) · 2 jueves al mes</div>
-                                                <div style={{ fontSize: '0.68rem', margin: '3px 0', opacity: 0.9 }}>07:00 - 17:00 (10h quincenal)</div>
-                                                <div style={{ background: '#FEF3C7', color: '#92400E', padding: '2px 4px', borderRadius: '4px', fontWeight: 800, fontSize: '0.65rem', textAlign: 'center' }}>
-                                                    AGO: 0% · SEP: 0%<br />OCT: 50% · NOV: 50%
-                                                </div>
-                                                <div style={{ fontSize: '0.63rem', color: '#991B1B', marginTop: '3px', fontWeight: 700, textAlign: 'center' }}>
-                                                    Reserva BLOQUE, CCV Jue 26/11
-                                                </div>
-                                            </div>
-
-                                            {/* Dr Gempel */}
-                                            <div style={{ background: '#FBCFE8', border: '1.5px solid #F472B6', borderRadius: '8px', padding: '8px', color: '#9D174D' }}>
-                                                <div style={{ fontWeight: 900, fontSize: '0.75rem' }}>DR GEMPEL, DIEGO</div>
-                                                <div style={{ fontWeight: 800, fontSize: '0.70rem' }}>(Qx 1)</div>
-                                                <div style={{ fontSize: '0.65rem', margin: '2px 0', fontStyle: 'italic' }}>Cuando hay CCV, pasa a Qx 2</div>
-                                                <div style={{ fontSize: '0.68rem', margin: '3px 0', opacity: 0.9 }}>07:30 - 13:00 (5.5h)</div>
-                                                <div style={{ background: '#FEF08A', color: '#854D0E', padding: '2px 4px', borderRadius: '4px', fontWeight: 800, fontSize: '0.65rem', textAlign: 'center' }}>
-                                                    AGO: 75% · SEP: 75%<br />OCT: 75% · NOV: 50%
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        {/* Viernes Central */}
-                                        <div style={{ padding: '8px 6px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: '#FAFAFA' }}>
-                                            <span style={{ fontSize: '0.72rem', color: '#94A3B8', fontWeight: 700, textAlign: 'center' }}>
-                                                Sin bloques fijos asignados
-                                            </span>
-                                            <span style={{ fontSize: '0.66rem', color: '#CBD5E1', textAlign: 'center', marginTop: '4px' }}>
-                                                Disponibilidad abierta para cirugías programadas y urgencias
-                                            </span>
-                                        </div>
-
-                                    </div>
-                                </div>
-
-                                {/* 2. HOSPITAL DE DÍA */}
-                                <div style={{ background: '#FFFFFF', borderRadius: '14px', border: '1.5px solid #A7F3D0', overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
-                                    <div style={{ background: 'linear-gradient(135deg, #059669 0%, #10B981 100%)', color: '#FFFFFF', padding: '12px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                            <Activity size={18} />
-                                            <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 800 }}>HOSPITAL DE DÍA</h4>
-                                        </div>
-                                        <span style={{ fontSize: '0.70rem', background: 'rgba(255,255,255,0.2)', padding: '3px 8px', borderRadius: '6px', fontWeight: 700 }}>
-                                            Quirófano HdD (Qx 6)
-                                        </span>
-                                    </div>
-
-                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', borderBottom: '1px solid #E2E8F0', background: '#F8FAFC', textAlign: 'center', fontSize: '0.75rem', fontWeight: 800, color: '#334155' }}>
-                                        <div style={{ padding: '8px 4px', borderRight: '1px solid #E2E8F0' }}>LUNES</div>
-                                        <div style={{ padding: '8px 4px', borderRight: '1px solid #E2E8F0' }}>MARTES</div>
-                                        <div style={{ padding: '8px 4px', borderRight: '1px solid #E2E8F0' }}>MIÉRCOLES</div>
-                                        <div style={{ padding: '8px 4px', borderRight: '1px solid #E2E8F0' }}>JUEVES</div>
-                                        <div style={{ padding: '8px 4px' }}>VIERNES</div>
-                                    </div>
-
-                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', minHeight: '440px', fontSize: '0.72rem' }}>
-                                        
-                                        {/* Lunes HdD */}
-                                        <div style={{ padding: '8px 6px', borderRight: '1px solid #E2E8F0', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                                            {/* Dr Ponce */}
-                                            <div style={{ background: '#FEF9C3', border: '1.5px solid #FDE047', borderRadius: '8px', padding: '8px', color: '#854D0E' }}>
-                                                <div style={{ fontWeight: 900, fontSize: '0.75rem' }}>DR PONCE, MARCELO</div>
-                                                <div style={{ fontWeight: 800, fontSize: '0.70rem' }}>(Qx 6)</div>
-                                                <div style={{ fontSize: '0.68rem', margin: '4px 0', opacity: 0.9 }}>09:30 - 13:30 (4h)</div>
-                                            </div>
-
-                                            {/* Dr Galvarini */}
-                                            <div style={{ background: '#BAE6FD', border: '1.5px solid #7DD3FC', borderRadius: '8px', padding: '8px', color: '#0369A1' }}>
-                                                <div style={{ fontWeight: 900, fontSize: '0.75rem' }}>DR GALVARINI, MARTIN</div>
-                                                <div style={{ fontWeight: 800, fontSize: '0.70rem' }}>(Qx 6)</div>
-                                                <div style={{ fontSize: '0.68rem', margin: '4px 0', opacity: 0.9 }}>13:30 - 20:00 (6.5h)</div>
-                                                <div style={{ background: '#FEF08A', color: '#854D0E', padding: '2px 4px', borderRadius: '4px', fontWeight: 800, fontSize: '0.65rem', textAlign: 'center' }}>
-                                                    AGO: 75% · SEP: 100%<br />OCT: 85% (41 cx) · NOV: 50%
-                                                </div>
+                                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', minHeight: '440px', fontSize: '0.72rem' }}>
+                                                {[1, 2, 3, 4, 5].map(dayIdx => {
+                                                    const bloquesDia = bloquesPanel.filter(b =>
+                                                        Array.isArray(b.diasSemana) && b.diasSemana.length > 0
+                                                            ? b.diasSemana.includes(dayIdx)
+                                                            : b.diaIdx === dayIdx
+                                                    );
+                                                    return (
+                                                        <div
+                                                            key={dayIdx}
+                                                            style={{
+                                                                padding: '8px 6px',
+                                                                borderRight: dayIdx < 5 ? '1px solid #E2E8F0' : 'none',
+                                                                display: 'flex',
+                                                                flexDirection: 'column',
+                                                                gap: '8px',
+                                                                background: bloquesDia.length === 0 ? '#FAFAFA' : '#FFFFFF'
+                                                            }}
+                                                        >
+                                                            {bloquesDia.length === 0 ? (
+                                                                <div style={{ margin: 'auto 0', textAlign: 'center', padding: '6px' }}>
+                                                                    <div style={{ fontSize: '0.72rem', color: '#94A3B8', fontWeight: 700 }}>
+                                                                        Sin bloques fijos asignados
+                                                                    </div>
+                                                                    <div style={{ fontSize: '0.65rem', color: '#CBD5E1', marginTop: '4px' }}>
+                                                                        {panel.emptyMsg}
+                                                                    </div>
+                                                                </div>
+                                                            ) : (
+                                                                bloquesDia.map(b => (
+                                                                    <div
+                                                                        key={`${b.id}_${dayIdx}`}
+                                                                        onClick={() => {
+                                                                            setBloqueDetailScope('MES');
+                                                                            setBloqueDetailViewFilter('FRANJA_TODAS');
+                                                                            setSelectedBloqueDetail({
+                                                                                bloque: b,
+                                                                                semana: (b.semanas && b.semanas[0]) || { label: 'Mes Completo', fecha: effectiveBloquesPeriod, hs: b.horasTitular, usada: b.ocupacionTitularPct > 0, detalle: b.nota }
+                                                                            });
+                                                                        }}
+                                                                        style={{
+                                                                            background: b.color || '#DBEAFE',
+                                                                            border: '1.5px solid rgba(15,23,42,0.14)',
+                                                                            borderRadius: '8px',
+                                                                            padding: '8px',
+                                                                            color: b.textColor || '#1E3A8A',
+                                                                            cursor: 'pointer',
+                                                                            position: 'relative',
+                                                                            boxShadow: '0 1px 3px rgba(0,0,0,0.04)'
+                                                                        }}
+                                                                        title="Clic para ver desglose de cirugías del bloque horario"
+                                                                    >
+                                                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '4px' }}>
+                                                                            <div style={{ fontWeight: 900, fontSize: '0.74rem', lineHeight: 1.2 }}>
+                                                                                {b.cirujano.toUpperCase()}
+                                                                            </div>
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={(e) => {
+                                                                                    e.stopPropagation();
+                                                                                    handleOpenEditBloque(b);
+                                                                                }}
+                                                                                style={{
+                                                                                    background: 'rgba(255,255,255,0.65)',
+                                                                                    border: 'none',
+                                                                                    borderRadius: '4px',
+                                                                                    padding: '2px 4px',
+                                                                                    cursor: 'pointer',
+                                                                                    color: '#0F172A',
+                                                                                    flexShrink: 0
+                                                                                }}
+                                                                                title="Editar bloque"
+                                                                            >
+                                                                                <Edit3 size={11} />
+                                                                            </button>
+                                                                        </div>
+                                                                        <div style={{ fontWeight: 800, fontSize: '0.68rem', marginTop: '2px' }}>
+                                                                            ({b.quirofano}) · {b.dia}
+                                                                        </div>
+                                                                        <div style={{ fontSize: '0.67rem', margin: '3px 0', opacity: 0.92 }}>
+                                                                            {b.horario}
+                                                                        </div>
+                                                                        <div style={{ background: '#FEF08A', color: '#854D0E', padding: '3px 4px', borderRadius: '4px', fontWeight: 800, fontSize: '0.64rem', textAlign: 'center', lineHeight: 1.35 }}>
+                                                                            AGO: {b.ocupacionAgo ?? 0}% · SEP: {b.ocupacionSep ?? 0}%<br />
+                                                                            OCT: {b.ocupacionOct ?? 0}% · NOV: {b.ocupacionNov ?? 0}%
+                                                                        </div>
+                                                                        <div style={{ marginTop: '4px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.62rem', fontWeight: 800 }}>
+                                                                            <span>✓ {(b.cirugiasTitularFranjaMes || []).length} titular</span>
+                                                                            {(b.cirugiasOtrosFranjaMes || []).length > 0 && (
+                                                                                <span style={{ color: '#B45309' }}>⚠️ {(b.cirugiasOtrosFranjaMes || []).length} otros</span>
+                                                                            )}
+                                                                        </div>
+                                                                    </div>
+                                                                ))
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })}
                                             </div>
                                         </div>
-
-                                        {/* Martes HdD */}
-                                        <div style={{ padding: '8px 6px', borderRight: '1px solid #E2E8F0', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                            {/* Dr Ponce */}
-                                            <div style={{ background: '#FEF9C3', border: '1.5px solid #FDE047', borderRadius: '8px', padding: '8px', color: '#854D0E' }}>
-                                                <div style={{ fontWeight: 900, fontSize: '0.75rem' }}>DR PONCE, MARCELO</div>
-                                                <div style={{ fontWeight: 800, fontSize: '0.70rem' }}>(Qx 6)</div>
-                                                <div style={{ fontSize: '0.68rem', margin: '4px 0', opacity: 0.9 }}>10:00 - 12:30 (2.5h)</div>
-                                            </div>
-                                        </div>
-
-                                        {/* Miércoles HdD */}
-                                        <div style={{ padding: '8px 6px', borderRight: '1px solid #E2E8F0', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                            {/* Tarjeta resumen 3 bloques Dr Ponce */}
-                                            <div style={{ background: '#FEF9C3', border: '2px dashed #EAB308', borderRadius: '8px', padding: '10px 8px', color: '#854D0E', textAlign: 'center' }}>
-                                                <div style={{ fontWeight: 900, fontSize: '0.74rem' }}>DR PONCE, MARCELO</div>
-                                                <div style={{ fontWeight: 800, fontSize: '0.68rem', margin: '3px 0' }}>3 BLOQUES (Qx 6)</div>
-                                                <div style={{ fontSize: '0.64rem', color: '#713F12', marginBottom: '6px' }}>Lun (4h), Mar (2.5h), Jue (2.5h)</div>
-                                                <div style={{ background: '#FEF08A', color: '#854D0E', padding: '4px', borderRadius: '4px', fontWeight: 900, fontSize: '0.66rem', lineHeight: 1.4 }}>
-                                                    AGO: 58,3% · SEP: 84,6%<br />OCT: 100% (45 cx)<br />NOV: 75% (15 cx)
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        {/* Jueves HdD */}
-                                        <div style={{ padding: '8px 6px', borderRight: '1px solid #E2E8F0', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                            {/* Dr Ponce */}
-                                            <div style={{ background: '#FEF9C3', border: '1.5px solid #FDE047', borderRadius: '8px', padding: '8px', color: '#854D0E' }}>
-                                                <div style={{ fontWeight: 900, fontSize: '0.75rem' }}>DR PONCE, MARCELO</div>
-                                                <div style={{ fontWeight: 800, fontSize: '0.70rem' }}>(Qx 6)</div>
-                                                <div style={{ fontSize: '0.68rem', margin: '4px 0', opacity: 0.9 }}>10:00 - 12:30 (2.5h)</div>
-                                            </div>
-                                        </div>
-
-                                        {/* Viernes HdD */}
-                                        <div style={{ padding: '8px 6px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: '#FAFAFA' }}>
-                                            <span style={{ fontSize: '0.72rem', color: '#94A3B8', fontWeight: 700, textAlign: 'center' }}>
-                                                Sin bloques fijos asignados
-                                            </span>
-                                            <span style={{ fontSize: '0.66rem', color: '#CBD5E1', textAlign: 'center', marginTop: '4px' }}>
-                                                Hospital de Día disponible para endoscopías ambulatorias
-                                            </span>
-                                        </div>
-
-                                    </div>
-                                </div>
-
+                                    );
+                                })}
                             </div>
                         </div>
                     )}
 
-                    {/* MODAL INTERACTIVO DE DETALLE DE BLOQUE Y SEMANA AUDITADA (CON PACIENTES NOMINALES SALUS) */}
-                    {selectedBloqueDetail && (
-                        <div
-                            role="dialog"
-                            aria-modal="true"
-                            style={{
-                                position: 'fixed',
-                                inset: 0,
-                                background: 'rgba(15, 23, 42, 0.65)',
-                                backdropFilter: 'blur(4px)',
-                                zIndex: 9999,
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                padding: '20px'
-                            }}
-                            onClick={() => setSelectedBloqueDetail(null)}
-                        >
+                    {/* MODAL INTERACTIVO DE DESGLOSE DE CIRUGÍAS DEL BLOQUE HORARIO (TITULAR VS OTROS PRESTADORES EN FRANJA) */}
+                    {selectedBloqueDetail && (() => {
+                        const b = activeBloquesData.find(item => item.id === selectedBloqueDetail.bloque.id) || selectedBloqueDetail.bloque;
+                        const sem = (b.semanas || []).find(s => s.label === selectedBloqueDetail.semana?.label) || selectedBloqueDetail.semana || (b.semanas && b.semanas[0]);
+                        const isMesScope = bloqueDetailScope === 'MES' || !sem;
+
+                        const franjaTodas = isMesScope ? (b.cirugiasFranjaMes || []) : (sem?.cirugiasFranja || []);
+                        const titularEnBloque = isMesScope ? (b.cirugiasTitularFranjaMes || []) : (sem?.cirugiasTitularEnFranja || []);
+                        const otrosEnBloque = isMesScope ? (b.cirugiasOtrosFranjaMes || []) : (sem?.cirugiasOtrosEnFranja || []);
+                        const titularFueraBloque = b.cirugiasTitularFueraBloqueMes || [];
+                        const salaOtroHorario = isMesScope ? (b.cirugiasSalaOtroHorarioMes || []) : (sem?.cirugiasSalaOtroHorario || []);
+
+                        const hsTitularReal = Number((titularEnBloque.reduce((acc, r) => acc + (r.durOcupacionMin || 75), 0) / 60).toFixed(1));
+                        const hsOtrosReal = Number((otrosEnBloque.reduce((acc, r) => acc + (r.durOcupacionMin || 75), 0) / 60).toFixed(1));
+                        const hsFueraReal = Number((titularFueraBloque.reduce((acc, r) => acc + (r.durOcupacionMin || 75), 0) / 60).toFixed(1));
+
+                        let activeRows = franjaTodas;
+                        if (bloqueDetailViewFilter === 'TITULAR_EN_BLOQUE') activeRows = titularEnBloque;
+                        else if (bloqueDetailViewFilter === 'OTROS_EN_BLOQUE') activeRows = otrosEnBloque;
+                        else if (bloqueDetailViewFilter === 'TITULAR_FUERA_BLOQUE') activeRows = titularFueraBloque;
+                        else if (bloqueDetailViewFilter === 'SALA_OTRO_HORARIO') activeRows = salaOtroHorario;
+
+                        const headerPositive = isMesScope ? (b.ocupacionTitularPct >= 50) : sem?.usada;
+
+                        return (
                             <div
+                                role="dialog"
+                                aria-modal="true"
                                 style={{
-                                    background: '#FFFFFF',
-                                    borderRadius: '16px',
-                                    maxWidth: '780px',
-                                    maxHeight: '88vh',
-                                    width: '100%',
+                                    position: 'fixed',
+                                    inset: 0,
+                                    background: 'rgba(15, 23, 42, 0.65)',
+                                    backdropFilter: 'blur(4px)',
+                                    zIndex: 9999,
                                     display: 'flex',
-                                    flexDirection: 'column',
-                                    boxShadow: '0 20px 45px rgba(0, 0, 0, 0.25)',
-                                    overflow: 'hidden',
-                                    border: '1px solid #E2E8F0',
-                                    animation: 'fadeIn 0.2s ease-out'
-                                }}
-                                onClick={(e) => e.stopPropagation()}
-                            >
-                                {/* Header del Modal */}
-                                <div style={{
-                                    background: selectedBloqueDetail.semana.usada
-                                        ? 'linear-gradient(135deg, #166534 0%, #15803D 100%)'
-                                        : 'linear-gradient(135deg, #991B1B 0%, #DC2626 100%)',
-                                    color: '#FFFFFF',
-                                    padding: '16px 22px',
-                                    display: 'flex',
-                                    justifyContent: 'space-between',
                                     alignItems: 'center',
-                                    flexShrink: 0
-                                }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                        <div style={{
-                                            width: '36px',
-                                            height: '36px',
-                                            borderRadius: '8px',
-                                            background: 'rgba(255, 255, 255, 0.2)',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            justifyContent: 'center'
-                                        }}>
-                                            {selectedBloqueDetail.semana.usada ? <Check size={20} strokeWidth={3} /> : <AlertTriangle size={20} />}
+                                    justifyContent: 'center',
+                                    padding: '20px'
+                                }}
+                                onClick={() => setSelectedBloqueDetail(null)}
+                            >
+                                <div
+                                    style={{
+                                        background: '#FFFFFF',
+                                        borderRadius: '16px',
+                                        maxWidth: '980px',
+                                        maxHeight: '90vh',
+                                        width: '100%',
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                        boxShadow: '0 20px 45px rgba(0, 0, 0, 0.25)',
+                                        overflow: 'hidden',
+                                        border: '1px solid #E2E8F0',
+                                        animation: 'fadeIn 0.2s ease-out'
+                                    }}
+                                    onClick={(e) => e.stopPropagation()}
+                                >
+                                    {/* Header del Modal */}
+                                    <div style={{
+                                        background: headerPositive
+                                            ? 'linear-gradient(135deg, #166534 0%, #15803D 100%)'
+                                            : 'linear-gradient(135deg, #991B1B 0%, #DC2626 100%)',
+                                        color: '#FFFFFF',
+                                        padding: '16px 22px',
+                                        display: 'flex',
+                                        justifyContent: 'space-between',
+                                        alignItems: 'center',
+                                        flexWrap: 'wrap',
+                                        gap: '10px',
+                                        flexShrink: 0
+                                    }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                            <div style={{
+                                                width: '36px',
+                                                height: '36px',
+                                                borderRadius: '8px',
+                                                background: 'rgba(255, 255, 255, 0.2)',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center'
+                                            }}>
+                                                {headerPositive ? <Check size={20} strokeWidth={3} /> : <AlertTriangle size={20} />}
+                                            </div>
+                                            <div>
+                                                <h4 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800 }}>
+                                                    {b.cirujano} — Desglose de Cirugías en Bloque Horario
+                                                </h4>
+                                                <p style={{ margin: 0, fontSize: '0.75rem', opacity: 0.92 }}>
+                                                    Sala <strong>{b.quirofano}</strong> · <strong>{b.dia}</strong> ({b.horaInicio} a {b.horaFin} hs) · Período: {effectiveBloquesPeriod}
+                                                </p>
+                                            </div>
                                         </div>
-                                        <div>
-                                            <h4 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800 }}>
-                                                {selectedBloqueDetail.bloque.cirujano}
-                                            </h4>
-                                            <p style={{ margin: 0, fontSize: '0.75rem', opacity: 0.9 }}>
-                                                Auditoría Nominal de Bloque Quirúrgico · {effectiveBloquesPeriod}
-                                            </p>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    handleOpenEditBloque(b);
+                                                }}
+                                                style={{
+                                                    background: 'rgba(255, 255, 255, 0.2)',
+                                                    border: '1px solid rgba(255, 255, 255, 0.35)',
+                                                    color: '#FFFFFF',
+                                                    padding: '6px 12px',
+                                                    borderRadius: '8px',
+                                                    fontSize: '0.74rem',
+                                                    fontWeight: 800,
+                                                    cursor: 'pointer',
+                                                    display: 'inline-flex',
+                                                    alignItems: 'center',
+                                                    gap: '5px'
+                                                }}
+                                            >
+                                                <Edit3 size={13} /> Editar este Bloque
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => setSelectedBloqueDetail(null)}
+                                                style={{
+                                                    background: 'rgba(255, 255, 255, 0.15)',
+                                                    border: 'none',
+                                                    color: '#FFFFFF',
+                                                    width: '32px',
+                                                    height: '32px',
+                                                    borderRadius: '8px',
+                                                    cursor: 'pointer',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'center'
+                                                }}
+                                            >
+                                                <X size={18} />
+                                            </button>
                                         </div>
                                     </div>
-                                    <button
-                                        type="button"
-                                        onClick={() => setSelectedBloqueDetail(null)}
-                                        style={{
-                                            background: 'rgba(255, 255, 255, 0.15)',
-                                            border: 'none',
-                                            color: '#FFFFFF',
-                                            width: '32px',
-                                            height: '32px',
-                                            borderRadius: '8px',
-                                            cursor: 'pointer',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            justifyContent: 'center'
-                                        }}
-                                    >
-                                        <X size={18} />
-                                    </button>
-                                </div>
 
-                                {/* Body del Modal con scroll */}
-                                <div style={{ padding: '20px 22px', overflowY: 'auto', flex: 1 }}>
-                                    {/* Ficha Resumen */}
-                                    <div style={{
-                                        display: 'grid',
-                                        gridTemplateColumns: 'repeat(2, 1fr)',
-                                        gap: '12px',
-                                        background: '#F8FAFC',
-                                        padding: '14px',
-                                        borderRadius: '10px',
-                                        border: '1px solid #E2E8F0',
-                                        marginBottom: '16px',
-                                        fontSize: '0.80rem'
-                                    }}>
-                                        <div>
-                                            <span style={{ color: '#64748B', display: 'block', fontSize: '0.70rem', fontWeight: 700, textTransform: 'uppercase' }}>Sala & Ámbito</span>
-                                            <strong style={{ color: '#1E40AF' }}>{selectedBloqueDetail.bloque.quirofano}</strong> ({selectedBloqueDetail.bloque.ambito === 'CENTRAL' ? 'Quirófano Central' : 'Hospital de Día'})
-                                        </div>
-                                        <div>
-                                            <span style={{ color: '#64748B', display: 'block', fontSize: '0.70rem', fontWeight: 700, textTransform: 'uppercase' }}>Franja Horaria</span>
-                                            <strong>{selectedBloqueDetail.bloque.dia}</strong>: {selectedBloqueDetail.bloque.horario}
-                                        </div>
-                                        <div>
-                                            <span style={{ color: '#64748B', display: 'block', fontSize: '0.70rem', fontWeight: 700, textTransform: 'uppercase' }}>Semana Seleccionada</span>
-                                            <span style={{ fontWeight: 800, color: '#0F172A' }}>{selectedBloqueDetail.semana.label}</span> ({selectedBloqueDetail.semana.fecha || 'Rango oficial'})
-                                        </div>
-                                        <div>
-                                            <span style={{ color: '#64748B', display: 'block', fontSize: '0.70rem', fontWeight: 700, textTransform: 'uppercase' }}>Estado Operativo</span>
-                                            <span style={{
-                                                padding: '2px 8px',
-                                                borderRadius: '6px',
-                                                fontWeight: 800,
-                                                fontSize: '0.72rem',
-                                                background: selectedBloqueDetail.semana.usada ? '#DCFCE7' : '#FEE2E2',
-                                                color: selectedBloqueDetail.semana.usada ? '#15803D' : '#DC2626'
-                                            }}>
-                                                {selectedBloqueDetail.semana.usada ? `✓ OPERADO (${selectedBloqueDetail.semana.hs}h)` : '✗ OCIOSO (0h)'}
+                                    {/* Body del Modal con scroll */}
+                                    <div style={{ padding: '18px 22px', overflowY: 'auto', flex: 1 }}>
+                                        {/* Selector de Alcance: Semana Seleccionada vs Mes Completo */}
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', marginBottom: '14px', background: '#F8FAFC', padding: '10px 14px', borderRadius: '10px', border: '1px solid #E2E8F0' }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                                <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#334155' }}>Alcance del Desglose Horario:</span>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setBloqueDetailScope('SEMANA')}
+                                                    style={{
+                                                        padding: '5px 12px',
+                                                        borderRadius: '7px',
+                                                        border: !isMesScope ? '1.5px solid #2563EB' : '1px solid #CBD5E1',
+                                                        background: !isMesScope ? '#EFF6FF' : '#FFFFFF',
+                                                        color: !isMesScope ? '#1D4ED8' : '#475569',
+                                                        fontSize: '0.73rem',
+                                                        fontWeight: 800,
+                                                        cursor: 'pointer'
+                                                    }}
+                                                >
+                                                    🗓️ {sem?.label || 'Semana'} ({sem?.fecha || ''})
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setBloqueDetailScope('MES')}
+                                                    style={{
+                                                        padding: '5px 12px',
+                                                        borderRadius: '7px',
+                                                        border: isMesScope ? '1.5px solid #2563EB' : '1px solid #CBD5E1',
+                                                        background: isMesScope ? '#EFF6FF' : '#FFFFFF',
+                                                        color: isMesScope ? '#1D4ED8' : '#475569',
+                                                        fontSize: '0.73rem',
+                                                        fontWeight: 800,
+                                                        cursor: 'pointer'
+                                                    }}
+                                                >
+                                                    📅 Todas las Semanas del Mes ({effectiveBloquesPeriod})
+                                                </button>
+                                            </div>
+                                            <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748B' }}>
+                                                Patrón Titular SALUS: <code style={{ background: '#E2E8F0', padding: '2px 6px', borderRadius: '4px', color: '#0F172A' }}>{b.cirujanoMatch}</code>
                                             </span>
                                         </div>
-                                    </div>
 
-                                    {/* Explicación Didáctica y de Auditoría */}
-                                    <div style={{ marginBottom: '16px' }}>
-                                        <h5 style={{ margin: '0 0 6px 0', fontSize: '0.85rem', fontWeight: 800, color: '#0F172A' }}>
-                                            Detalle de la Semana Auditada
-                                        </h5>
-                                        <div style={{
-                                            background: selectedBloqueDetail.semana.usada ? '#F0FDF4' : '#FEF2F2',
-                                            border: `1px solid ${selectedBloqueDetail.semana.usada ? '#BBF7D0' : '#FECACA'}`,
-                                            borderRadius: '8px',
-                                            padding: '12px 14px',
-                                            fontSize: '0.80rem',
-                                            color: selectedBloqueDetail.semana.usada ? '#166534' : '#991B1B',
-                                            lineHeight: 1.5
-                                        }}>
-                                            {selectedBloqueDetail.semana.detalle}
-                                        </div>
-                                    </div>
-
-                                    {/* LISTADO NOMINAL 1X1 DE PACIENTES OPERADOS EN LA SEMANA / MES (SALUS) */}
-                                    {(() => {
-                                        const pacSem = selectedBloqueDetail.semana.pacientesReales || [];
-                                        const pacMes = selectedBloqueDetail.bloque.pacientesMes || [];
-                                        const listToShow = pacSem.length > 0 ? pacSem : pacMes;
-                                        const isShowingMonthFallback = pacSem.length === 0 && pacMes.length > 0;
-                                        if (listToShow.length === 0) return null;
-                                        return (
-                                            <div style={{ marginBottom: '16px' }}>
-                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '6px' }}>
-                                                    <h5 style={{ margin: 0, fontSize: '0.84rem', fontWeight: 800, color: '#1E40AF' }}>
-                                                        {isShowingMonthFallback
-                                                            ? `📋 Cirugías Nominales del Profesional en ${effectiveBloquesPeriod} (${listToShow.length} pacientes en otros días)`
-                                                            : `📋 Pacientes Reales Operados en ${selectedBloqueDetail.semana.label} (${listToShow.length} cirugías en SALUS)`}
-                                                    </h5>
-                                                    <span style={{ fontSize: '0.68rem', background: '#EFF6FF', color: '#1D4ED8', padding: '2px 8px', borderRadius: '6px', fontWeight: 700 }}>
-                                                        Ocupación = Foja + 30 min
-                                                    </span>
+                                        {/* 4 KPI CARDS DE AUDITORÍA DE USO EFECTIVO DE LA FRANJA HORARIA */}
+                                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '10px', marginBottom: '16px' }}>
+                                            <div style={{ background: '#F0FDF4', border: '1.5px solid #86EFAC', borderRadius: '10px', padding: '12px 14px' }}>
+                                                <div style={{ fontSize: '0.68rem', fontWeight: 800, color: '#166534', textTransform: 'uppercase' }}>
+                                                    ✅ Usado por Prestador Titular
                                                 </div>
-                                                <div style={{ maxHeight: '210px', overflowY: 'auto', border: '1px solid #CBD5E1', borderRadius: '8px' }}>
+                                                <div style={{ fontSize: '1.35rem', fontWeight: 900, color: '#15803D', marginTop: '2px' }}>
+                                                    {titularEnBloque.length} cx <span style={{ fontSize: '0.78rem', fontWeight: 700 }}>({hsTitularReal}h Foja+30m)</span>
+                                                </div>
+                                                <div style={{ fontSize: '0.68rem', color: '#166534', marginTop: '2px' }}>
+                                                    Dentro de {b.dia} {b.horaInicio}-{b.horaFin}
+                                                </div>
+                                            </div>
+
+                                            <div style={{ background: '#FFFBEB', border: '1.5px solid #FCD34D', borderRadius: '10px', padding: '12px 14px' }}>
+                                                <div style={{ fontSize: '0.68rem', fontWeight: 800, color: '#B45309', textTransform: 'uppercase' }}>
+                                                    ⚠️ Otros Prestadores en esa Franja
+                                                </div>
+                                                <div style={{ fontSize: '1.35rem', fontWeight: 900, color: '#D97706', marginTop: '2px' }}>
+                                                    {otrosEnBloque.length} cx <span style={{ fontSize: '0.78rem', fontWeight: 700 }}>({hsOtrosReal}h Foja+30m)</span>
+                                                </div>
+                                                <div style={{ fontSize: '0.68rem', color: '#92400E', marginTop: '2px' }}>
+                                                    Operadas en {b.quirofano} durante el horario del bloque
+                                                </div>
+                                            </div>
+
+                                            <div style={{ background: '#EFF6FF', border: '1.5px solid #BFDBFE', borderRadius: '10px', padding: '12px 14px' }}>
+                                                <div style={{ fontSize: '0.68rem', fontWeight: 800, color: '#1E40AF', textTransform: 'uppercase' }}>
+                                                    📅 Titular Fuera de su Bloque (Mes)
+                                                </div>
+                                                <div style={{ fontSize: '1.35rem', fontWeight: 900, color: '#1D4ED8', marginTop: '2px' }}>
+                                                    {titularFueraBloque.length} cx <span style={{ fontSize: '0.78rem', fontWeight: 700 }}>({hsFueraReal}h)</span>
+                                                </div>
+                                                <div style={{ fontSize: '0.68rem', color: '#1E40AF', marginTop: '2px' }}>
+                                                    Realizadas por el titular en otros días u horarios
+                                                </div>
+                                            </div>
+
+                                            <div style={{ background: '#F8FAFC', border: '1.5px solid #CBD5E1', borderRadius: '10px', padding: '12px 14px' }}>
+                                                <div style={{ fontSize: '0.68rem', fontWeight: 800, color: '#334155', textTransform: 'uppercase' }}>
+                                                    🏥 Veredicto de Uso de Bloque
+                                                </div>
+                                                <div style={{ fontSize: '0.82rem', fontWeight: 900, color: titularEnBloque.length > 0 ? '#15803D' : otrosEnBloque.length > 0 ? '#B45309' : '#DC2626', marginTop: '4px' }}>
+                                                    {titularEnBloque.length > 0
+                                                        ? `✓ Efectivamente usado por titular (${b.ocupacionTitularPct}% mes)`
+                                                        : otrosEnBloque.length > 0
+                                                            ? `⚠️ No usado por titular · Sala usada por otro médico`
+                                                            : `✗ Bloque y sala sin cirugías en esta franja`}
+                                                </div>
+                                                <div style={{ fontSize: '0.68rem', color: '#64748B', marginTop: '2px' }}>
+                                                    {sem?.detalle || b.nota}
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* PÍLDORAS DE FILTRO DEL LISTADO DE CIRUGÍAS */}
+                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px', marginBottom: '10px' }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                                {[
+                                                    { id: 'FRANJA_TODAS', label: `🕒 Todas en la Franja Horaria (${franjaTodas.length})`, bgActive: '#0F172A' },
+                                                    { id: 'TITULAR_EN_BLOQUE', label: `✅ Usadas por Titular en Bloque (${titularEnBloque.length})`, bgActive: '#15803D' },
+                                                    { id: 'OTROS_EN_BLOQUE', label: `⚠️ Otros Prestadores en esa Franja (${otrosEnBloque.length})`, bgActive: '#D97706' },
+                                                    { id: 'TITULAR_FUERA_BLOQUE', label: `📅 Titular Fuera de Bloque en el Mes (${titularFueraBloque.length})`, bgActive: '#1D4ED8' },
+                                                    { id: 'SALA_OTRO_HORARIO', label: `🌙 Sala ${b.quirofano} en Otro Horario ese Día (${salaOtroHorario.length})`, bgActive: '#475569' }
+                                                ].map(tab => (
+                                                    <button
+                                                        key={tab.id}
+                                                        type="button"
+                                                        onClick={() => setBloqueDetailViewFilter(tab.id)}
+                                                        style={{
+                                                            padding: '5px 10px',
+                                                            borderRadius: '7px',
+                                                            fontSize: '0.71rem',
+                                                            fontWeight: 800,
+                                                            border: bloqueDetailViewFilter === tab.id ? 'none' : '1px solid #CBD5E1',
+                                                            background: bloqueDetailViewFilter === tab.id ? tab.bgActive : '#FFFFFF',
+                                                            color: bloqueDetailViewFilter === tab.id ? '#FFFFFF' : '#334155',
+                                                            cursor: 'pointer'
+                                                        }}
+                                                    >
+                                                        {tab.label}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+
+                                        {/* TABLA DE DESGLOSE NOMINAL DE CIRUGÍAS */}
+                                        <div style={{ marginBottom: '16px' }}>
+                                            {activeRows.length === 0 ? (
+                                                <div style={{ padding: '24px', textAlign: 'center', background: '#F8FAFC', border: '1px dashed #CBD5E1', borderRadius: '10px', color: '#64748B', fontSize: '0.80rem' }}>
+                                                    No se registran cirugías en SALUS bajo este filtro para {isMesScope ? effectiveBloquesPeriod : `${sem?.label} (${sem?.fecha})`}.
+                                                    {bloqueDetailViewFilter !== 'TITULAR_FUERA_BLOQUE' && titularFueraBloque.length > 0 && (
+                                                        <div style={{ marginTop: '8px' }}>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setBloqueDetailViewFilter('TITULAR_FUERA_BLOQUE')}
+                                                                style={{
+                                                                    padding: '5px 12px',
+                                                                    borderRadius: '6px',
+                                                                    background: '#EFF6FF',
+                                                                    border: '1px solid #BFDBFE',
+                                                                    color: '#1D4ED8',
+                                                                    fontSize: '0.73rem',
+                                                                    fontWeight: 800,
+                                                                    cursor: 'pointer'
+                                                                }}
+                                                            >
+                                                                Ver las {titularFueraBloque.length} cirugías que {b.cirujano} realizó fuera de su bloque en el mes →
+                                                            </button>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            ) : (
+                                                <div style={{ maxHeight: '260px', overflowY: 'auto', border: '1px solid #CBD5E1', borderRadius: '8px' }}>
                                                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.72rem' }}>
                                                         <thead>
-                                                            <tr style={{ background: '#F1F5F9', color: '#334155', textAlign: 'left', position: 'sticky', top: 0 }}>
-                                                                <th style={{ padding: '6px 8px' }}>Fecha</th>
-                                                                <th style={{ padding: '6px 8px' }}>Hora</th>
-                                                                <th style={{ padding: '6px 8px' }}>Sala</th>
-                                                                <th style={{ padding: '6px 8px' }}>Paciente</th>
-                                                                <th style={{ padding: '6px 8px' }}>DNI</th>
-                                                                <th style={{ padding: '6px 8px' }}>Procedimiento (CX)</th>
-                                                                <th style={{ padding: '6px 8px', textAlign: 'right' }}>Foja+30m</th>
+                                                            <tr style={{ background: '#F1F5F9', color: '#334155', textAlign: 'left', position: 'sticky', top: 0, zIndex: 1 }}>
+                                                                <th style={{ padding: '7px 8px' }}>Fecha</th>
+                                                                <th style={{ padding: '7px 8px' }}>Hora</th>
+                                                                <th style={{ padding: '7px 8px' }}>Sala</th>
+                                                                <th style={{ padding: '7px 8px' }}>Prestador que Operó</th>
+                                                                <th style={{ padding: '7px 8px' }}>Auditoría de Uso del Bloque</th>
+                                                                <th style={{ padding: '7px 8px' }}>Paciente</th>
+                                                                <th style={{ padding: '7px 8px' }}>Obra Social</th>
+                                                                <th style={{ padding: '7px 8px' }}>Procedimiento (CX)</th>
+                                                                <th style={{ padding: '7px 8px', textAlign: 'right' }}>Foja+30m</th>
                                                             </tr>
                                                         </thead>
                                                         <tbody>
-                                                            {listToShow.map((p, pIdx) => (
-                                                                <tr key={pIdx} style={{ borderBottom: '1px solid #E2E8F0', background: pIdx % 2 === 0 ? '#FFFFFF' : '#F8FAFC' }}>
-                                                                    <td style={{ padding: '5px 8px', fontWeight: 700, whiteSpace: 'nowrap' }}>{p.fechaLegible}</td>
-                                                                    <td style={{ padding: '5px 8px', color: '#64748B' }}>{(p.hora || '').slice(0, 5)}</td>
-                                                                    <td style={{ padding: '5px 8px', fontWeight: 800, color: '#1E40AF', whiteSpace: 'nowrap' }}>{p.sala}</td>
-                                                                    <td style={{ padding: '5px 8px', fontWeight: 700, color: '#0F172A' }}>{p.paciente}</td>
-                                                                    <td style={{ padding: '5px 8px', color: '#475569' }}>{p.dni}</td>
-                                                                    <td style={{ padding: '5px 8px', color: '#334155' }}>{p.procedimiento}</td>
-                                                                    <td style={{ padding: '5px 8px', textAlign: 'right', fontWeight: 800, color: '#15803D' }}>{p.durOcupacionMin}m</td>
-                                                                </tr>
-                                                            ))}
+                                                            {activeRows.map((p, pIdx) => {
+                                                                const isTit = p.esTitular;
+                                                                const isFuera = p.tipoUso === 'TITULAR_FUERA_BLOQUE';
+                                                                const isOtroHorario = p.tipoUso === 'SALA_OTRO_HORARIO';
+                                                                return (
+                                                                    <tr
+                                                                        key={pIdx}
+                                                                        style={{
+                                                                            borderBottom: '1px solid #E2E8F0',
+                                                                            background: isTit && !isFuera ? '#F0FDF4' : !isTit && !isOtroHorario ? '#FFFBEB' : pIdx % 2 === 0 ? '#FFFFFF' : '#F8FAFC'
+                                                                        }}
+                                                                    >
+                                                                        <td style={{ padding: '6px 8px', fontWeight: 700, whiteSpace: 'nowrap' }}>{p.fechaLegible}</td>
+                                                                        <td style={{ padding: '6px 8px', fontWeight: 800, color: '#0F172A' }}>{(p.hora || '').slice(0, 5)}</td>
+                                                                        <td style={{ padding: '6px 8px', fontWeight: 800, color: '#1E40AF', whiteSpace: 'nowrap' }}>{p.sala}</td>
+                                                                        <td style={{ padding: '6px 8px', fontWeight: 800, color: isTit ? '#15803D' : '#B45309' }}>
+                                                                            {p.cirujano}
+                                                                        </td>
+                                                                        <td style={{ padding: '6px 8px', whiteSpace: 'nowrap' }}>
+                                                                            {isTit && !isFuera ? (
+                                                                                <span style={{ background: '#DCFCE7', color: '#15803D', border: '1px solid #86EFAC', padding: '2px 7px', borderRadius: '5px', fontWeight: 800, fontSize: '0.66rem' }}>
+                                                                                    ✅ TITULAR DEL BLOQUE
+                                                                                </span>
+                                                                            ) : isFuera ? (
+                                                                                <span style={{ background: '#DBEAFE', color: '#1D4ED8', border: '1px solid #93C5FD', padding: '2px 7px', borderRadius: '5px', fontWeight: 800, fontSize: '0.66rem' }}>
+                                                                                    📅 TITULAR FUERA DE BLOQUE
+                                                                                </span>
+                                                                            ) : isOtroHorario ? (
+                                                                                <span style={{ background: '#F1F5F9', color: '#475569', border: '1px solid #CBD5E1', padding: '2px 7px', borderRadius: '5px', fontWeight: 700, fontSize: '0.66rem' }}>
+                                                                                    🌙 OTRO HORARIO ({p.esTitular ? 'TITULAR' : 'OTRO'})
+                                                                                </span>
+                                                                            ) : (
+                                                                                <span style={{ background: '#FEF3C7', color: '#B45309', border: '1px solid #FCD34D', padding: '2px 7px', borderRadius: '5px', fontWeight: 800, fontSize: '0.66rem' }}>
+                                                                                    ⚠️ OTRO PRESTADOR EN FRANJA
+                                                                                </span>
+                                                                            )}
+                                                                        </td>
+                                                                        <td style={{ padding: '6px 8px', fontWeight: 700, color: '#0F172A' }}>
+                                                                            {p.paciente} <span style={{ color: '#64748B', fontWeight: 400 }}>({p.dni})</span>
+                                                                        </td>
+                                                                        <td style={{ padding: '6px 8px', color: '#475569', fontSize: '0.68rem' }}>{p.obraSocial}</td>
+                                                                        <td style={{ padding: '6px 8px', color: '#334155' }}>{p.procedimiento}</td>
+                                                                        <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 800, color: '#15803D' }}>{p.durOcupacionMin}m</td>
+                                                                    </tr>
+                                                                );
+                                                            })}
                                                         </tbody>
                                                     </table>
                                                 </div>
-                                            </div>
-                                        );
-                                    })()}
-
-                                    {/* Desglose Completo de Todas las Semanas del Mes para este Bloque */}
-                                    <div>
-                                        <h5 style={{ margin: '0 0 8px 0', fontSize: '0.82rem', fontWeight: 800, color: '#0F172A' }}>
-                                            Trazabilidad Completa del Mes ({effectiveBloquesPeriod})
-                                        </h5>
-                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                            {(selectedBloqueDetail.bloque.semanas || []).map((s, idx) => (
-                                                <div
-                                                    key={idx}
-                                                    onClick={() => setSelectedBloqueDetail({ bloque: selectedBloqueDetail.bloque, semana: s })}
-                                                    style={{
-                                                        display: 'flex',
-                                                        justifyContent: 'space-between',
-                                                        alignItems: 'center',
-                                                        padding: '8px 12px',
-                                                        borderRadius: '8px',
-                                                        cursor: 'pointer',
-                                                        border: s.label === selectedBloqueDetail.semana.label ? '2px solid #2563EB' : '1px solid #E2E8F0',
-                                                        background: s.label === selectedBloqueDetail.semana.label ? '#EFF6FF' : '#FFFFFF',
-                                                        fontSize: '0.75rem',
-                                                        transition: 'all 0.15s ease'
-                                                    }}
-                                                >
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                        <span style={{ fontWeight: 800, color: '#1E293B', width: '70px' }}>{s.label}</span>
-                                                        <span style={{ color: '#64748B', fontSize: '0.72rem' }}>{s.fecha}</span>
-                                                    </div>
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                        <span style={{
-                                                            fontSize: '0.70rem',
-                                                            fontWeight: 800,
-                                                            color: s.usada ? '#15803D' : '#DC2626'
-                                                        }}>
-                                                            {s.usada ? `✓ ${s.hs}h operadas ${(s.pacientesReales || []).length > 0 ? `(${s.pacientesReales.length} cx)` : ''}` : '✗ Ocioso'}
-                                                        </span>
-                                                    </div>
-                                                </div>
-                                            ))}
+                                            )}
                                         </div>
-                                    </div>
 
-                                    {/* Footer Botón Cerrar */}
-                                    <div style={{ marginTop: '20px', display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-                                        <button
-                                            type="button"
-                                            onClick={() => setSelectedBloqueDetail(null)}
-                                            style={{
-                                                padding: '8px 16px',
-                                                borderRadius: '8px',
-                                                background: '#0F172A',
-                                                border: 'none',
-                                                color: '#FFFFFF',
-                                                fontSize: '0.80rem',
-                                                fontWeight: 700,
-                                                cursor: 'pointer'
-                                            }}
-                                        >
-                                            Entendido / Cerrar
-                                        </button>
+                                        {/* Desglose Completo de Todas las Semanas del Mes para este Bloque */}
+                                        <div>
+                                            <h5 style={{ margin: '0 0 8px 0', fontSize: '0.82rem', fontWeight: 800, color: '#0F172A' }}>
+                                                Trazabilidad Semanal del Bloque ({effectiveBloquesPeriod}) — Clic en una semana para filtrar
+                                            </h5>
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                                {(b.semanas || []).map((s, idx) => {
+                                                    const cntTit = (s.cirugiasTitularEnFranja || []).length;
+                                                    const cntOtr = (s.cirugiasOtrosEnFranja || []).length;
+                                                    const isSelected = !isMesScope && s.label === sem?.label;
+                                                    return (
+                                                        <div
+                                                            key={idx}
+                                                            onClick={() => {
+                                                                setBloqueDetailScope('SEMANA');
+                                                                setSelectedBloqueDetail({ bloque: b, semana: s });
+                                                            }}
+                                                            style={{
+                                                                display: 'flex',
+                                                                justifyContent: 'space-between',
+                                                                alignItems: 'center',
+                                                                padding: '8px 12px',
+                                                                borderRadius: '8px',
+                                                                cursor: 'pointer',
+                                                                border: isSelected ? '2px solid #2563EB' : '1px solid #E2E8F0',
+                                                                background: isSelected ? '#EFF6FF' : '#FFFFFF',
+                                                                fontSize: '0.75rem',
+                                                                transition: 'all 0.15s ease'
+                                                            }}
+                                                        >
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                                                <span style={{ fontWeight: 800, color: '#1E293B', minWidth: '68px' }}>{s.label}</span>
+                                                                <span style={{ color: '#475569', fontSize: '0.72rem', fontWeight: 700 }}>{s.fecha}</span>
+                                                                <span style={{ color: '#64748B', fontSize: '0.70rem' }}>· {s.detalle}</span>
+                                                            </div>
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+                                                                {cntOtr > 0 && (
+                                                                    <span style={{ fontSize: '0.67rem', background: '#FEF3C7', color: '#B45309', padding: '2px 7px', borderRadius: '5px', fontWeight: 800 }}>
+                                                                        ⚠️ {cntOtr} cx otros prest.
+                                                                    </span>
+                                                                )}
+                                                                <span style={{
+                                                                    fontSize: '0.70rem',
+                                                                    fontWeight: 800,
+                                                                    color: s.usada ? '#15803D' : '#DC2626'
+                                                                }}>
+                                                                    {s.usada ? `✓ ${s.hs}h titular (${cntTit} cx)` : '✗ 0h titular'}
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+
+                                        {/* Footer Botón Cerrar */}
+                                        <div style={{ marginTop: '18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px' }}>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleOpenEditBloque(b)}
+                                                style={{
+                                                    padding: '8px 14px',
+                                                    borderRadius: '8px',
+                                                    background: '#EFF6FF',
+                                                    border: '1px solid #BFDBFE',
+                                                    color: '#1D4ED8',
+                                                    fontSize: '0.78rem',
+                                                    fontWeight: 800,
+                                                    cursor: 'pointer',
+                                                    display: 'inline-flex',
+                                                    alignItems: 'center',
+                                                    gap: '6px'
+                                                }}
+                                            >
+                                                <Edit3 size={14} /> Editar Configuración del Bloque
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => setSelectedBloqueDetail(null)}
+                                                style={{
+                                                    padding: '8px 16px',
+                                                    borderRadius: '8px',
+                                                    background: '#0F172A',
+                                                    border: 'none',
+                                                    color: '#FFFFFF',
+                                                    fontSize: '0.80rem',
+                                                    fontWeight: 700,
+                                                    cursor: 'pointer'
+                                                }}
+                                            >
+                                                Entendido / Cerrar
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
-                        </div>
-                    )}
+                        );
+                    })()}
+
+                    {/* MODAL EDITOR DE BLOQUES QUIRÚRGICOS (CREAR / EDITAR / AUTOCALCULAR DESDE SALUS / ELIMINAR) */}
+                    {editingBloque && (() => {
+                        const monthKeyMap = {
+                            AGO: { label: 'Agosto 2026', pctKey: 'ocupacionAgo', semKey: 'semanasAgo' },
+                            SEP: { label: 'Septiembre 2026', pctKey: 'ocupacionSep', semKey: 'semanasSep' },
+                            OCT: { label: 'Octubre 2026', pctKey: 'ocupacionOct', semKey: 'semanasOct' },
+                            NOV: { label: 'Noviembre 2026', pctKey: 'ocupacionNov', semKey: 'semanasNov' }
+                        };
+                        const activeM = monthKeyMap[editingBloqueMesTab] || monthKeyMap.OCT;
+                        const activeSemanasList = editingBloque[activeM.semKey] || [];
+
+                        const handleToggleDiaSemana = (dow) => {
+                            const current = Array.isArray(editingBloque.diasSemana) ? editingBloque.diasSemana : [1];
+                            const exists = current.includes(dow);
+                            const nextDias = exists
+                                ? (current.length > 1 ? current.filter(d => d !== dow) : current)
+                                : [...current, dow].sort((a, b2) => a - b2);
+                            const DAY_NAMES = { 1: 'Lunes', 2: 'Martes', 3: 'Miércoles', 4: 'Jueves', 5: 'Viernes', 6: 'Sábado' };
+                            const autoDiaLabel = nextDias.map(d => DAY_NAMES[d]).join(', ');
+                            setEditingBloque({
+                                ...editingBloque,
+                                diasSemana: nextDias,
+                                diaIdx: nextDias[0] || 1,
+                                dia: editingBloque.dia && editingBloque.dia.includes('2 al mes')
+                                    ? `${autoDiaLabel} (2 al mes)`
+                                    : autoDiaLabel
+                            });
+                        };
+
+                        const handleUpdateSemanaField = (idx, field, val) => {
+                            const list = [...activeSemanasList];
+                            const item = { ...list[idx], [field]: val };
+                            if (field === 'usada') {
+                                item.hs = val ? (Number(editingBloque.horasSemanales) || 5) : 0;
+                            }
+                            list[idx] = item;
+                            const usedCnt = list.filter(s => s.usada).length;
+                            const autoPct = list.length > 0 ? Number(((usedCnt / list.length) * 100).toFixed(1)) : 0;
+                            setEditingBloque({
+                                ...editingBloque,
+                                [activeM.semKey]: list,
+                                [activeM.pctKey]: autoPct
+                            });
+                        };
+
+                        const handleAddSemanaSlot = () => {
+                            const list = [...activeSemanasList];
+                            const nextNum = list.length + 1;
+                            list.push({
+                                sem: nextNum,
+                                label: `Sem ${nextNum}`,
+                                fecha: `Sem ${nextNum}`,
+                                fechaISO: '',
+                                hs: Number(editingBloque.horasSemanales) || 5,
+                                usada: true,
+                                detalle: 'Operado en bloque'
+                            });
+                            const usedCnt = list.filter(s => s.usada).length;
+                            const autoPct = list.length > 0 ? Number(((usedCnt / list.length) * 100).toFixed(1)) : 0;
+                            setEditingBloque({
+                                ...editingBloque,
+                                [activeM.semKey]: list,
+                                [activeM.pctKey]: autoPct
+                            });
+                        };
+
+                        const handleRemoveSemanaSlot = (idx) => {
+                            const list = activeSemanasList.filter((_, i) => i !== idx);
+                            const usedCnt = list.filter(s => s.usada).length;
+                            const autoPct = list.length > 0 ? Number(((usedCnt / list.length) * 100).toFixed(1)) : 0;
+                            setEditingBloque({
+                                ...editingBloque,
+                                [activeM.semKey]: list,
+                                [activeM.pctKey]: autoPct
+                            });
+                        };
+
+                        return (
+                            <div
+                                role="dialog"
+                                aria-modal="true"
+                                style={{
+                                    position: 'fixed',
+                                    inset: 0,
+                                    background: 'rgba(15, 23, 42, 0.70)',
+                                    backdropFilter: 'blur(4px)',
+                                    zIndex: 10000,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    padding: '20px'
+                                }}
+                                onClick={() => setEditingBloque(null)}
+                            >
+                                <div
+                                    style={{
+                                        background: '#FFFFFF',
+                                        borderRadius: '16px',
+                                        maxWidth: '860px',
+                                        maxHeight: '90vh',
+                                        width: '100%',
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                        boxShadow: '0 25px 50px rgba(0, 0, 0, 0.3)',
+                                        overflow: 'hidden',
+                                        border: '1px solid #CBD5E1'
+                                    }}
+                                    onClick={(e) => e.stopPropagation()}
+                                >
+                                    {/* Header Editor */}
+                                    <div style={{
+                                        background: 'linear-gradient(135deg, #0F172A 0%, #1E3A8A 100%)',
+                                        color: '#FFFFFF',
+                                        padding: '16px 22px',
+                                        display: 'flex',
+                                        justifyContent: 'space-between',
+                                        alignItems: 'center'
+                                    }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                            <div style={{ width: '36px', height: '36px', borderRadius: '8px', background: 'rgba(255,255,255,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                                <Edit3 size={18} />
+                                            </div>
+                                            <div>
+                                                <h4 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800 }}>
+                                                    {editingBloque.isNew ? 'Nuevo Bloque Quirúrgico' : `Editar Bloque Quirúrgico: ${editingBloque.cirujano}`}
+                                                </h4>
+                                                <p style={{ margin: 0, fontSize: '0.74rem', opacity: 0.88 }}>
+                                                    Configura prestador titular, sala, días, franja horaria y ocupación semanal (sincronizado con SALUS)
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => setEditingBloque(null)}
+                                            style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: '#FFFFFF', width: '32px', height: '32px', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                                        >
+                                            <X size={18} />
+                                        </button>
+                                    </div>
+
+                                    {/* Body Editor */}
+                                    <div style={{ padding: '20px 22px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                                        {/* 1. Datos del Prestador Titular y Sala */}
+                                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '12px', background: '#F8FAFC', padding: '14px', borderRadius: '10px', border: '1px solid #E2E8F0' }}>
+                                            <div>
+                                                <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 800, color: '#334155', marginBottom: '4px' }}>
+                                                    Nombre del Titular / Servicio *
+                                                </label>
+                                                <input
+                                                    type="text"
+                                                    value={editingBloque.cirujano || ''}
+                                                    onChange={(e) => setEditingBloque({ ...editingBloque, cirujano: e.target.value })}
+                                                    placeholder="Ej: Dr. Rodrigo Pons"
+                                                    style={{ width: '100%', padding: '7px 10px', borderRadius: '7px', border: '1px solid #CBD5E1', fontSize: '0.80rem', fontWeight: 700 }}
+                                                />
+                                            </div>
+
+                                            <div>
+                                                <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 800, color: '#334155', marginBottom: '4px' }}>
+                                                    Prestador en SALUS (Patrón de Cruce) *
+                                                </label>
+                                                <input
+                                                    type="text"
+                                                    list="salus-surgeons-list"
+                                                    value={editingBloque.cirujanoMatch || ''}
+                                                    onChange={(e) => setEditingBloque({ ...editingBloque, cirujanoMatch: e.target.value })}
+                                                    placeholder="Ej: PONS BELMONTE"
+                                                    style={{ width: '100%', padding: '7px 10px', borderRadius: '7px', border: '1px solid #CBD5E1', fontSize: '0.80rem', fontFamily: 'monospace' }}
+                                                />
+                                                <datalist id="salus-surgeons-list">
+                                                    {availableSalusSurgeons.map(s => (
+                                                        <option key={s} value={s} />
+                                                    ))}
+                                                </datalist>
+                                            </div>
+
+                                            <div>
+                                                <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 800, color: '#334155', marginBottom: '4px' }}>
+                                                    Ámbito Quirúrgico
+                                                </label>
+                                                <select
+                                                    value={editingBloque.ambito || 'CENTRAL'}
+                                                    onChange={(e) => {
+                                                        const nextAmb = e.target.value;
+                                                        setEditingBloque({
+                                                            ...editingBloque,
+                                                            ambito: nextAmb,
+                                                            quirofano: nextAmb === 'HDD' ? 'HdD (Qx 6)' : 'Qx 1'
+                                                        });
+                                                    }}
+                                                    style={{ width: '100%', padding: '7px 10px', borderRadius: '7px', border: '1px solid #CBD5E1', fontSize: '0.80rem', fontWeight: 700 }}
+                                                >
+                                                    <option value="CENTRAL">🏥 Quirófano Central</option>
+                                                    <option value="HDD">☀️ Hospital de Día (HdD)</option>
+                                                </select>
+                                            </div>
+
+                                            <div>
+                                                <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 800, color: '#334155', marginBottom: '4px' }}>
+                                                    Sala Asignada
+                                                </label>
+                                                <select
+                                                    value={editingBloque.quirofano || 'Qx 1'}
+                                                    onChange={(e) => setEditingBloque({ ...editingBloque, quirofano: e.target.value })}
+                                                    style={{ width: '100%', padding: '7px 10px', borderRadius: '7px', border: '1px solid #CBD5E1', fontSize: '0.80rem', fontWeight: 700 }}
+                                                >
+                                                    <option value="Qx 1">Qx 1 (Central)</option>
+                                                    <option value="Qx 2">Qx 2 (Central)</option>
+                                                    <option value="Qx 3">Qx 3 (Central)</option>
+                                                    <option value="Qx 4">Qx 4 (Central)</option>
+                                                    <option value="SALA DE PARTO">Sala de Partos</option>
+                                                    <option value="Qx 5 - HdD">Qx 5 - HdD (Hospital de Día)</option>
+                                                    <option value="HdD (Qx 6)">HdD (Qx 6 - Endoscopía)</option>
+                                                </select>
+                                            </div>
+                                        </div>
+
+                                        {/* 2. Días, Franja Horaria y Horas Asignadas */}
+                                        <div style={{ background: '#F8FAFC', padding: '14px', borderRadius: '10px', border: '1px solid #E2E8F0', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
+                                                <div>
+                                                    <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 800, color: '#334155', marginBottom: '6px' }}>
+                                                        Días de la Semana del Bloque
+                                                    </label>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                                        {[
+                                                            { id: 1, label: 'Lunes' },
+                                                            { id: 2, label: 'Martes' },
+                                                            { id: 3, label: 'Miércoles' },
+                                                            { id: 4, label: 'Jueves' },
+                                                            { id: 5, label: 'Viernes' },
+                                                            { id: 6, label: 'Sábado' }
+                                                        ].map(d => {
+                                                            const active = (editingBloque.diasSemana || []).includes(d.id);
+                                                            return (
+                                                                <button
+                                                                    key={d.id}
+                                                                    type="button"
+                                                                    onClick={() => handleToggleDiaSemana(d.id)}
+                                                                    style={{
+                                                                        padding: '5px 11px',
+                                                                        borderRadius: '6px',
+                                                                        fontSize: '0.73rem',
+                                                                        fontWeight: 800,
+                                                                        border: active ? '1.5px solid #2563EB' : '1px solid #CBD5E1',
+                                                                        background: active ? '#2563EB' : '#FFFFFF',
+                                                                        color: active ? '#FFFFFF' : '#475569',
+                                                                        cursor: 'pointer'
+                                                                    }}
+                                                                >
+                                                                    {d.label}
+                                                                </button>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </div>
+
+                                                <div style={{ minWidth: '220px', flex: 1 }}>
+                                                    <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 800, color: '#334155', marginBottom: '4px' }}>
+                                                        Etiqueta de Día / Frecuencia (Ej: Lunes, Martes (2 al mes))
+                                                    </label>
+                                                    <input
+                                                        type="text"
+                                                        value={editingBloque.dia || ''}
+                                                        onChange={(e) => setEditingBloque({ ...editingBloque, dia: e.target.value })}
+                                                        style={{ width: '100%', padding: '7px 10px', borderRadius: '7px', border: '1px solid #CBD5E1', fontSize: '0.78rem', fontWeight: 700 }}
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '10px' }}>
+                                                <div>
+                                                    <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 800, color: '#334155', marginBottom: '4px' }}>
+                                                        Hora Inicio Franja
+                                                    </label>
+                                                    <input
+                                                        type="time"
+                                                        value={editingBloque.horaInicio || '08:00'}
+                                                        onChange={(e) => {
+                                                            const hi = e.target.value;
+                                                            const hf = editingBloque.horaFin || '13:00';
+                                                            const diffH = Math.max(1, Number(((parseTimeToMinutes(hf) - parseTimeToMinutes(hi)) / 60).toFixed(1)));
+                                                            setEditingBloque({
+                                                                ...editingBloque,
+                                                                horaInicio: hi,
+                                                                horario: `${hi} - ${hf} (${diffH}h)`,
+                                                                horasSemanales: diffH,
+                                                                horasMes: Number((diffH * 4).toFixed(1))
+                                                            });
+                                                        }}
+                                                        style={{ width: '100%', padding: '7px 10px', borderRadius: '7px', border: '1px solid #CBD5E1', fontSize: '0.80rem', fontWeight: 700 }}
+                                                    />
+                                                </div>
+
+                                                <div>
+                                                    <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 800, color: '#334155', marginBottom: '4px' }}>
+                                                        Hora Fin Franja
+                                                    </label>
+                                                    <input
+                                                        type="time"
+                                                        value={editingBloque.horaFin || '13:00'}
+                                                        onChange={(e) => {
+                                                            const hf = e.target.value;
+                                                            const hi = editingBloque.horaInicio || '08:00';
+                                                            const diffH = Math.max(1, Number(((parseTimeToMinutes(hf) - parseTimeToMinutes(hi)) / 60).toFixed(1)));
+                                                            setEditingBloque({
+                                                                ...editingBloque,
+                                                                horaFin: hf,
+                                                                horario: `${hi} - ${hf} (${diffH}h)`,
+                                                                horasSemanales: diffH,
+                                                                horasMes: Number((diffH * 4).toFixed(1))
+                                                            });
+                                                        }}
+                                                        style={{ width: '100%', padding: '7px 10px', borderRadius: '7px', border: '1px solid #CBD5E1', fontSize: '0.80rem', fontWeight: 700 }}
+                                                    />
+                                                </div>
+
+                                                <div>
+                                                    <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 800, color: '#334155', marginBottom: '4px' }}>
+                                                        Texto Horario Visible
+                                                    </label>
+                                                    <input
+                                                        type="text"
+                                                        value={editingBloque.horario || ''}
+                                                        onChange={(e) => setEditingBloque({ ...editingBloque, horario: e.target.value })}
+                                                        style={{ width: '100%', padding: '7px 10px', borderRadius: '7px', border: '1px solid #CBD5E1', fontSize: '0.78rem' }}
+                                                    />
+                                                </div>
+
+                                                <div>
+                                                    <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 800, color: '#334155', marginBottom: '4px' }}>
+                                                        Hs Semanales
+                                                    </label>
+                                                    <input
+                                                        type="number"
+                                                        step="0.5"
+                                                        value={editingBloque.horasSemanales ?? 5}
+                                                        onChange={(e) => setEditingBloque({ ...editingBloque, horasSemanales: parseFloat(e.target.value) || 0 })}
+                                                        style={{ width: '100%', padding: '7px 10px', borderRadius: '7px', border: '1px solid #CBD5E1', fontSize: '0.80rem', fontWeight: 700 }}
+                                                    />
+                                                </div>
+
+                                                <div>
+                                                    <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 800, color: '#334155', marginBottom: '4px' }}>
+                                                        Hs Asignadas / Mes
+                                                    </label>
+                                                    <input
+                                                        type="number"
+                                                        step="0.5"
+                                                        value={editingBloque.horasMes ?? 20}
+                                                        onChange={(e) => setEditingBloque({ ...editingBloque, horasMes: parseFloat(e.target.value) || 0 })}
+                                                        style={{ width: '100%', padding: '7px 10px', borderRadius: '7px', border: '1px solid #CBD5E1', fontSize: '0.80rem', fontWeight: 700 }}
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            <div>
+                                                <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 800, color: '#334155', marginBottom: '4px' }}>
+                                                    Condición Operativa / Observación Institucional
+                                                </label>
+                                                <input
+                                                    type="text"
+                                                    value={editingBloque.nota || ''}
+                                                    onChange={(e) => setEditingBloque({ ...editingBloque, nota: e.target.value })}
+                                                    style={{ width: '100%', padding: '7px 10px', borderRadius: '7px', border: '1px solid #CBD5E1', fontSize: '0.78rem' }}
+                                                />
+                                            </div>
+                                        </div>
+
+                                        {/* 3. Ocupación Mensual y Desglose de Semanas (con Autocalculado desde SALUS) */}
+                                        <div style={{ background: '#FFFFFF', padding: '14px', borderRadius: '10px', border: '1.5px solid #BFDBFE' }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', marginBottom: '12px' }}>
+                                                <div>
+                                                    <h5 style={{ margin: 0, fontSize: '0.88rem', fontWeight: 800, color: '#1E3A8A' }}>
+                                                        Ocupación por Mes y Trazabilidad Semanal
+                                                    </h5>
+                                                    <span style={{ fontSize: '0.72rem', color: '#64748B' }}>
+                                                        Puedes editar manualmente el % y cada semana, o recalcular automáticamente cruzando la franja horaria contra SALUS
+                                                    </span>
+                                                </div>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleAutocalcularBloqueFromSalus(editingBloque, editingBloqueMesTab)}
+                                                        style={{
+                                                            padding: '6px 11px',
+                                                            borderRadius: '7px',
+                                                            background: '#EFF6FF',
+                                                            border: '1px solid #93C5FD',
+                                                            color: '#1D4ED8',
+                                                            fontSize: '0.72rem',
+                                                            fontWeight: 800,
+                                                            cursor: 'pointer',
+                                                            display: 'inline-flex',
+                                                            alignItems: 'center',
+                                                            gap: '5px'
+                                                        }}
+                                                    >
+                                                        <RefreshCw size={12} /> Autocalcular {editingBloqueMesTab} desde SALUS
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleAutocalcularBloqueFromSalus(editingBloque, null)}
+                                                        style={{
+                                                            padding: '6px 11px',
+                                                            borderRadius: '7px',
+                                                            background: '#16A34A',
+                                                            border: 'none',
+                                                            color: '#FFFFFF',
+                                                            fontSize: '0.72rem',
+                                                            fontWeight: 800,
+                                                            cursor: 'pointer',
+                                                            display: 'inline-flex',
+                                                            alignItems: 'center',
+                                                            gap: '5px'
+                                                        }}
+                                                    >
+                                                        <RefreshCw size={12} /> Autocalcular Todos los Meses (SALUS)
+                                                    </button>
+                                                </div>
+                                            </div>
+
+                                            {/* Inputs rápidos de % Ocupación Ago / Sep / Oct / Nov */}
+                                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px', marginBottom: '14px' }}>
+                                                {[
+                                                    { tab: 'AGO', label: '% Ocupación Agosto', key: 'ocupacionAgo' },
+                                                    { tab: 'SEP', label: '% Ocupación Septiembre', key: 'ocupacionSep' },
+                                                    { tab: 'OCT', label: '% Ocupación Octubre', key: 'ocupacionOct' },
+                                                    { tab: 'NOV', label: '% Ocupación Noviembre', key: 'ocupacionNov' }
+                                                ].map(m => (
+                                                    <div
+                                                        key={m.tab}
+                                                        onClick={() => setEditingBloqueMesTab(m.tab)}
+                                                        style={{
+                                                            padding: '8px 10px',
+                                                            borderRadius: '8px',
+                                                            border: editingBloqueMesTab === m.tab ? '2px solid #2563EB' : '1px solid #CBD5E1',
+                                                            background: editingBloqueMesTab === m.tab ? '#EFF6FF' : '#F8FAFC',
+                                                            cursor: 'pointer'
+                                                        }}
+                                                    >
+                                                        <label style={{ display: 'block', fontSize: '0.68rem', fontWeight: 800, color: '#1E3A8A', marginBottom: '4px' }}>
+                                                            {m.label}
+                                                        </label>
+                                                        <input
+                                                            type="number"
+                                                            step="0.1"
+                                                            min="0"
+                                                            max="100"
+                                                            value={editingBloque[m.key] ?? 0}
+                                                            onChange={(e) => setEditingBloque({ ...editingBloque, [m.key]: parseFloat(e.target.value) || 0 })}
+                                                            style={{ width: '100%', padding: '5px 8px', borderRadius: '6px', border: '1px solid #93C5FD', fontSize: '0.82rem', fontWeight: 800 }}
+                                                        />
+                                                    </div>
+                                                ))}
+                                            </div>
+
+                                            {/* Lista editable de Semanas del Mes Seleccionado */}
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                                                <span style={{ fontSize: '0.76rem', fontWeight: 800, color: '#0F172A' }}>
+                                                    Semanas / Fechas de {activeM.label}:
+                                                </span>
+                                                <button
+                                                    type="button"
+                                                    onClick={handleAddSemanaSlot}
+                                                    style={{
+                                                        padding: '4px 10px',
+                                                        borderRadius: '6px',
+                                                        background: '#F1F5F9',
+                                                        border: '1px solid #CBD5E1',
+                                                        color: '#334155',
+                                                        fontSize: '0.70rem',
+                                                        fontWeight: 800,
+                                                        cursor: 'pointer',
+                                                        display: 'inline-flex',
+                                                        alignItems: 'center',
+                                                        gap: '4px'
+                                                    }}
+                                                >
+                                                    <Plus size={12} /> Agregar Semana / Bloque
+                                                </button>
+                                            </div>
+
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                                {activeSemanasList.map((sem, idx) => (
+                                                    <div
+                                                        key={idx}
+                                                        style={{
+                                                            display: 'grid',
+                                                            gridTemplateColumns: '85px 125px 135px 80px 110px 1fr 32px',
+                                                            gap: '6px',
+                                                            alignItems: 'center',
+                                                            background: sem.usada ? '#F0FDF4' : '#FEF2F2',
+                                                            padding: '6px 8px',
+                                                            borderRadius: '8px',
+                                                            border: `1px solid ${sem.usada ? '#86EFAC' : '#FCA5A5'}`
+                                                        }}
+                                                    >
+                                                        <input
+                                                            type="text"
+                                                            value={sem.label || ''}
+                                                            onChange={(e) => handleUpdateSemanaField(idx, 'label', e.target.value)}
+                                                            placeholder="Sem 1"
+                                                            style={{ padding: '4px 6px', borderRadius: '5px', border: '1px solid #CBD5E1', fontSize: '0.72rem', fontWeight: 700 }}
+                                                        />
+                                                        <input
+                                                            type="text"
+                                                            value={sem.fecha || ''}
+                                                            onChange={(e) => handleUpdateSemanaField(idx, 'fecha', e.target.value)}
+                                                            placeholder="Lun 05/10"
+                                                            style={{ padding: '4px 6px', borderRadius: '5px', border: '1px solid #CBD5E1', fontSize: '0.72rem' }}
+                                                        />
+                                                        <input
+                                                            type="date"
+                                                            value={sem.fechaISO || ''}
+                                                            onChange={(e) => handleUpdateSemanaField(idx, 'fechaISO', e.target.value)}
+                                                            style={{ padding: '4px 6px', borderRadius: '5px', border: '1px solid #CBD5E1', fontSize: '0.72rem' }}
+                                                        />
+                                                        <input
+                                                            type="number"
+                                                            step="0.5"
+                                                            value={sem.hs ?? 0}
+                                                            onChange={(e) => handleUpdateSemanaField(idx, 'hs', parseFloat(e.target.value) || 0)}
+                                                            title="Horas operadas"
+                                                            style={{ padding: '4px 6px', borderRadius: '5px', border: '1px solid #CBD5E1', fontSize: '0.72rem', fontWeight: 800 }}
+                                                        />
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleUpdateSemanaField(idx, 'usada', !sem.usada)}
+                                                            style={{
+                                                                padding: '4px 8px',
+                                                                borderRadius: '5px',
+                                                                border: 'none',
+                                                                background: sem.usada ? '#16A34A' : '#DC2626',
+                                                                color: '#FFFFFF',
+                                                                fontSize: '0.68rem',
+                                                                fontWeight: 800,
+                                                                cursor: 'pointer'
+                                                            }}
+                                                        >
+                                                            {sem.usada ? '✓ Utilizado' : '✗ Ocioso'}
+                                                        </button>
+                                                        <input
+                                                            type="text"
+                                                            value={sem.detalle || ''}
+                                                            onChange={(e) => handleUpdateSemanaField(idx, 'detalle', e.target.value)}
+                                                            placeholder="Detalle u observación de la semana"
+                                                            style={{ padding: '4px 6px', borderRadius: '5px', border: '1px solid #CBD5E1', fontSize: '0.72rem' }}
+                                                        />
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleRemoveSemanaSlot(idx)}
+                                                            style={{ background: 'transparent', border: 'none', color: '#DC2626', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                                                            title="Quitar semana"
+                                                        >
+                                                            <Trash2 size={14} />
+                                                        </button>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Footer Editor */}
+                                    <div style={{ padding: '14px 22px', background: '#F8FAFC', borderTop: '1px solid #E2E8F0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+                                        <div>
+                                            {!editingBloque.isNew && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleDeleteBloque(editingBloque.id, editingBloque.cirujano)}
+                                                    style={{
+                                                        padding: '8px 14px',
+                                                        borderRadius: '8px',
+                                                        background: '#FEE2E2',
+                                                        border: '1px solid #FCA5A5',
+                                                        color: '#DC2626',
+                                                        fontSize: '0.76rem',
+                                                        fontWeight: 800,
+                                                        cursor: 'pointer',
+                                                        display: 'inline-flex',
+                                                        alignItems: 'center',
+                                                        gap: '5px'
+                                                    }}
+                                                >
+                                                    <Trash2 size={14} /> Eliminar Bloque
+                                                </button>
+                                            )}
+                                        </div>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                            <button
+                                                type="button"
+                                                onClick={() => setEditingBloque(null)}
+                                                style={{
+                                                    padding: '8px 16px',
+                                                    borderRadius: '8px',
+                                                    background: '#FFFFFF',
+                                                    border: '1px solid #CBD5E1',
+                                                    color: '#475569',
+                                                    fontSize: '0.78rem',
+                                                    fontWeight: 700,
+                                                    cursor: 'pointer'
+                                                }}
+                                            >
+                                                Cancelar
+                                            </button>
+                                            <button
+                                                type="button"
+                                                disabled={savingBloquesConfig}
+                                                onClick={handleSaveEditingBloque}
+                                                style={{
+                                                    padding: '8px 18px',
+                                                    borderRadius: '8px',
+                                                    background: '#2563EB',
+                                                    border: 'none',
+                                                    color: '#FFFFFF',
+                                                    fontSize: '0.80rem',
+                                                    fontWeight: 800,
+                                                    cursor: 'pointer',
+                                                    display: 'inline-flex',
+                                                    alignItems: 'center',
+                                                    gap: '6px',
+                                                    boxShadow: '0 2px 8px rgba(37, 99, 235, 0.35)'
+                                                }}
+                                            >
+                                                <Save size={15} /> {savingBloquesConfig ? 'Guardando...' : 'Guardar Bloque Quirúrgico'}
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    })()}
                 </div>
             )}
 
