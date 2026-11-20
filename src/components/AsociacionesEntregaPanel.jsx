@@ -646,9 +646,66 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
     };
 
     // ─── Filter display data ───
-    // ─── Filter display data ───
     const pendientesCirugias = useMemo(() => {
-        let filtered = cirugias.filter(c => !c.en_carrito); // exclude en_carrito since they are in the Cart tab
+        // Consolidación inteligente de admisiones: si coexisten una fila de CIRUGIA/SUTURA y una de ADMISION preliminar para la misma admisión,
+        // fusionamos estados (docs_completos, en_carrito, constancia_id) y presentamos la cirugía oficial sin duplicados
+        const byAdm = new Map();
+        for (const item of cirugias) {
+            const admKey = item.numero_admision ? String(item.numero_admision).trim() : null;
+            if (admKey) {
+                if (!byAdm.has(admKey)) byAdm.set(admKey, []);
+                byAdm.get(admKey).push(item);
+            }
+        }
+
+        const consolidatedCirugias = [];
+        const handledAdmKeys = new Set();
+
+        for (const item of cirugias) {
+            const admKey = item.numero_admision ? String(item.numero_admision).trim() : null;
+            if (!admKey) {
+                consolidatedCirugias.push(item);
+                continue;
+            }
+
+            if (handledAdmKeys.has(admKey)) continue;
+
+            const group = byAdm.get(admKey);
+            if (group.length === 1) {
+                consolidatedCirugias.push(item);
+                handledAdmKeys.add(admKey);
+                continue;
+            }
+
+            // Múltiples filas para el mismo número de admisión
+            const cxRows = group.filter(r => r.tipo_origen === 'CIRUGIA' || r.tipo_origen === 'SUTURA');
+            const admRows = group.filter(r => r.tipo_origen === 'ADMISION');
+
+            if (cxRows.length > 0 && admRows.length > 0) {
+                // Hay fila de Cirugía y fila de Admisión preliminar: la Cirugía oficial absorbe el estado de Admisión
+                const hasConstancia = group.find(r => r.constancia_id);
+                const hasCarrito = group.find(r => r.en_carrito);
+                const hasDocs = group.find(r => r.docs_completos);
+
+                cxRows.forEach((cx, idx) => {
+                    consolidatedCirugias.push({
+                        ...cx,
+                        constancia_id: cx.constancia_id || (idx === 0 && hasConstancia?.constancia_id) || null,
+                        en_carrito: cx.en_carrito || (idx === 0 && Boolean(hasCarrito?.en_carrito)) || false,
+                        docs_completos: cx.docs_completos || (idx === 0 && Boolean(hasDocs?.docs_completos)) || false,
+                        operador: cx.operador || hasDocs?.operador || hasConstancia?.operador || cx.operador,
+                    });
+                });
+                handledAdmKeys.add(admKey);
+                continue;
+            }
+
+            // Si son múltiples cirugías genuinas (mismo tipo), mantenerlas
+            group.forEach(g => consolidatedCirugias.push(g));
+            handledAdmKeys.add(admKey);
+        }
+
+        let filtered = consolidatedCirugias.filter(c => !c.en_carrito); // exclude en_carrito since they are in the Cart tab
         if (estadoEntregaFilter === 'pendientes') filtered = filtered.filter(c => !c.constancia_id);
         if (estadoEntregaFilter === 'entregados') filtered = filtered.filter(c => c.constancia_id);
         return filtered;

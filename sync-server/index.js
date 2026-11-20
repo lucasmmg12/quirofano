@@ -2938,8 +2938,23 @@ async function syncAsociacionesCirugias(db, fastSync = false) {
     // Deduplicar (priorizando registros que tengan numero_admision o sean CIRUGIA/SUTURA sobre ADMISION genérica)
     const makeKey = (f, n, c) => `${f}|${(n || '').replace(/\s+/g, ' ').trim()}|${(c || '').replace(/\s+/g, ' ').trim()}`;
 
+    // 1) Detectar admisiones que ya tienen cirugía o sutura en este lote para descartar ADMISION preliminar
+    const admConCx = new Set();
+    for (const r of records) {
+        if (r.numero_admision && r.tipo_origen !== 'ADMISION') {
+            admConCx.add(r.numero_admision);
+        }
+    }
+
+    const filteredRecords = records.filter(r => {
+        if (r.tipo_origen === 'ADMISION' && r.numero_admision && admConCx.has(r.numero_admision)) {
+            return false;
+        }
+        return true;
+    });
+
     const deduped = new Map();
-    for (const row of records) {
+    for (const row of filteredRecords) {
         const key = makeKey(row.fecha_realizacion, row.nombre_paciente, row.nombre_cirugia);
         const prev = deduped.get(key);
         if (!prev) {
@@ -2993,6 +3008,23 @@ async function syncAsociacionesCirugias(db, fastSync = false) {
         from += PAGE_SIZE;
     }
     console.log(`   🔒 ${existingMap.size} registros con estados a preservar`);
+
+    // Limpiar en Supabase cualquier fila preliminar de tipo 'ADMISION' que ahora tenga su fila oficial de 'CIRUGIA'/'SUTURA'
+    const admisionesConCirugia = uniqueRecords
+        .filter(r => r.numero_admision && r.tipo_origen !== 'ADMISION')
+        .map(r => r.numero_admision);
+
+    if (admisionesConCirugia.length > 0) {
+        const CHUNK = 200;
+        for (let i = 0; i < admisionesConCirugia.length; i += CHUNK) {
+            const chunk = admisionesConCirugia.slice(i, i + CHUNK);
+            await supabase
+                .from('asociaciones_cirugias')
+                .delete()
+                .in('numero_admision', chunk)
+                .eq('tipo_origen', 'ADMISION');
+        }
+    }
 
     // Upsert en lotes
     let inserted = 0, updated = 0, skipped = 0;
