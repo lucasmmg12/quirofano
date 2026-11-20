@@ -407,19 +407,363 @@ export async function syncComprasConsumoStock({ startYear = 2024 } = {}) {
             if (error) console.error(`❌ Error compras batch ${i}:`, error.message);
         }
 
+        // 7. Derivaciones (FM_Traspasos) y Pedidos Internos por Sector (FM_PeticionesTraspaso)
+        const derRes = await syncDerivacionesYPedidosInterno(pool, almMap, artMap, getPrecio, startYear, nowIso);
+
         console.log('🏁 Sincronización Compras-Consumo-Stock completada con éxito.');
         return {
             mensual: mensualList.length,
             stock: stockActualRows.length,
             comprasDetalle: comprasDetalleRows.length,
+            ...derRes,
         };
     } finally {
         await pool.close();
     }
 }
 
+const TRANSITO_ALMACEN_IDS = new Set([44, 47, 48]); // TRÁNSITO (SLS), (SLN), (SF)
+
+async function syncDerivacionesYPedidosInterno(pool, almMap, artMap, getPrecio, startYear, nowIso) {
+    console.log(`\n🚚 [SYNC DERIVACIONES Y PEDIDOS POR SECTOR] Extrayendo FM_PeticionesTraspaso y FM_Traspasos (${startYear}+)...`);
+    const BATCH = 500;
+
+    // A. Pedidos agregados por mes × sector solicitante (IdAlmacenDestino)
+    const [pedMesRes, pedArtRes, traMesRes, traArtRes, pedRecientesRes] = await Promise.all([
+        pool.request().query(`
+            SELECT
+                YEAR(p.Fecha) AS anio,
+                MONTH(p.Fecha) AS mes,
+                p.IdAlmacenDestino AS id_sector,
+                COUNT(DISTINCT p.Id) AS pedidos_count,
+                COUNT(DISTINCT CASE WHEN p.FechaServido IS NOT NULL THEN p.Id END) AS pedidos_servidos,
+                COUNT(DISTINCT CASE WHEN p.FechaServido IS NULL THEN p.Id END) AS pedidos_pendientes,
+                SUM(ISNULL(lp.Cantidad, 0)) AS unidades_pedidas,
+                COUNT(DISTINCT lp.IdArticulo) AS articulos_pedidos_unicos,
+                AVG(CASE WHEN p.FechaServido IS NOT NULL AND p.FechaServido >= p.Fecha
+                    THEN DATEDIFF(MINUTE, p.Fecha, p.FechaServido) / 60.0 END) AS lead_time_prom_hs
+            FROM FM_PeticionesTraspaso p WITH (NOLOCK)
+            LEFT JOIN FM_Lineas_PeticionesTraspaso lp WITH (NOLOCK) ON lp.IdPeticion = p.Id
+            WHERE p.Fecha >= '${startYear}-01-01'
+              AND p.Fecha <= DATEADD(day, 1, GETDATE())
+              AND p.IdAlmacenDestino IS NOT NULL
+            GROUP BY YEAR(p.Fecha), MONTH(p.Fecha), p.IdAlmacenDestino
+        `),
+        pool.request().query(`
+            SELECT
+                YEAR(p.Fecha) AS anio,
+                MONTH(p.Fecha) AS mes,
+                p.IdAlmacenDestino AS id_sector,
+                lp.IdArticulo AS id_articulo,
+                COUNT(DISTINCT p.Id) AS pedidos_count,
+                SUM(ISNULL(lp.Cantidad, 0)) AS unidades_pedidas
+            FROM FM_PeticionesTraspaso p WITH (NOLOCK)
+            INNER JOIN FM_Lineas_PeticionesTraspaso lp WITH (NOLOCK) ON lp.IdPeticion = p.Id
+            WHERE p.Fecha >= '${startYear}-01-01'
+              AND p.Fecha <= DATEADD(day, 1, GETDATE())
+              AND p.IdAlmacenDestino IS NOT NULL
+              AND lp.IdArticulo IS NOT NULL
+            GROUP BY YEAR(p.Fecha), MONTH(p.Fecha), p.IdAlmacenDestino, lp.IdArticulo
+        `),
+        // Traspasos (Derivaciones efectivas) excluyendo destinos de TRÁNSITO para no duplicar entregas
+        pool.request().query(`
+            SELECT
+                YEAR(t.fecha) AS anio,
+                MONTH(t.fecha) AS mes,
+                t.idAlmacenDestino AS id_sector,
+                COUNT(DISTINCT t.id) AS traspasos_recibidos,
+                SUM(ISNULL(lt.cantidad, 0)) AS unidades_derivadas,
+                COUNT(DISTINCT l.idArticulo) AS articulos_derivados_unicos,
+                SUM(ISNULL(lt.cantidad, 0) * ISNULL(lt.PrecioCoste, 0)) AS importe_coste
+            FROM FM_Traspasos t WITH (NOLOCK)
+            INNER JOIN FM_Lineas_Traspasos lt WITH (NOLOCK) ON lt.idTraspaso = t.id
+            INNER JOIN FM_Lotes l WITH (NOLOCK) ON l.id = lt.idLote
+            WHERE t.fecha >= '${startYear}-01-01'
+              AND t.fecha <= DATEADD(day, 1, GETDATE())
+              AND t.idAlmacenDestino IS NOT NULL
+              AND t.idAlmacenDestino NOT IN (44, 47, 48)
+            GROUP BY YEAR(t.fecha), MONTH(t.fecha), t.idAlmacenDestino
+        `),
+        pool.request().query(`
+            SELECT
+                YEAR(t.fecha) AS anio,
+                MONTH(t.fecha) AS mes,
+                t.idAlmacenDestino AS id_sector,
+                l.idArticulo AS id_articulo,
+                COUNT(DISTINCT t.id) AS traspasos_count,
+                SUM(ISNULL(lt.cantidad, 0)) AS unidades_derivadas,
+                SUM(ISNULL(lt.cantidad, 0) * ISNULL(lt.PrecioCoste, 0)) AS importe_coste
+            FROM FM_Traspasos t WITH (NOLOCK)
+            INNER JOIN FM_Lineas_Traspasos lt WITH (NOLOCK) ON lt.idTraspaso = t.id
+            INNER JOIN FM_Lotes l WITH (NOLOCK) ON l.id = lt.idLote
+            WHERE t.fecha >= '${startYear}-01-01'
+              AND t.fecha <= DATEADD(day, 1, GETDATE())
+              AND t.idAlmacenDestino IS NOT NULL
+              AND t.idAlmacenDestino NOT IN (44, 47, 48)
+            GROUP BY YEAR(t.fecha), MONTH(t.fecha), t.idAlmacenDestino, l.idArticulo
+        `),
+        // Pedidos individuales últimos 180 días + pendientes con detalle de líneas
+        pool.request().query(`
+            SELECT
+                p.Id AS id_peticion,
+                p.Fecha AS fecha,
+                p.FechaServido AS fecha_servido,
+                p.IdAlmacen AS id_almacen_origen,
+                p.IdAlmacenDestino AS id_sector,
+                p.Observaciones AS observaciones,
+                lp.Id AS id_linea,
+                lp.IdArticulo AS id_articulo,
+                ISNULL(lp.Cantidad, 0) AS cantidad_pedida,
+                ISNULL(ent.cant_entregada, 0) AS cantidad_entregada
+            FROM FM_PeticionesTraspaso p WITH (NOLOCK)
+            LEFT JOIN FM_Lineas_PeticionesTraspaso lp WITH (NOLOCK) ON lp.IdPeticion = p.Id
+            LEFT JOIN (
+                SELECT IdLineaPeticionTraspaso, SUM(ISNULL(cantidad, 0)) AS cant_entregada
+                FROM FM_Lineas_Traspasos WITH (NOLOCK)
+                WHERE IdLineaPeticionTraspaso IS NOT NULL
+                GROUP BY IdLineaPeticionTraspaso
+            ) ent ON ent.IdLineaPeticionTraspaso = lp.Id
+            WHERE (p.Fecha >= DATEADD(day, -180, GETDATE()) OR p.FechaServido IS NULL)
+              AND p.Fecha >= '2025-01-01'
+              AND p.IdAlmacenDestino IS NOT NULL
+            ORDER BY p.Fecha DESC
+        `)
+    ]);
+
+    // 1. Consolidar gob_ccs_sectores_derivaciones_mensual
+    const secMesMap = new Map();
+    const getSecMes = (anio, mes, idSec) => {
+        const k = `${anio}|${mes}|${idSec}`;
+        let b = secMesMap.get(k);
+        if (!b) {
+            const info = almMap.get(idSec) || { nombre: `SECTOR ${idSec}`, grupo: 'CLINICO' };
+            b = {
+                anio,
+                mes,
+                id_sector: idSec,
+                sector: info.nombre,
+                grupo_almacen: info.grupo,
+                pedidos_count: 0,
+                pedidos_servidos: 0,
+                pedidos_pendientes: 0,
+                unidades_pedidas: 0,
+                articulos_pedidos_unicos: 0,
+                traspasos_recibidos: 0,
+                unidades_derivadas: 0,
+                articulos_derivados_unicos: 0,
+                importe_derivado: 0,
+                lead_time_prom_hs: null,
+                updated_at: nowIso,
+            };
+            secMesMap.set(k, b);
+        }
+        return b;
+    };
+
+    for (const r of pedMesRes.recordset) {
+        const idSec = Number(r.id_sector);
+        if (TRANSITO_ALMACEN_IDS.has(idSec)) continue;
+        const b = getSecMes(Number(r.anio), Number(r.mes), idSec);
+        b.pedidos_count = Number(r.pedidos_count || 0);
+        b.pedidos_servidos = Number(r.pedidos_servidos || 0);
+        b.pedidos_pendientes = Number(r.pedidos_pendientes || 0);
+        b.unidades_pedidas = Math.round(Number(r.unidades_pedidas || 0) * 100) / 100;
+        b.articulos_pedidos_unicos = Number(r.articulos_pedidos_unicos || 0);
+        b.lead_time_prom_hs = r.lead_time_prom_hs !== null && r.lead_time_prom_hs !== undefined
+            ? Math.min(9999, Math.round(Number(r.lead_time_prom_hs) * 10) / 10)
+            : null;
+    }
+
+    for (const r of traMesRes.recordset) {
+        const idSec = Number(r.id_sector);
+        if (TRANSITO_ALMACEN_IDS.has(idSec)) continue;
+        const b = getSecMes(Number(r.anio), Number(r.mes), idSec);
+        b.traspasos_recibidos = Number(r.traspasos_recibidos || 0);
+        b.unidades_derivadas = Math.round(Number(r.unidades_derivadas || 0) * 100) / 100;
+        b.articulos_derivados_unicos = Number(r.articulos_derivados_unicos || 0);
+        b.importe_derivado = Math.round(Number(r.importe_coste || 0) * 100) / 100;
+    }
+
+    // 2. Consolidar gob_ccs_sectores_articulos_mensual
+    const secArtMap = new Map();
+    const getSecArt = (anio, mes, idSec, idArt) => {
+        const k = `${anio}|${mes}|${idSec}|${idArt}`;
+        let b = secArtMap.get(k);
+        if (!b) {
+            const info = almMap.get(idSec) || { nombre: `SECTOR ${idSec}`, grupo: 'CLINICO' };
+            const artNombre = artMap.get(idArt)?.nombre || `ARTÍCULO ${idArt}`;
+            b = {
+                anio,
+                mes,
+                id_sector: idSec,
+                sector: info.nombre,
+                grupo_almacen: info.grupo,
+                id_articulo: idArt,
+                articulo: artNombre,
+                pedidos_count: 0,
+                unidades_pedidas: 0,
+                traspasos_count: 0,
+                unidades_derivadas: 0,
+                importe_derivado: 0,
+                updated_at: nowIso,
+            };
+            secArtMap.set(k, b);
+        }
+        return b;
+    };
+
+    for (const r of pedArtRes.recordset) {
+        const idSec = Number(r.id_sector);
+        if (TRANSITO_ALMACEN_IDS.has(idSec)) continue;
+        const b = getSecArt(Number(r.anio), Number(r.mes), idSec, Number(r.id_articulo));
+        b.pedidos_count = Number(r.pedidos_count || 0);
+        b.unidades_pedidas = Math.round(Number(r.unidades_pedidas || 0) * 100) / 100;
+    }
+
+    for (const r of traArtRes.recordset) {
+        const idSec = Number(r.id_sector);
+        if (TRANSITO_ALMACEN_IDS.has(idSec)) continue;
+        const idArt = Number(r.id_articulo);
+        const b = getSecArt(Number(r.anio), Number(r.mes), idSec, idArt);
+        const unid = Math.round(Number(r.unidades_derivadas || 0) * 100) / 100;
+        const impSalus = Number(r.importe_coste || 0);
+        const imp = impSalus > 0 ? impSalus : unid * getPrecio(idArt);
+        b.traspasos_count = Number(r.traspasos_count || 0);
+        b.unidades_derivadas = unid;
+        b.importe_derivado = Math.round(imp * 100) / 100;
+
+        // Si el importe_derivado mensual del sector vino en 0 por PrecioCoste=0, reforzar con precio fallback
+        const sm = secMesMap.get(`${r.anio}|${r.mes}|${idSec}`);
+        if (sm && impSalus <= 0 && imp > 0) {
+            sm.importe_derivado = Math.round((sm.importe_derivado + imp) * 100) / 100;
+        }
+    }
+
+    // 3. Consolidar gob_ccs_pedidos_internos (agrupando líneas por id_peticion)
+    const pedIndMap = new Map();
+    for (const r of pedRecientesRes.recordset) {
+        const idPet = Number(r.id_peticion);
+        const idSec = Number(r.id_sector);
+        if (!idPet || TRANSITO_ALMACEN_IDS.has(idSec)) continue;
+        let p = pedIndMap.get(idPet);
+        if (!p) {
+            const origInfo = almMap.get(Number(r.id_almacen_origen)) || { nombre: `ALMACÉN ${r.id_almacen_origen}` };
+            const secInfo = almMap.get(idSec) || { nombre: `SECTOR ${idSec}`, grupo: 'CLINICO' };
+            p = {
+                id_peticion: idPet,
+                fecha: new Date(r.fecha).toISOString(),
+                fecha_servido: r.fecha_servido ? new Date(r.fecha_servido).toISOString() : null,
+                estado: r.fecha_servido ? 'SERVIDO' : 'PENDIENTE',
+                id_almacen_origen: Number(r.id_almacen_origen || 0),
+                almacen_origen: origInfo.nombre,
+                id_sector: idSec,
+                sector: secInfo.nombre,
+                grupo_almacen: secInfo.grupo,
+                items_count: 0,
+                unidades_pedidas: 0,
+                unidades_entregadas: 0,
+                observaciones: r.observaciones ? String(r.observaciones).trim() : null,
+                detalle_articulos: [],
+                updated_at: nowIso,
+            };
+            pedIndMap.set(idPet, p);
+        }
+        if (r.id_articulo) {
+            const idArt = Number(r.id_articulo);
+            const cantPed = Math.round(Number(r.cantidad_pedida || 0) * 100) / 100;
+            const cantEnt = Math.round(Number(r.cantidad_entregada || 0) * 100) / 100;
+            p.items_count += 1;
+            p.unidades_pedidas = Math.round((p.unidades_pedidas + cantPed) * 100) / 100;
+            p.unidades_entregadas = Math.round((p.unidades_entregadas + cantEnt) * 100) / 100;
+            if (p.detalle_articulos.length < 40) {
+                p.detalle_articulos.push({
+                    id_articulo: idArt,
+                    articulo: artMap.get(idArt)?.nombre || `ARTÍCULO ${idArt}`,
+                    pedida: cantPed,
+                    entregada: cantEnt,
+                });
+            }
+        }
+    }
+
+    const secMesList = Array.from(secMesMap.values());
+    const secArtList = Array.from(secArtMap.values());
+    const pedIndList = Array.from(pedIndMap.values());
+    console.log(`   📊 Derivaciones/Pedidos listos: ${secMesList.length} sector×mes | ${secArtList.length} sector×artículo×mes | ${pedIndList.length} pedidos individuales.`);
+
+    console.log('☁️ Actualizando gob_ccs_sectores_derivaciones_mensual...');
+    await supabase.from('gob_ccs_sectores_derivaciones_mensual').delete().gte('anio', startYear);
+    for (let i = 0; i < secMesList.length; i += BATCH) {
+        const { error } = await supabase.from('gob_ccs_sectores_derivaciones_mensual').insert(secMesList.slice(i, i + BATCH));
+        if (error) console.error(`❌ Error sec_der batch ${i}:`, error.message);
+    }
+
+    console.log('☁️ Actualizando gob_ccs_sectores_articulos_mensual...');
+    await supabase.from('gob_ccs_sectores_articulos_mensual').delete().gte('anio', startYear);
+    for (let i = 0; i < secArtList.length; i += BATCH) {
+        const { error } = await supabase.from('gob_ccs_sectores_articulos_mensual').insert(secArtList.slice(i, i + BATCH));
+        if (error) console.error(`❌ Error sec_art batch ${i}:`, error.message);
+    }
+
+    console.log('☁️ Actualizando gob_ccs_pedidos_internos...');
+    await supabase.from('gob_ccs_pedidos_internos').delete().gte('id_peticion', 0);
+    for (let i = 0; i < pedIndList.length; i += BATCH) {
+        const { error } = await supabase.from('gob_ccs_pedidos_internos').insert(pedIndList.slice(i, i + BATCH));
+        if (error) console.error(`❌ Error pedidos_internos batch ${i}:`, error.message);
+    }
+
+    return {
+        sectoresDerivaciones: secMesList.length,
+        sectoresArticulos: secArtList.length,
+        pedidosInternos: pedIndList.length,
+    };
+}
+
+export async function syncSoloDerivacionesYPedidos({ startYear = 2024 } = {}) {
+    const pool = await sql.connect(SQL_CONFIG);
+    const nowIso = new Date().toISOString();
+    try {
+        const [almRes, artRes, ultPrecioRes] = await Promise.all([
+            pool.request().query(`SELECT id, ISNULL(descripcion, nombre) AS nombre FROM FM_Almacenes`),
+            pool.request().query(`SELECT id, descripcion1, ISNULL(precioUnitario, 0) AS precioUnitario FROM FM_Articulos WITH (NOLOCK)`),
+            pool.request().query(`
+                SELECT idArticulo, precio FROM (
+                    SELECT l.idArticulo, la.importeUnitario AS precio,
+                           ROW_NUMBER() OVER (PARTITION BY l.idArticulo ORDER BY a.fecha DESC, la.Id DESC) AS rn
+                    FROM FC_Lineas_AlbaranesC la WITH (NOLOCK)
+                    INNER JOIN FC_AlbaranesC a WITH (NOLOCK) ON a.id = la.idAlbaran
+                    INNER JOIN FM_Lotes l WITH (NOLOCK) ON l.id = la.idLote
+                    WHERE la.importeUnitario > 0
+                ) t WHERE rn = 1
+            `)
+        ]);
+        const almMap = new Map();
+        for (const a of almRes.recordset) {
+            const nombre = String(a.nombre || `ALMACEN ${a.id}`).trim();
+            almMap.set(Number(a.id), { nombre, grupo: clasificarGrupoAlmacen(nombre) });
+        }
+        const artMap = new Map();
+        for (const a of artRes.recordset) {
+            artMap.set(Number(a.id), {
+                nombre: (a.descripcion1 ? String(a.descripcion1).trim() : `ARTÍCULO ${a.id}`) || `ARTÍCULO ${a.id}`,
+                precioFallback: Number(a.precioUnitario || 0),
+            });
+        }
+        const precioMap = new Map();
+        for (const p of ultPrecioRes.recordset) precioMap.set(Number(p.idArticulo), Number(p.precio || 0));
+        const getPrecio = (idArt) => precioMap.get(idArt) || artMap.get(idArt)?.precioFallback || 0;
+
+        return await syncDerivacionesYPedidosInterno(pool, almMap, artMap, getPrecio, startYear, nowIso);
+    } finally {
+        await pool.close();
+    }
+}
+
 if (process.argv[1] && process.argv[1].endsWith('sync_compras_consumo_stock.mjs')) {
-    syncComprasConsumoStock({ startYear: 2024 })
+    const runner = process.argv.includes('--only-derivaciones')
+        ? syncSoloDerivacionesYPedidos({ startYear: 2024 })
+        : syncComprasConsumoStock({ startYear: 2024 });
+    runner
         .then(() => process.exit(0))
         .catch(err => { console.error('❌ Error fatal:', err); process.exit(1); });
 }

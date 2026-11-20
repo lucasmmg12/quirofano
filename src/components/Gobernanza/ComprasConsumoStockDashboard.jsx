@@ -2,7 +2,8 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
     Package, ShoppingCart, Activity, AlertTriangle, TrendingUp, Building2,
     Layers, Search, Download, RefreshCw, Calendar, Filter, ArrowUpRight,
-    CheckCircle2, Clock, ShieldAlert, BarChart3, FileSpreadsheet, Boxes
+    CheckCircle2, Clock, ShieldAlert, BarChart3, FileSpreadsheet, Boxes,
+    Truck, ClipboardList, ChevronDown, ChevronUp
 } from 'lucide-react';
 import {
     ResponsiveContainer, ComposedChart, Bar, Line, XAxis, YAxis,
@@ -15,6 +16,7 @@ const MESES_CORTO = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'se
 
 const TABS = [
     { id: 'resumen', label: 'Resumen Integrado', icon: Layers },
+    { id: 'sectores', label: 'Derivaciones y Pedidos por Sector', icon: Truck },
     { id: 'compras', label: 'Compras y Proveedores', icon: ShoppingCart },
     { id: 'consumo', label: 'Consumo por Servicio', icon: Activity },
     { id: 'stock', label: 'Stock y Reposición', icon: Boxes },
@@ -89,6 +91,16 @@ export default function ComprasConsumoStockDashboard({
     const [proveedoresRows, setProveedoresRows] = useState([]);
     const [articulosComprasRows, setArticulosComprasRows] = useState([]);
 
+    // Derivaciones y Pedidos por Sector
+    const [derivacionesMensual, setDerivacionesMensual] = useState([]);
+    const [selectedSectorDeriv, setSelectedSectorDeriv] = useState('TODOS');
+    const [sectorSearch, setSectorSearch] = useState('');
+    const [sectorArticulos, setSectorArticulos] = useState([]);
+    const [loadingSectorArt, setLoadingSectorArt] = useState(false);
+    const [pedidosInternos, setPedidosInternos] = useState([]);
+    const [pedidoEstadoFilter, setPedidoEstadoFilter] = useState('TODOS'); // 'TODOS' | 'PENDIENTE' | 'SERVIDO'
+    const [expandedPedidoId, setExpandedPedidoId] = useState(null);
+
     const loadAllData = useCallback(async () => {
         setLoading(true);
         try {
@@ -126,7 +138,35 @@ export default function ComprasConsumoStockDashboard({
             }
             setStockRows(allStock);
 
-            // 3. RPCs de Proveedores y Curva ABC / Inflación para el período Telar
+            // 3. Derivaciones y Pedidos por Sector (mensual ~1000 filas + pedidos individuales del período Telar)
+            let allDer = [];
+            from = 0;
+            while (true) {
+                const { data, error } = await supabase
+                    .from('gob_ccs_sectores_derivaciones_mensual')
+                    .select('*')
+                    .order('ym', { ascending: true })
+                    .range(from, from + 999);
+                if (error) throw error;
+                if (!data || data.length === 0) break;
+                allDer = allDer.concat(data);
+                if (data.length < 1000) break;
+                from += 1000;
+            }
+            setDerivacionesMensual(allDer);
+
+            const desdeIso = `${effectiveDesde}T00:00:00-03:00`;
+            const hastaIso = `${effectiveHasta}T23:59:59-03:00`;
+            const { data: pedData } = await supabase
+                .from('gob_ccs_pedidos_internos')
+                .select('*')
+                .gte('fecha', desdeIso)
+                .lte('fecha', hastaIso)
+                .order('fecha', { ascending: false })
+                .limit(1000);
+            setPedidosInternos(pedData || []);
+
+            // 4. RPCs de Proveedores y Curva ABC / Inflación para el período Telar
             const [provRes, artRes] = await Promise.all([
                 supabase.rpc('get_gob_ccs_proveedores', {
                     p_desde_ym: desdeYM,
@@ -147,9 +187,107 @@ export default function ComprasConsumoStockDashboard({
         } finally {
             setLoading(false);
         }
-    }, [desdeYM, hastaYM, soloClinicos, addToast]);
+    }, [desdeYM, hastaYM, effectiveDesde, effectiveHasta, soloClinicos, addToast]);
 
     useEffect(() => { loadAllData(); }, [loadAllData]);
+
+    // Cargar detalle de artículos derivados/pedidos al cambiar el sector seleccionado o el período del Telar
+    useEffect(() => {
+        let cancelled = false;
+        async function fetchSectorArt() {
+            setLoadingSectorArt(true);
+            try {
+                const { data, error } = await supabase.rpc('get_gob_ccs_derivaciones_articulos', {
+                    p_desde_ym: desdeYM,
+                    p_hasta_ym: hastaYM,
+                    p_sector: selectedSectorDeriv === 'TODOS' ? null : selectedSectorDeriv,
+                });
+                if (!cancelled && !error) setSectorArticulos(data || []);
+            } finally {
+                if (!cancelled) setLoadingSectorArt(false);
+            }
+        }
+        fetchSectorArt();
+        return () => { cancelled = true; };
+    }, [desdeYM, hastaYM, selectedSectorDeriv]);
+
+    // Resumen de Derivaciones y Pedidos por Sector en el período activo del Telar (SIEMPRE incluye TODOS los sectores, ej. Contact Center)
+    const resumenSectoresPeriodo = useMemo(() => {
+        const bySec = new Map();
+        for (const r of derivacionesMensual) {
+            if (r.ym < desdeYM || r.ym > hastaYM) continue;
+            let b = bySec.get(r.sector);
+            if (!b) {
+                b = {
+                    sector: r.sector,
+                    grupo: r.grupo_almacen,
+                    pedidosCount: 0,
+                    pedidosServidos: 0,
+                    pedidosPendientes: 0,
+                    unidadesPedidas: 0,
+                    traspasosRecibidos: 0,
+                    unidadesDerivadas: 0,
+                    articulosDerivadosMax: 0,
+                    importeDerivado: 0,
+                    leadTimeSum: 0,
+                    leadTimeCnt: 0,
+                };
+                bySec.set(r.sector, b);
+            }
+            b.pedidosCount += Number(r.pedidos_count || 0);
+            b.pedidosServidos += Number(r.pedidos_servidos || 0);
+            b.pedidosPendientes += Number(r.pedidos_pendientes || 0);
+            b.unidadesPedidas += Number(r.unidades_pedidas || 0);
+            b.traspasosRecibidos += Number(r.traspasos_recibidos || 0);
+            b.unidadesDerivadas += Number(r.unidades_derivadas || 0);
+            b.articulosDerivadosMax = Math.max(b.articulosDerivadosMax, Number(r.articulos_derivados_unicos || 0));
+            b.importeDerivado += Number(r.importe_derivado || 0);
+            if (r.lead_time_prom_hs !== null && r.lead_time_prom_hs !== undefined) {
+                b.leadTimeSum += Number(r.lead_time_prom_hs);
+                b.leadTimeCnt += 1;
+            }
+        }
+        const q = sectorSearch.trim().toLowerCase();
+        return Array.from(bySec.values())
+            .filter(s => !q || s.sector.toLowerCase().includes(q) || s.grupo.toLowerCase().includes(q))
+            .map(s => ({
+                ...s,
+                leadTimeProm: s.leadTimeCnt > 0 ? Math.round((s.leadTimeSum / s.leadTimeCnt) * 10) / 10 : null,
+                cumplimientoPct: s.unidadesPedidas > 0 ? Math.min(200, Math.round((s.unidadesDerivadas / s.unidadesPedidas) * 1000) / 10) : null,
+            }))
+            .sort((a, b) => b.unidadesDerivadas - a.unidadesDerivadas || b.pedidosCount - a.pedidosCount);
+    }, [derivacionesMensual, desdeYM, hastaYM, sectorSearch]);
+
+    const pedidosFiltrados = useMemo(() => {
+        return pedidosInternos.filter(p => {
+            if (selectedSectorDeriv !== 'TODOS' && p.sector !== selectedSectorDeriv) return false;
+            if (pedidoEstadoFilter !== 'TODOS' && p.estado !== pedidoEstadoFilter) return false;
+            return true;
+        });
+    }, [pedidosInternos, selectedSectorDeriv, pedidoEstadoFilter]);
+
+    const handleExportSectorExcel = () => {
+        try {
+            const rows = sectorArticulos.map(a => ({
+                'Período Telar': `${effectiveDesde} a ${effectiveHasta}`,
+                'Sector': selectedSectorDeriv === 'TODOS' ? 'TODOS LOS SECTORES' : selectedSectorDeriv,
+                'Artículo': a.articulo,
+                'Cant. Pedidos': a.pedidos_count,
+                'Unidades Pedidas': a.unidades_pedidas,
+                'Traspasos Recibidos': a.traspasos_count,
+                'Unidades Derivadas': a.unidades_derivadas,
+                'Importe Derivado ($)': a.importe_derivado,
+            }));
+            const ws = XLSX.utils.json_to_sheet(rows);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'Derivaciones Sector');
+            const safeName = (selectedSectorDeriv || 'TODOS').replace(/[^a-zA-Z0-9_-]/g, '_');
+            XLSX.writeFile(wb, `Derivaciones_${safeName}_${effectiveDesde}_a_${effectiveHasta}.xlsx`);
+            addToast?.(`Excel exportado (${rows.length} artículos)`, 'success');
+        } catch (err) {
+            addToast?.('Error al exportar Excel del sector', 'error');
+        }
+    };
 
     // ─── FILTRO DE ALCANCE (CLÍNICOS/FARMACIA VS TODOS) ───
     const scopedMensual = useMemo(() => {
@@ -664,6 +802,296 @@ export default function ComprasConsumoStockDashboard({
                                             </td>
                                         </tr>
                                     ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ═══ 1B. DERIVACIONES Y PEDIDOS POR SECTOR (TODOS LOS SECTORES, EJ. CONTACT CENTER) ═══ */}
+            {activeTab === 'sectores' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                    {/* Barra de control rápida: Buscador de sector + resumen global */}
+                    <div style={{
+                        background: '#FFFFFF',
+                        border: '1px solid #E2E8F0',
+                        borderRadius: '12px',
+                        padding: '12px 16px',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        flexWrap: 'wrap',
+                        gap: '12px',
+                    }}>
+                        <div>
+                            <div style={{ fontSize: '0.92rem', fontWeight: 800, color: '#003B73' }}>
+                                Derivaciones (Traspasos) y Pedidos Internos por Sector — {effectiveDesde} al {effectiveHasta}
+                            </div>
+                            <div style={{ fontSize: '0.73rem', color: '#64748B' }}>
+                                Incluye <strong>todos los sectores</strong> (Clínicos, Contact Center, Administración, Recepción, Mantenimiento, Ropería, Cocina, etc.). Hacé clic en cualquier sector para auditar sus artículos y pedidos.
+                            </div>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                            <div style={{ position: 'relative' }}>
+                                <Search size={14} color="#94A3B8" style={{ position: 'absolute', left: '9px', top: '50%', transform: 'translateY(-50%)' }} />
+                                <input
+                                    type="text"
+                                    value={sectorSearch}
+                                    onChange={e => setSectorSearch(e.target.value)}
+                                    placeholder="Buscar sector (ej. Contact, UCI)..."
+                                    style={{ padding: '6px 10px 6px 28px', borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.76rem', width: '230px' }}
+                                />
+                            </div>
+                            {selectedSectorDeriv !== 'TODOS' && (
+                                <button
+                                    type="button"
+                                    onClick={() => setSelectedSectorDeriv('TODOS')}
+                                    style={{ padding: '6px 10px', borderRadius: '8px', border: '1px solid #0284C7', background: '#F0F9FF', color: '#003B73', fontSize: '0.74rem', fontWeight: 700, cursor: 'pointer' }}
+                                >
+                                    Ver Todos los Sectores
+                                </button>
+                            )}
+                            <button
+                                type="button"
+                                onClick={handleExportSectorExcel}
+                                style={{ padding: '6px 12px', borderRadius: '8px', border: 'none', background: '#059669', color: '#FFFFFF', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '5px' }}
+                            >
+                                <Download size={13} /> Excel ({selectedSectorDeriv === 'TODOS' ? 'Todos' : selectedSectorDeriv})
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Grilla 2 columnas: Ranking de Sectores (izq) | Detalle de Artículos Derivados al Sector Seleccionado (der) */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(420px, 1.15fr) minmax(420px, 1fr)', gap: '16px', alignItems: 'start' }}>
+                        {/* Tabla de todos los sectores */}
+                        <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '12px', overflow: 'hidden' }}>
+                            <div style={{ padding: '11px 14px', background: '#F8FAFC', borderBottom: '1px solid #E2E8F0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <span style={{ fontSize: '0.84rem', fontWeight: 800, color: '#003B73' }}>
+                                    Artículos Derivados y Pedidos por Sector ({resumenSectoresPeriodo.length} sectores)
+                                </span>
+                                <span style={{ fontSize: '0.7rem', color: '#64748B' }}>Clic en una fila para filtrar</span>
+                            </div>
+                            <div style={{ maxHeight: '520px', overflowY: 'auto' }}>
+                                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.73rem', fontVariantNumeric: 'tabular-nums' }}>
+                                    <thead style={{ position: 'sticky', top: 0, background: '#F1F5F9', zIndex: 2 }}>
+                                        <tr style={{ borderBottom: '1px solid #CBD5E1', color: '#475569' }}>
+                                            <th style={{ padding: '7px 10px', textAlign: 'left' }}>Sector</th>
+                                            <th style={{ padding: '7px 6px', textAlign: 'right' }}>Pedidos</th>
+                                            <th style={{ padding: '7px 6px', textAlign: 'right' }}>Pend.</th>
+                                            <th style={{ padding: '7px 6px', textAlign: 'right' }}>Unid. Pedidas</th>
+                                            <th style={{ padding: '7px 6px', textAlign: 'right' }}>Unid. Derivadas</th>
+                                            <th style={{ padding: '7px 8px', textAlign: 'right' }}>Importe ($)</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {resumenSectoresPeriodo.map((s, idx) => {
+                                            const isSelected = selectedSectorDeriv === s.sector;
+                                            return (
+                                                <tr
+                                                    key={s.sector}
+                                                    onClick={() => setSelectedSectorDeriv(isSelected ? 'TODOS' : s.sector)}
+                                                    style={{
+                                                        borderBottom: '1px solid #F1F5F9',
+                                                        background: isSelected ? '#DBEAFE' : (idx % 2 ? '#F8FAFC' : '#FFFFFF'),
+                                                        cursor: 'pointer',
+                                                    }}
+                                                >
+                                                    <td style={{ padding: '7px 10px', fontWeight: 700, color: isSelected ? '#003B73' : '#0F172A' }}>
+                                                        <div>{s.sector}</div>
+                                                        <div style={{ fontSize: '0.64rem', color: '#64748B', fontWeight: 600 }}>
+                                                            {s.grupo} · {fmtNum(s.traspasosRecibidos)} entregas{s.leadTimeProm !== null ? ` · ${s.leadTimeProm}h` : ''}
+                                                        </div>
+                                                    </td>
+                                                    <td style={{ padding: '7px 6px', textAlign: 'right', fontWeight: 700, color: '#334155' }}>{fmtNum(s.pedidosCount)}</td>
+                                                    <td style={{ padding: '7px 6px', textAlign: 'right' }}>
+                                                        {s.pedidosPendientes > 0 ? (
+                                                            <span style={{ background: '#FEF3C7', color: '#B45309', padding: '1px 6px', borderRadius: '999px', fontWeight: 800, fontSize: '0.68rem' }}>
+                                                                {s.pedidosPendientes}
+                                                            </span>
+                                                        ) : <span style={{ color: '#CBD5E1' }}>0</span>}
+                                                    </td>
+                                                    <td style={{ padding: '7px 6px', textAlign: 'right', color: '#64748B' }}>{fmtNum(s.unidadesPedidas)}</td>
+                                                    <td style={{ padding: '7px 6px', textAlign: 'right', fontWeight: 800, color: '#0284C7' }}>{fmtNum(s.unidadesDerivadas)}</td>
+                                                    <td style={{ padding: '7px 8px', textAlign: 'right', fontWeight: 700, color: '#003B73' }}>{fmtARS(s.importeDerivado)}</td>
+                                                </tr>
+                                            );
+                                        })}
+                                        {resumenSectoresPeriodo.length === 0 && (
+                                            <tr>
+                                                <td colSpan={6} style={{ padding: '20px', textAlign: 'center', color: '#94A3B8' }}>
+                                                    Sin derivaciones ni pedidos registrados para este período / búsqueda.
+                                                </td>
+                                            </tr>
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        {/* Detalle de artículos derivados al sector seleccionado */}
+                        <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '12px', overflow: 'hidden' }}>
+                            <div style={{ padding: '11px 14px', background: '#EFF6FF', borderBottom: '1px solid #BFDBFE', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <span style={{ fontSize: '0.84rem', fontWeight: 800, color: '#003B73' }}>
+                                    Artículos Derivados → {selectedSectorDeriv === 'TODOS' ? 'Todos los Sectores (Top 200)' : selectedSectorDeriv}
+                                </span>
+                                <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#0284C7' }}>
+                                    {loadingSectorArt ? 'Cargando...' : `${fmtNum(sectorArticulos.length)} artículos`}
+                                </span>
+                            </div>
+                            <div style={{ maxHeight: '520px', overflowY: 'auto' }}>
+                                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.73rem', fontVariantNumeric: 'tabular-nums' }}>
+                                    <thead style={{ position: 'sticky', top: 0, background: '#F1F5F9', zIndex: 2 }}>
+                                        <tr style={{ borderBottom: '1px solid #CBD5E1', color: '#475569' }}>
+                                            <th style={{ padding: '7px 10px', textAlign: 'left' }}>Artículo</th>
+                                            <th style={{ padding: '7px 6px', textAlign: 'right' }}>Pedida</th>
+                                            <th style={{ padding: '7px 6px', textAlign: 'right' }}>Derivada</th>
+                                            <th style={{ padding: '7px 10px', textAlign: 'right' }}>Importe ($)</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {sectorArticulos.map((a, idx) => (
+                                            <tr key={a.id_articulo} style={{ borderBottom: '1px solid #F1F5F9', background: idx % 2 ? '#F8FAFC' : '#FFFFFF' }}>
+                                                <td style={{ padding: '7px 10px', fontWeight: 600, color: '#0F172A' }}>{a.articulo}</td>
+                                                <td style={{ padding: '7px 6px', textAlign: 'right', color: '#64748B' }}>{fmtNum(a.unidades_pedidas)}</td>
+                                                <td style={{ padding: '7px 6px', textAlign: 'right', fontWeight: 800, color: '#0284C7' }}>{fmtNum(a.unidades_derivadas)}</td>
+                                                <td style={{ padding: '7px 10px', textAlign: 'right', fontWeight: 700, color: '#003B73' }}>{fmtARS(a.importe_derivado)}</td>
+                                            </tr>
+                                        ))}
+                                        {!loadingSectorArt && sectorArticulos.length === 0 && (
+                                            <tr>
+                                                <td colSpan={4} style={{ padding: '20px', textAlign: 'center', color: '#94A3B8' }}>
+                                                    No hay artículos derivados en el período seleccionado.
+                                                </td>
+                                            </tr>
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Monitor de Pedidos Internos Individuales (FM_PeticionesTraspaso) */}
+                    <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '12px', overflow: 'hidden' }}>
+                        <div style={{
+                            padding: '12px 16px',
+                            background: '#F8FAFC',
+                            borderBottom: '1px solid #E2E8F0',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            flexWrap: 'wrap',
+                            gap: '10px',
+                        }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <ClipboardList size={16} color="#003B73" />
+                                <span style={{ fontSize: '0.88rem', fontWeight: 800, color: '#003B73' }}>
+                                    Pedidos Realizados por {selectedSectorDeriv === 'TODOS' ? 'Todos los Sectores' : selectedSectorDeriv} ({fmtNum(pedidosFiltrados.length)})
+                                </span>
+                            </div>
+                            <div style={{ display: 'inline-flex', background: '#E2E8F0', padding: '3px', borderRadius: '8px', gap: '3px' }}>
+                                {[
+                                    { id: 'TODOS', label: 'Todos' },
+                                    { id: 'PENDIENTE', label: 'Pendientes' },
+                                    { id: 'SERVIDO', label: 'Servidos' },
+                                ].map(st => (
+                                    <button
+                                        key={st.id}
+                                        type="button"
+                                        onClick={() => setPedidoEstadoFilter(st.id)}
+                                        style={{
+                                            padding: '4px 10px',
+                                            borderRadius: '6px',
+                                            border: 'none',
+                                            background: pedidoEstadoFilter === st.id ? '#FFFFFF' : 'transparent',
+                                            color: pedidoEstadoFilter === st.id ? '#003B73' : '#475569',
+                                            fontWeight: 700,
+                                            fontSize: '0.73rem',
+                                            cursor: 'pointer',
+                                        }}
+                                    >
+                                        {st.label}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div style={{ maxHeight: '460px', overflowY: 'auto' }}>
+                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.74rem', fontVariantNumeric: 'tabular-nums' }}>
+                                <thead style={{ position: 'sticky', top: 0, background: '#F1F5F9', zIndex: 2 }}>
+                                    <tr style={{ borderBottom: '1px solid #CBD5E1', color: '#475569' }}>
+                                        <th style={{ padding: '7px 10px', textAlign: 'left', width: '74px' }}># Pedido</th>
+                                        <th style={{ padding: '7px 8px', textAlign: 'left' }}>Fecha Pedido</th>
+                                        <th style={{ padding: '7px 8px', textAlign: 'left' }}>Sector Solicitante</th>
+                                        <th style={{ padding: '7px 8px', textAlign: 'left' }}>Solicitado a</th>
+                                        <th style={{ padding: '7px 8px', textAlign: 'center' }}>Estado</th>
+                                        <th style={{ padding: '7px 8px', textAlign: 'right' }}>Ítems</th>
+                                        <th style={{ padding: '7px 8px', textAlign: 'right' }}>Unid. Pedidas</th>
+                                        <th style={{ padding: '7px 10px', textAlign: 'right' }}>Unid. Entregadas</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {pedidosFiltrados.slice(0, 150).map((p, idx) => {
+                                        const isOpen = expandedPedidoId === p.id_peticion;
+                                        const items = Array.isArray(p.detalle_articulos) ? p.detalle_articulos : [];
+                                        return (
+                                            <React.Fragment key={p.id_peticion}>
+                                                <tr
+                                                    onClick={() => setExpandedPedidoId(isOpen ? null : p.id_peticion)}
+                                                    style={{ borderBottom: '1px solid #F1F5F9', background: isOpen ? '#EFF6FF' : (idx % 2 ? '#F8FAFC' : '#FFFFFF'), cursor: 'pointer' }}
+                                                >
+                                                    <td style={{ padding: '7px 10px', fontWeight: 800, color: '#003B73', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                        {isOpen ? <ChevronUp size={13} /> : <ChevronDown size={13} />} #{p.id_peticion}
+                                                    </td>
+                                                    <td style={{ padding: '7px 8px', color: '#475569' }}>
+                                                        {new Date(p.fecha).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })}
+                                                    </td>
+                                                    <td style={{ padding: '7px 8px', fontWeight: 700, color: '#0F172A' }}>{p.sector}</td>
+                                                    <td style={{ padding: '7px 8px', color: '#475569' }}>{p.almacen_origen}</td>
+                                                    <td style={{ padding: '7px 8px', textAlign: 'center' }}>
+                                                        <span style={{
+                                                            fontSize: '0.67rem', fontWeight: 800, padding: '2px 7px', borderRadius: '999px',
+                                                            background: p.estado === 'PENDIENTE' ? '#FEF3C7' : '#ECFDF5',
+                                                            color: p.estado === 'PENDIENTE' ? '#B45309' : '#047857',
+                                                        }}>
+                                                            {p.estado}
+                                                        </span>
+                                                    </td>
+                                                    <td style={{ padding: '7px 8px', textAlign: 'right', fontWeight: 700 }}>{fmtNum(p.items_count)}</td>
+                                                    <td style={{ padding: '7px 8px', textAlign: 'right', fontWeight: 700, color: '#334155' }}>{fmtNum(p.unidades_pedidas)}</td>
+                                                    <td style={{ padding: '7px 10px', textAlign: 'right', fontWeight: 800, color: '#0284C7' }}>{fmtNum(p.unidades_entregadas)}</td>
+                                                </tr>
+                                                {isOpen && (
+                                                    <tr style={{ background: '#F8FAFC', borderBottom: '1px solid #CBD5E1' }}>
+                                                        <td colSpan={8} style={{ padding: '10px 18px' }}>
+                                                            {p.observaciones && (
+                                                                <div style={{ fontSize: '0.72rem', color: '#475569', marginBottom: '6px' }}>
+                                                                    <strong>Observaciones:</strong> {p.observaciones}
+                                                                </div>
+                                                            )}
+                                                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(290px, 1fr))', gap: '6px' }}>
+                                                                {items.map((it, iIdx) => (
+                                                                    <div key={`${p.id_peticion}-${iIdx}`} style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '6px', padding: '5px 8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.71rem' }}>
+                                                                        <span style={{ fontWeight: 600, color: '#1E293B', marginRight: '8px' }}>{it.articulo}</span>
+                                                                        <span style={{ whiteSpace: 'nowrap', color: '#0284C7', fontWeight: 800 }}>
+                                                                            Ped: {fmtNum(it.pedida)} · Ent: {fmtNum(it.entregada)}
+                                                                        </span>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                )}
+                                            </React.Fragment>
+                                        );
+                                    })}
+                                    {pedidosFiltrados.length === 0 && (
+                                        <tr>
+                                            <td colSpan={8} style={{ padding: '20px', textAlign: 'center', color: '#94A3B8' }}>
+                                                No se registran pedidos internos para este sector en el período del Telar.
+                                            </td>
+                                        </tr>
+                                    )}
                                 </tbody>
                             </table>
                         </div>
