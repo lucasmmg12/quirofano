@@ -30,6 +30,7 @@ import { syncCirugiasConversion } from './sync_guardia_cirugias_conversion.mjs';
 import { syncGuardiaInternado } from './sync_guardia_internado.mjs';
 import { getDxIAnalytics, getDxICasosNominales } from './sync_dxi.mjs';
 import { syncInternacionGobernanza } from './sync_internacion_gobernanza.mjs';
+import { syncComprasConsumoStock } from './sync_compras_consumo_stock.mjs';
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || 'https://hakysnqiryimxbwdslwe.supabase.co';
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY;
@@ -574,6 +575,17 @@ export async function runDailySync({ skipDoctors = false } = {}) {
         log('Paso 12 completado: Tablero de Internación actualizado.');
     } catch (eInt) {
         log(`⚠️ Error no bloqueante en Paso 12 (Internación): ${eInt.message}`);
+    }
+
+    // ──────────────────────────────────────────────────────────
+    // PASO 13: Tablero Integrado Compras - Consumo - Stock (2024+)
+    // ──────────────────────────────────────────────────────────
+    log('PASO 13/13: Sincronizando Tablero Integrado (Compras, Consumo y Stock)...');
+    try {
+        await syncComprasConsumoStock({ startYear: 2024 });
+        log('Paso 13 completado: Tablero Compras-Consumo-Stock actualizado.');
+    } catch (eCcs) {
+        log(`⚠️ Error no bloqueante en Paso 13 (Compras-Consumo-Stock): ${eCcs.message}`);
     }
 
     const elapsed = ((Date.now() - t0) / 1000).toFixed(1);

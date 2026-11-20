@@ -89,6 +89,17 @@ export const SECTORES_CONFIG = [
         descripcion: 'Neonatología, Pediatría (Piso y UTIP), Internado Adultos, Terapia Adultos, Hospital de Día y Matrices de Ocupación (2021+)',
         activo: true,
         badge: 'Nuevo'
+    },
+    { 
+        id: 'COMPRAS_STOCK', 
+        label: 'Compras · Consumo · Stock', 
+        shortLabel: 'Compras & Stock',
+        icon: '📦', 
+        camasDefault: 0,
+        serviciosSalus: ['COMPRAS', 'FARMACIA', 'QUIROFANO', 'INTERNADO', 'UCI'],
+        descripcion: 'Tablero Integrado de Compras, Proveedores, Consumos por Servicio, Cobertura de Stock y Auditoría (2024+)',
+        activo: true,
+        badge: 'Nuevo'
     }
 ];
 

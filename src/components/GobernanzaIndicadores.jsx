@@ -7,6 +7,7 @@ import DiasOcupacionDashboard from './Gobernanza/DiasOcupacionDashboard';
 import EpidemiologiaDashboard from './Gobernanza/EpidemiologiaDashboard';
 import DiagnosticoImagenesDashboard from './Gobernanza/DiagnosticoImagenesDashboard';
 import InternacionDashboard from './Gobernanza/InternacionDashboard';
+import ComprasConsumoStockDashboard from './Gobernanza/ComprasConsumoStockDashboard';
 
 function AutoExpandTextarea({ value, onChange, placeholder, style, minHeight = 80, ...props }) {
     const textareaRef = useRef(null);
@@ -76,7 +77,13 @@ export default function GobernanzaIndicadores({ proyectoId, currentUser, proyect
         lowerName.includes('internación') ||
         lowerName.includes('internado')
     );
-    const hasInteractiveDashboard = isGuardia || isQuirofano || isUci || isEpidemiologia || isDxi || isInternacion;
+    const isComprasStock = Boolean(
+        lowerName.includes('compra') ||
+        lowerName.includes('stock') ||
+        lowerName.includes('farmacia') ||
+        lowerName.includes('consumo')
+    );
+    const hasInteractiveDashboard = isGuardia || isQuirofano || isUci || isEpidemiologia || isDxi || isInternacion || isComprasStock;
     const [viewMode, setViewMode] = useState('especificaciones');
     const [indicadores, setIndicadores] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -320,6 +327,10 @@ export default function GobernanzaIndicadores({ proyectoId, currentUser, proyect
 
             {isInternacion && viewMode === 'graficos' && (
                 <InternacionDashboard />
+            )}
+
+            {isComprasStock && viewMode === 'graficos' && (
+                <ComprasConsumoStockDashboard />
             )}
 
             {/* Vista 2: Catálogo de Especificaciones Técnicas y SQL */}

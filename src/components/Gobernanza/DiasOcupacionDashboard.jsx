@@ -37,6 +37,7 @@ import QuirofanoDashboard from './QuirofanoDashboard';
 import EpidemiologiaDashboard from './EpidemiologiaDashboard';
 import DiagnosticoImagenesDashboard from './DiagnosticoImagenesDashboard';
 import InternacionDashboard from './InternacionDashboard';
+import ComprasConsumoStockDashboard from './ComprasConsumoStockDashboard';
 
 const SIDEBAR_INDICATOR_GROUPS = [
     {
@@ -778,7 +779,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
     }, [sectorId, fechaDesde, fechaHasta]);
 
     const fetchData = async () => {
-        if (sectorId === 'GUARDIA' || sectorId === 'QUIROFANO' || sectorId === 'EPIDEMIOLOGIA' || sectorId === 'DXI' || sectorId === 'INTERNACION') {
+        if (sectorId === 'GUARDIA' || sectorId === 'QUIROFANO' || sectorId === 'EPIDEMIOLOGIA' || sectorId === 'DXI' || sectorId === 'INTERNACION' || sectorId === 'COMPRAS_STOCK') {
             setLoading(false);
             setLoadingPeticiones(false);
             return;
@@ -1628,7 +1629,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
         // 2. Sincronizar contexto activo para que Beto IA responda exactamente con los mismos números del dashboard
         if (typeof window !== 'undefined') {
             window.__telar_active_sector = sectorId;
-            const isBedOccupancySector = !['GUARDIA', 'QUIROFANO', 'EPIDEMIOLOGIA', 'DXI', 'INTERNACION'].includes(sectorId);
+            const isBedOccupancySector = !['GUARDIA', 'QUIROFANO', 'EPIDEMIOLOGIA', 'DXI', 'INTERNACION', 'COMPRAS_STOCK'].includes(sectorId);
 
             if (isBedOccupancySector) {
                 const uciPayload = {
@@ -1671,6 +1672,8 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                 window.__indicadores_active_context = window.__epidemiologia_active_context;
             } else if (sectorId === 'INTERNACION' && window.__internacion_active_context) {
                 window.__indicadores_active_context = window.__internacion_active_context;
+            } else if (sectorId === 'COMPRAS_STOCK' && window.__ccs_active_context) {
+                window.__indicadores_active_context = window.__ccs_active_context;
             }
         }
 
@@ -4199,13 +4202,72 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                     </button>
                                 </div>
                             )}
+
+                            {/* ── SECTOR COMPRAS · CONSUMO · STOCK ── */}
+                            {!isUciOnly && (
+                                <div style={{
+                                    borderRadius: '10px',
+                                    border: `1.5px solid ${sectorId === 'COMPRAS_STOCK' ? '#0284C7' : '#E2E8F0'}`,
+                                    background: '#FFFFFF',
+                                    overflow: 'hidden',
+                                    boxShadow: sectorId === 'COMPRAS_STOCK' ? '0 4px 12px -2px rgba(2, 132, 199, 0.16)' : '0 1px 2px rgba(0,0,0,0.03)',
+                                    transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)'
+                                }}>
+                                    <button
+                                        type="button"
+                                        onClick={() => handleSelectSector('COMPRAS_STOCK')}
+                                        style={{
+                                            width: '100%',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'space-between',
+                                            padding: '10px 12px',
+                                            background: sectorId === 'COMPRAS_STOCK' ? '#F0F9FF' : '#F8FAFC',
+                                            border: 'none',
+                                            cursor: 'pointer',
+                                            transition: 'background 0.15s ease'
+                                        }}
+                                        onMouseEnter={e => { if (sectorId !== 'COMPRAS_STOCK') e.currentTarget.style.background = '#F1F5F9'; }}
+                                        onMouseLeave={e => { if (sectorId !== 'COMPRAS_STOCK') e.currentTarget.style.background = '#F8FAFC'; }}
+                                    >
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                            <span style={{ fontSize: '1.1rem' }}>📦</span>
+                                            <div style={{ textAlign: 'left' }}>
+                                                <div style={{ fontSize: '0.8rem', fontWeight: 700, color: sectorId === 'COMPRAS_STOCK' ? '#003B73' : '#334155' }}>
+                                                    Compras · Stock
+                                                </div>
+                                                <div style={{ fontSize: '0.65rem', color: '#64748B' }}>
+                                                    Compras, Consumo, Stock (2024+)
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <span style={{
+                                            fontSize: '0.6rem',
+                                            fontWeight: 800,
+                                            padding: '2px 6px',
+                                            borderRadius: '999px',
+                                            background: sectorId === 'COMPRAS_STOCK' ? '#0284C7' : '#E0F2FE',
+                                            color: sectorId === 'COMPRAS_STOCK' ? '#FFFFFF' : '#0369A1',
+                                        }}>
+                                            Nuevo
+                                        </span>
+                                    </button>
+                                </div>
+                            )}
                         </div>
                     </div>
                 )}
 
                 {/* LIENZO PRINCIPAL DEL TELAR (MODULAR) */}
                 <div style={{ flex: 1, overflowY: 'auto', padding: '24px' }}>
-                    {sectorId === 'INTERNACION' ? (
+                    {sectorId === 'COMPRAS_STOCK' ? (
+                        <ComprasConsumoStockDashboard
+                            fechaDesde={fechaDesde}
+                            fechaHasta={fechaHasta}
+                            datePresetMode={datePresetMode}
+                            addToast={addToast}
+                        />
+                    ) : sectorId === 'INTERNACION' ? (
                         <InternacionDashboard
                             fechaDesde={fechaDesde}
                             fechaHasta={fechaHasta}
