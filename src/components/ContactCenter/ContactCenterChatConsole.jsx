@@ -4458,29 +4458,29 @@ export default function ContactCenterChatConsole({
                             }}
                             title="Pacientes esperando atención (cola general sin asignar)"
                             style={{
-                                padding: '6px 8px',
+                                padding: '7px 10px',
                                 borderRadius: '8px',
-                                fontSize: '0.73rem',
+                                fontSize: '0.74rem',
                                 fontWeight: 700,
-                                border: filterTab === 'sin_asignar' ? 'none' : `1px solid ${themeCardBorder}`,
+                                border: filterTab === 'sin_asignar' ? '1px solid transparent' : '1px solid #CBD5E1',
                                 cursor: 'pointer',
-                                background: filterTab === 'sin_asignar' ? (ccTheme.accentColor || '#0284C7') : themeCardBg,
+                                background: filterTab === 'sin_asignar' ? (ccTheme.accentColor || '#0284C7') : (ccTheme.isDark ? '#1E293B' : '#FFFFFF'),
                                 color: filterTab === 'sin_asignar' ? '#FFFFFF' : themeCardText,
-                                boxShadow: filterTab === 'sin_asignar' ? '0 2px 6px rgba(2,132,199,0.3)' : 'none',
+                                boxShadow: filterTab === 'sin_asignar' ? '0 2px 6px rgba(2,132,199,0.32)' : '0 1px 2px rgba(0,0,0,0.03)',
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'space-between',
                                 transition: 'all 0.15s ease'
                             }}
                         >
-                            <span style={{ display: 'flex', alignItems: 'center', gap: '4px', whiteSpace: 'nowrap' }}>
-                                <Clock size={12} /> Sin asignar
+                            <span style={{ display: 'flex', alignItems: 'center', gap: '5px', whiteSpace: 'nowrap' }}>
+                                <Clock size={13} /> Sin asignar
                             </span>
                             <span style={{
                                 fontSize: '0.66rem',
                                 fontWeight: 800,
-                                padding: '1px 6px',
-                                borderRadius: '10px',
+                                padding: '2px 8px',
+                                borderRadius: '9999px',
                                 background: filterTab === 'sin_asignar' ? '#FFFFFF' : '#FEF3C7',
                                 color: filterTab === 'sin_asignar' ? '#0284C7' : '#B45309',
                                 border: filterTab === 'sin_asignar' ? 'none' : '1px solid #FDE68A'
@@ -4502,31 +4502,32 @@ export default function ContactCenterChatConsole({
                             }}
                             title="Mis conversaciones asignadas activas"
                             style={{
-                                padding: '6px 8px',
+                                padding: '7px 10px',
                                 borderRadius: '8px',
-                                fontSize: '0.73rem',
+                                fontSize: '0.74rem',
                                 fontWeight: 700,
-                                border: filterTab === 'asignadas_mi' ? 'none' : `1px solid ${themeCardBorder}`,
+                                border: filterTab === 'asignadas_mi' ? '1px solid transparent' : '1px solid #CBD5E1',
                                 cursor: 'pointer',
-                                background: filterTab === 'asignadas_mi' ? (ccTheme.accentColor || '#0284C7') : themeCardBg,
+                                background: filterTab === 'asignadas_mi' ? (ccTheme.accentColor || '#0284C7') : (ccTheme.isDark ? '#1E293B' : '#FFFFFF'),
                                 color: filterTab === 'asignadas_mi' ? '#FFFFFF' : themeCardText,
-                                boxShadow: filterTab === 'asignadas_mi' ? '0 2px 6px rgba(2,132,199,0.3)' : 'none',
+                                boxShadow: filterTab === 'asignadas_mi' ? '0 2px 6px rgba(2,132,199,0.32)' : '0 1px 2px rgba(0,0,0,0.03)',
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'space-between',
                                 transition: 'all 0.15s ease'
                             }}
                         >
-                            <span style={{ display: 'flex', alignItems: 'center', gap: '4px', whiteSpace: 'nowrap' }}>
-                                <User size={12} /> Mis chats
+                            <span style={{ display: 'flex', alignItems: 'center', gap: '5px', whiteSpace: 'nowrap' }}>
+                                <User size={13} /> Mis chats
                             </span>
                             <span style={{
                                 fontSize: '0.66rem',
                                 fontWeight: 800,
-                                padding: '1px 6px',
-                                borderRadius: '10px',
+                                padding: '2px 8px',
+                                borderRadius: '9999px',
                                 background: filterTab === 'asignadas_mi' ? '#FFFFFF' : '#E0F2FE',
-                                color: filterTab === 'asignadas_mi' ? '#0284C7' : '#0369A1'
+                                color: filterTab === 'asignadas_mi' ? '#0284C7' : '#0369A1',
+                                border: filterTab === 'asignadas_mi' ? 'none' : '1px solid #BAE6FD'
                             }}>
                                 {chats.filter(c => {
                                     const a = (c.assignedTo || '').toLowerCase();
@@ -4548,31 +4549,32 @@ export default function ContactCenterChatConsole({
                             }}
                             title="Conversaciones en triage automático por el chatbot"
                             style={{
-                                padding: '5px 6px',
-                                borderRadius: '7px',
-                                fontSize: '0.70rem',
+                                padding: '6px 8px',
+                                borderRadius: '8px',
+                                fontSize: '0.72rem',
                                 fontWeight: 700,
-                                border: filterTab === 'bot' ? 'none' : `1px solid ${themeCardBorder}`,
+                                border: filterTab === 'bot' ? '1px solid transparent' : '1px solid #CBD5E1',
                                 cursor: 'pointer',
-                                background: filterTab === 'bot' ? '#7C3AED' : themeCardBg,
+                                background: filterTab === 'bot' ? '#7C3AED' : (ccTheme.isDark ? '#1E293B' : '#FFFFFF'),
                                 color: filterTab === 'bot' ? '#FFFFFF' : themeCardText,
-                                boxShadow: filterTab === 'bot' ? '0 2px 4px rgba(124, 58, 237, 0.25)' : 'none',
+                                boxShadow: filterTab === 'bot' ? '0 2px 5px rgba(124, 58, 237, 0.28)' : '0 1px 2px rgba(0,0,0,0.03)',
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
-                                gap: '4px',
+                                gap: '5px',
                                 transition: 'all 0.15s ease'
                             }}
                         >
-                            <Bot size={12} />
+                            <Bot size={13} />
                             <span>Bot</span>
                             <span style={{
-                                fontSize: '0.62rem',
+                                fontSize: '0.64rem',
                                 fontWeight: 800,
-                                padding: '1px 5px',
-                                borderRadius: '8px',
+                                padding: '1px 6px',
+                                borderRadius: '9999px',
                                 background: filterTab === 'bot' ? '#FFFFFF' : '#F3E8FF',
-                                color: filterTab === 'bot' ? '#7C3AED' : '#6B21A8'
+                                color: filterTab === 'bot' ? '#7C3AED' : '#6B21A8',
+                                border: filterTab === 'bot' ? 'none' : '1px solid #E9D5FF'
                             }}>
                                 {chats.filter(c => (c.status === 'bot' || (c.botActive && c.status !== 'sin_asignar' && !c.assignedTo)) && !isClosedOrArchived(c)).length}
                             </span>
@@ -4591,31 +4593,32 @@ export default function ContactCenterChatConsole({
                             }}
                             title="Conversaciones asignadas a otras agentes"
                             style={{
-                                padding: '5px 6px',
-                                borderRadius: '7px',
-                                fontSize: '0.70rem',
+                                padding: '6px 8px',
+                                borderRadius: '8px',
+                                fontSize: '0.72rem',
                                 fontWeight: 700,
-                                border: filterTab === 'asignadas_otros' ? 'none' : `1px solid ${themeCardBorder}`,
+                                border: filterTab === 'asignadas_otros' ? '1px solid transparent' : '1px solid #CBD5E1',
                                 cursor: 'pointer',
-                                background: filterTab === 'asignadas_otros' ? (ccTheme.accentColor || '#0284C7') : themeCardBg,
+                                background: filterTab === 'asignadas_otros' ? (ccTheme.accentColor || '#0284C7') : (ccTheme.isDark ? '#1E293B' : '#FFFFFF'),
                                 color: filterTab === 'asignadas_otros' ? '#FFFFFF' : themeCardText,
-                                boxShadow: filterTab === 'asignadas_otros' ? '0 2px 4px rgba(2,132,199,0.25)' : 'none',
+                                boxShadow: filterTab === 'asignadas_otros' ? '0 2px 5px rgba(2,132,199,0.28)' : '0 1px 2px rgba(0,0,0,0.03)',
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
-                                gap: '4px',
+                                gap: '5px',
                                 transition: 'all 0.15s ease'
                             }}
                         >
-                            <Users size={12} />
+                            <Users size={13} />
                             <span>Otras</span>
                             <span style={{
-                                fontSize: '0.62rem',
+                                fontSize: '0.64rem',
                                 fontWeight: 800,
-                                padding: '1px 5px',
-                                borderRadius: '8px',
+                                padding: '1px 6px',
+                                borderRadius: '9999px',
                                 background: filterTab === 'asignadas_otros' ? '#FFFFFF' : '#F1F5F9',
-                                color: filterTab === 'asignadas_otros' ? '#0284C7' : '#475569'
+                                color: filterTab === 'asignadas_otros' ? '#0284C7' : '#475569',
+                                border: filterTab === 'asignadas_otros' ? 'none' : '1px solid #E2E8F0'
                             }}>
                                 {chats.filter(c => {
                                     const a = (c.assignedTo || '').toLowerCase();
@@ -4641,23 +4644,23 @@ export default function ContactCenterChatConsole({
                             }}
                             title="Historial de conversaciones finalizadas y resueltas"
                             style={{
-                                padding: '5px 6px',
-                                borderRadius: '7px',
-                                fontSize: '0.70rem',
+                                padding: '6px 8px',
+                                borderRadius: '8px',
+                                fontSize: '0.72rem',
                                 fontWeight: 700,
-                                border: filterTab === 'finalizados' ? 'none' : `1px solid ${themeCardBorder}`,
+                                border: filterTab === 'finalizados' ? '1px solid transparent' : '1px solid #CBD5E1',
                                 cursor: 'pointer',
-                                background: filterTab === 'finalizados' ? '#059669' : themeCardBg,
+                                background: filterTab === 'finalizados' ? '#059669' : (ccTheme.isDark ? '#1E293B' : '#FFFFFF'),
                                 color: filterTab === 'finalizados' ? '#FFFFFF' : themeCardText,
-                                boxShadow: filterTab === 'finalizados' ? '0 2px 4px rgba(5,150,105,0.25)' : 'none',
+                                boxShadow: filterTab === 'finalizados' ? '0 2px 5px rgba(5,150,105,0.28)' : '0 1px 2px rgba(0,0,0,0.03)',
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
-                                gap: '4px',
+                                gap: '5px',
                                 transition: 'all 0.15s ease'
                             }}
                         >
-                            <Archive size={12} />
+                            <Archive size={13} />
                             <span>Finalizados</span>
                         </button>
                     </div>
@@ -5889,7 +5892,7 @@ export default function ContactCenterChatConsole({
                                                 borderRadius: '6px',
                                                 border: 'none',
                                                 background: 'transparent',
-                                                color: '#1E293B',
+                                                color: isNote ? '#78350F' : (isPatient ? '#0F172A' : '#1E3A8A'),
                                                 fontSize: '0.74rem',
                                                 fontWeight: 600,
                                                 cursor: 'pointer',
@@ -6673,10 +6676,10 @@ export default function ContactCenterChatConsole({
                                     <div 
                                         style={{
                                             position: 'relative',
-                                            background: isNote ? '#FFF7ED' : (isPatient ? '#DCFCE7' : '#FFFFFF'),
-                                            border: isNote ? '1px solid #FED7AA' : '1px solid #E2E8F0',
+                                            background: isNote ? '#FFFBEB' : (isPatient ? '#FFFFFF' : '#EFF6FF'),
+                                            border: isNote ? '1px solid #FCD34D' : (isPatient ? '1px solid #E2E8F0' : '1px solid #BFDBFE'),
                                             padding: '10px 14px',
-                                            borderRadius: isPatient ? '4px 16px 16px 16px' : '16px 4px 16px 16px',
+                                            borderRadius: isPatient ? '4px 14px 14px 14px' : '14px 4px 14px 14px',
                                             boxShadow: '0 2px 4px rgba(0,0,0,0.03)',
                                             color: '#1E293B',
                                             fontSize: '0.86rem',

@@ -219,13 +219,13 @@
 }
 
 .sidebar__item--active {
-    background: rgba(255, 255, 255, 0.1);
+    background: rgba(56, 189, 248, 0.16);
     color: #ffffff;
     font-weight: 600;
 }
 
 .sidebar__item--active:hover {
-    background: rgba(255, 255, 255, 0.15);
+    background: rgba(56, 189, 248, 0.22);
 }
 
 .sidebar__item-icon {
@@ -3928,12 +3928,12 @@ select:not(.no-micro):focus {
     left: 0;
     top: 50%;
     transform: translateY(-50%);
-    width: 3px;
-    height: 60%;
-    background: linear-gradient(180deg, #818CF8, #6366F1);
+    width: 3.5px;
+    height: 65%;
+    background: linear-gradient(180deg, #38BDF8, #0284C7);
     border-radius: 0 4px 4px 0;
     animation: sidebar-indicator-slide 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    box-shadow: 0 0 8px rgba(99, 102, 241, 0.4);
+    box-shadow: 0 0 10px rgba(56, 189, 248, 0.5);
 }
 
 @keyframes sidebar-indicator-slide {

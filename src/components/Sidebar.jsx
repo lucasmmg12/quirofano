@@ -267,10 +267,10 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
                     style={{
                         display: 'flex', alignItems: 'center', gap: '10px',
                         width: '100%', padding: '10px 16px', border: 'none',
-                        background: isGroupActive ? 'rgba(255, 255, 255, 0.1)' : 'transparent',
-                        color: isGroupActive ? '#ffffff' : 'rgba(255, 255, 255, 0.7)',
+                        background: isGroupActive ? 'rgba(56, 189, 248, 0.14)' : 'transparent',
+                        color: isGroupActive ? '#ffffff' : 'rgba(255, 255, 255, 0.75)',
                         cursor: 'pointer', borderRadius: 'var(--radius-md, 8px)',
-                        fontSize: '0.82rem', fontWeight: 700, transition: 'all 0.15s',
+                        fontSize: '0.82rem', fontWeight: 700, transition: 'all 0.15s ease',
                         textAlign: 'left',
                     }}
                 >
@@ -312,11 +312,12 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
                                             <span style={{
                                                 background: item.badgeColor || '#059669',
                                                 color: '#FFFFFF',
-                                                fontSize: '0.58rem',
-                                                padding: '1px 5px',
-                                                borderRadius: '8px',
+                                                fontSize: '0.60rem',
+                                                padding: '2px 7px',
+                                                borderRadius: '9999px',
                                                 fontWeight: 800,
-                                                marginRight: '6px'
+                                                marginRight: '6px',
+                                                letterSpacing: '0.02em'
                                             }}>
                                                 {item.badge}
                                             </span>

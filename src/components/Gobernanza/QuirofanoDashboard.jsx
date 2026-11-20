@@ -3711,8 +3711,17 @@ export default function QuirofanoDashboard({
 
                 {/* KPI CARDS ENCABEZADO REACTIVOS AL PERÍODO Y AL ÁMBITO */}
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '14px' }}>
-                    <div style={{ background: 'rgba(255,255,255,0.10)', backdropFilter: 'blur(8px)', borderRadius: '12px', padding: '14px 16px', border: '1px solid rgba(255,255,255,0.15)' }}>
-                        <div style={{ fontSize: '0.72rem', opacity: 0.85, fontWeight: 700, textTransform: 'uppercase', marginBottom: '4px' }}>
+                    {/* CARD 1: CIRUGÍAS REALIZADAS */}
+                    <div style={{
+                        background: 'rgba(255, 255, 255, 0.08)',
+                        backdropFilter: 'blur(10px)',
+                        borderRadius: '12px',
+                        padding: '16px 18px',
+                        border: '1px solid rgba(255, 255, 255, 0.18)',
+                        boxShadow: '0 4px 12px rgba(0, 0, 0, 0.06)',
+                        transition: 'transform 0.15s ease, box-shadow 0.15s ease'
+                    }}>
+                        <div style={{ fontSize: '0.72rem', opacity: 0.85, fontWeight: 700, textTransform: 'uppercase', marginBottom: '4px', letterSpacing: '0.04em' }}>
                             {selectedCrossFilter
                                 ? `Cirugías Realizadas (Supeditado)`
                                 : (ambitoFilter === 'CENTRALES' 
@@ -3721,10 +3730,10 @@ export default function QuirofanoDashboard({
                                         ? 'Cirugías Realizadas (Hospital de Día)' 
                                         : 'Cirugías Realizadas (Período)')}
                         </div>
-                        <div style={{ fontSize: '1.85rem', fontWeight: 900 }}>
+                        <div style={{ fontSize: '2.1rem', fontWeight: 800, fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.02em', color: '#FFFFFF' }}>
                             {loadingSurgeries ? '...' : dynamicMetrics ? dynamicMetrics.realizadas.toLocaleString('es-AR') : '0'}
                         </div>
-                        <div style={{ fontSize: '0.74rem', color: '#A7F3D0', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px', flexWrap: 'wrap' }}>
+                        <div style={{ fontSize: '0.74rem', color: '#A7F3D0', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '5px', marginTop: '3px', flexWrap: 'wrap' }}>
                             <TrendingUp size={13} /> {loadingSurgeries ? 'Cargando...' : dynamicMetrics ? (
                                 dynamicMetrics.realizadasVisitas && dynamicMetrics.realizadasVisitas !== dynamicMetrics.realizadas
                                     ? `${dynamicMetrics.realizadasVisitas.toLocaleString('es-AR')} por visita · ${dynamicMetrics.total.toLocaleString('es-AR')} programadas`
@@ -3733,8 +3742,17 @@ export default function QuirofanoDashboard({
                         </div>
                     </div>
 
-                    <div style={{ background: 'rgba(255,255,255,0.10)', backdropFilter: 'blur(8px)', borderRadius: '12px', padding: '14px 16px', border: '1px solid rgba(255,255,255,0.15)' }}>
-                        <div style={{ fontSize: '0.72rem', opacity: 0.85, fontWeight: 700, textTransform: 'uppercase', marginBottom: '4px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    {/* CARD 2: TASA NETA REAL */}
+                    <div style={{
+                        background: 'rgba(255, 255, 255, 0.08)',
+                        backdropFilter: 'blur(10px)',
+                        borderRadius: '12px',
+                        padding: '16px 18px',
+                        border: '1px solid rgba(255, 255, 255, 0.18)',
+                        boxShadow: '0 4px 12px rgba(0, 0, 0, 0.06)',
+                        transition: 'transform 0.15s ease, box-shadow 0.15s ease'
+                    }}>
+                        <div style={{ fontSize: '0.72rem', opacity: 0.85, fontWeight: 700, textTransform: 'uppercase', marginBottom: '4px', letterSpacing: '0.04em', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <span>
                                 {ambitoFilter === 'CENTRALES' 
                                     ? 'Tasa Suspensión (Centrales)' 
@@ -3743,15 +3761,15 @@ export default function QuirofanoDashboard({
                                         : 'Tasa Neta Real (QOAG)'}
                             </span>
                             {dynamicMetrics && dynamicMetrics.motivo3Count > 0 && (
-                                <span style={{ fontSize: '0.62rem', background: '#059669', color: '#FFFFFF', padding: '1px 6px', borderRadius: '4px', fontWeight: 800 }} title="Impacto del ajuste por cirugías ya realizadas y cesáreas anticipadas">
+                                <span style={{ fontSize: '0.62rem', background: '#059669', color: '#FFFFFF', padding: '1px 7px', borderRadius: '9999px', fontWeight: 800 }} title="Impacto del ajuste por cirugías ya realizadas y cesáreas anticipadas">
                                     -{dynamicMetrics.impactoPuntosPct} p.p.
                                 </span>
                             )}
                         </div>
-                        <div style={{ fontSize: '1.85rem', fontWeight: 900, color: '#FCD34D' }}>
+                        <div style={{ fontSize: '2.1rem', fontWeight: 800, fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.02em', color: '#FCD34D' }}>
                             {loadingSurgeries ? '...' : dynamicMetrics ? `${dynamicMetrics.tasaSuspNeta}%` : '0%'}
                         </div>
-                        <div style={{ fontSize: '0.74rem', opacity: 0.90, marginTop: '2px', lineHeight: 1.35 }}>
+                        <div style={{ fontSize: '0.74rem', opacity: 0.90, marginTop: '3px', lineHeight: 1.35 }}>
                             {loadingSurgeries ? '...' : dynamicMetrics ? (
                                 <>
                                     <strong>{dynamicMetrics.suspendidasNetas}</strong> netas s/ {dynamicMetrics.total} turnos • Bruta: <strong>{dynamicMetrics.tasaSuspBruta}%</strong> ({dynamicMetrics.motivo3Count} ya realizadas)
@@ -3760,7 +3778,7 @@ export default function QuirofanoDashboard({
                         </div>
                     </div>
 
-                    {/* TARJETA 3: DISTRIBUCIÓN CLARA Y TOCABLE */}
+                    {/* CARD 3: DISTRIBUCIÓN CLARA Y TOCABLE */}
                     <div 
                         onClick={() => {
                             if (ambitoFilter === 'TODOS') setAmbitoFilter('CENTRALES');
@@ -3768,32 +3786,33 @@ export default function QuirofanoDashboard({
                             else setAmbitoFilter('TODOS');
                         }}
                         style={{ 
-                            background: 'rgba(255,255,255,0.10)', 
-                            backdropFilter: 'blur(8px)', 
+                            background: 'rgba(255, 255, 255, 0.08)', 
+                            backdropFilter: 'blur(10px)', 
                             borderRadius: '12px', 
-                            padding: '14px 16px', 
-                            border: ambitoFilter !== 'TODOS' ? '1.5px solid #38BDF8' : '1px solid rgba(255,255,255,0.15)',
+                            padding: '16px 18px', 
+                            border: ambitoFilter !== 'TODOS' ? '1.5px solid #38BDF8' : '1px solid rgba(255, 255, 255, 0.18)',
+                            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.06)',
                             cursor: 'pointer',
                             transition: 'all 0.15s ease'
                         }}
                         title="Haz clic para alternar filtro entre Quirófanos Centrales, Hospital de Día y Todas"
                     >
-                        <div style={{ fontSize: '0.72rem', opacity: 0.85, fontWeight: 700, textTransform: 'uppercase', marginBottom: '4px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ fontSize: '0.72rem', opacity: 0.85, fontWeight: 700, textTransform: 'uppercase', marginBottom: '4px', letterSpacing: '0.04em', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <span>
                                 {ambitoFilter === 'TODOS' ? 'Distribución de Salas' : `Ámbito: ${ambitoFilter === 'CENTRALES' ? 'Qx Central (1-4 y Sala Partos)' : 'Hospital de Día (HdD)'}`}
                             </span>
-                            <span style={{ fontSize: '0.62rem', background: 'rgba(255,255,255,0.2)', padding: '1px 6px', borderRadius: '4px', fontWeight: 600 }}>
+                            <span style={{ fontSize: '0.62rem', background: 'rgba(255, 255, 255, 0.22)', padding: '1px 7px', borderRadius: '9999px', fontWeight: 700 }}>
                                 Alternar
                             </span>
                         </div>
-                        <div style={{ fontSize: '1.85rem', fontWeight: 900, color: '#67E8F9' }}>
+                        <div style={{ fontSize: '2.1rem', fontWeight: 800, fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.02em', color: '#67E8F9' }}>
                             {loadingSurgeries ? '...' : dynamicMetrics ? (
                                 ambitoFilter === 'TODOS' 
                                     ? `${dynamicMetrics.centralesRealizadas} / ${dynamicMetrics.hddRealizadas}`
                                     : `${dynamicMetrics.realizadas} realizadas`
                             ) : '0 / 0'}
                         </div>
-                        <div style={{ fontSize: '0.74rem', opacity: 0.85, marginTop: '2px', lineHeight: 1.35 }}>
+                        <div style={{ fontSize: '0.74rem', opacity: 0.85, marginTop: '3px', lineHeight: 1.35 }}>
                             {loadingSurgeries ? '...' : dynamicMetrics ? (
                                 ambitoFilter === 'TODOS' ? (
                                     <>
@@ -3809,14 +3828,23 @@ export default function QuirofanoDashboard({
                         </div>
                     </div>
 
-                    <div style={{ background: 'rgba(255,255,255,0.10)', backdropFilter: 'blur(8px)', borderRadius: '12px', padding: '14px 16px', border: '1px solid rgba(255,255,255,0.15)' }}>
-                        <div style={{ fontSize: '0.72rem', opacity: 0.85, fontWeight: 700, textTransform: 'uppercase', marginBottom: '4px' }}>
+                    {/* CARD 4: URGENCIAS / DEMANDA */}
+                    <div style={{
+                        background: 'rgba(255, 255, 255, 0.08)',
+                        backdropFilter: 'blur(10px)',
+                        borderRadius: '12px',
+                        padding: '16px 18px',
+                        border: '1px solid rgba(255, 255, 255, 0.18)',
+                        boxShadow: '0 4px 12px rgba(0, 0, 0, 0.06)',
+                        transition: 'transform 0.15s ease, box-shadow 0.15s ease'
+                    }}>
+                        <div style={{ fontSize: '0.72rem', opacity: 0.85, fontWeight: 700, textTransform: 'uppercase', marginBottom: '4px', letterSpacing: '0.04em' }}>
                             Urgencias / Demanda
                         </div>
-                        <div style={{ fontSize: '1.85rem', fontWeight: 900, color: '#FCA5A5' }}>
+                        <div style={{ fontSize: '2.1rem', fontWeight: 800, fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.02em', color: '#FCA5A5' }}>
                             {loadingSurgeries ? '...' : dynamicMetrics ? `${dynamicMetrics.urgencias > 0 ? dynamicMetrics.urgencias : Math.round(dynamicMetrics.total * 0.11)}` : '0'}
                         </div>
-                        <div style={{ fontSize: '0.74rem', color: '#FCA5A5', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
+                        <div style={{ fontSize: '0.74rem', color: '#FCA5A5', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '5px', marginTop: '3px' }}>
                             <Flame size={13} /> {loadingSurgeries ? '...' : dynamicMetrics ? (dynamicMetrics.urgencias > 0 ? `${dynamicMetrics.urgencias} urgencias registradas` : '~11% presión no programada') : 'Sin registros'}
                         </div>
                     </div>

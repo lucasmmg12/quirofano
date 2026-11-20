@@ -19,8 +19,8 @@ import {
 } from 'lucide-react';
 import { fetchFichasNoEntregadasDesdeCorte, FICHAS_CIRCUITO_CORTE } from '../../services/fichasAdmisionesService';
 
-const BLUE = '#1d4ed8';
-const BLUE_SOFT = '#eff6ff';
+const BLUE = '#0284C7';
+const BLUE_SOFT = '#F0F9FF';
 const STORAGE_KEY = 'circuito_fichas_expandido';
 
 const CORTE_LABEL = FICHAS_CIRCUITO_CORTE.split('-').reverse().join('/');
