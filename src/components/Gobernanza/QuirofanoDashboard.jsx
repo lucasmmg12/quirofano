@@ -1783,7 +1783,7 @@ export default function QuirofanoDashboard({
     const [suspensionModalSearch, setSuspensionModalSearch] = useState('');
     const [selectedSuspensionGroup, setSelectedSuspensionGroup] = useState(null);
     const [vistaBloques, setVistaBloques] = useState('lista'); // 'lista' | 'grilla'
-    const [bloquesMesFiltro, setBloquesMesFiltro] = useState('auto'); // 'auto' | 'AGO' | 'SEP' | 'PROMEDIO'
+    // Tab activo y ámbito dentro de la solapa de Bloques Quirúrgicos
     const [bloquesAmbitoFiltro, setBloquesAmbitoFiltro] = useState('TODOS'); // 'TODOS' | 'CENTRAL' | 'HDD'
     const [selectedBloqueDetail, setSelectedBloqueDetail] = useState(null); // { bloque, semana }
     const [bloqueDetailViewFilter, setBloqueDetailViewFilter] = useState('FRANJA_TODAS'); // 'FRANJA_TODAS' | 'TITULAR_EN_BLOQUE' | 'OTROS_EN_BLOQUE' | 'TITULAR_FUERA_BLOQUE' | 'SALA_OTRO_HORARIO'
@@ -2601,23 +2601,16 @@ export default function QuirofanoDashboard({
         return (idx % 2 === 0) ? 'Qx 1' : 'Qx 2';
     };
 
-    // Período activo efectivo para la auditoría de Bloques Quirúrgicos
+    // Período activo efectivo para la auditoría de Bloques Quirúrgicos (sincronizado 1:1 con el filtro del Telar)
     const effectiveBloquesPeriod = useMemo(() => {
-        if (bloquesMesFiltro === 'AGO') return 'Agosto 2026';
-        if (bloquesMesFiltro === 'SEP') return 'Septiembre 2026';
-        if (bloquesMesFiltro === 'OCT') return 'Octubre 2026';
-        if (bloquesMesFiltro === 'NOV') return 'Noviembre 2026 (En curso)';
-        if (bloquesMesFiltro === 'PROMEDIO') return 'Trimestre Ago-Oct 2026';
-        
-        // Modo 'auto': inferir a partir de effectiveDesde / effectiveHasta / activePeriodLabel
         const pUpper = (activePeriodLabel || '').toUpperCase();
         const dUpper = (effectiveDesde || '').toUpperCase();
         if (pUpper.includes('NOV') || dUpper.includes('-11-')) return 'Noviembre 2026 (En curso)';
         if (pUpper.includes('OCT') || dUpper.includes('-10-')) return 'Octubre 2026';
         if (pUpper.includes('SEPT') || dUpper.includes('-09-')) return 'Septiembre 2026';
         if (pUpper.includes('AGO') || dUpper.includes('-08-')) return 'Agosto 2026';
-        return 'Octubre 2026'; // Benchmark base de auditoría (último mes cerrado completo)
-    }, [bloquesMesFiltro, activePeriodLabel, effectiveDesde]);
+        return activePeriodLabel || 'Noviembre 2026';
+    }, [activePeriodLabel, effectiveDesde]);
 
     // Matriz de bloques reactiva con cálculos de horas titular, horas ociosas, alerta 7d y desglose completo de la franja horaria (Titular vs Otros Prestadores)
     const activeBloquesData = useMemo(() => {
@@ -5978,43 +5971,9 @@ export default function QuirofanoDashboard({
                             </div>
                         </div>
 
-                        {/* Controles de Selección de Período y Vista */}
+                        {/* Controles de Selección de Vista y Ámbito */}
                         <div style={{ marginTop: '16px', paddingTop: '14px', borderTop: '1px dashed #86EFAC', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                                    <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#14532D', marginRight: '4px' }}>
-                                        Auditoría Mensual:
-                                    </span>
-                                    {[
-                                        { id: 'auto', label: `Automático (${activePeriodLabel})` },
-                                        { id: 'OCT', label: 'Octubre 2026' },
-                                        { id: 'NOV', label: 'Noviembre 2026 (En curso)' },
-                                        { id: 'SEP', label: 'Septiembre 2026' },
-                                        { id: 'AGO', label: 'Agosto 2026' },
-                                        { id: 'PROMEDIO', label: 'Trimestre Ago-Oct' }
-                                    ].map(btn => (
-                                        <button
-                                            key={btn.id}
-                                            type="button"
-                                            onClick={() => setBloquesMesFiltro(btn.id)}
-                                            style={{
-                                                border: 'none',
-                                                cursor: 'pointer',
-                                                padding: '5px 11px',
-                                                borderRadius: '7px',
-                                                fontSize: '0.72rem',
-                                                fontWeight: bloquesMesFiltro === btn.id ? 800 : 600,
-                                                background: bloquesMesFiltro === btn.id ? '#15803D' : '#DCFCE7',
-                                                color: bloquesMesFiltro === btn.id ? '#FFFFFF' : '#166534',
-                                                boxShadow: bloquesMesFiltro === btn.id ? '0 2px 4px rgba(21,128,61,0.25)' : 'none',
-                                                transition: 'all 0.15s ease'
-                                            }}
-                                        >
-                                            {btn.label}
-                                        </button>
-                                    ))}
-                                </div>
-
                                 {/* SELECTOR ESPECÍFICO DE ÁMBITO EN BLOQUES QUIRÚRGICOS */}
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: '#DCFCE7', padding: '3px 6px', borderRadius: '8px', border: '1px solid #86EFAC' }}>
                                     <span style={{ fontSize: '0.70rem', fontWeight: 800, color: '#14532D', marginRight: '2px' }}>
