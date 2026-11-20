@@ -29,6 +29,7 @@ import { syncGuardiaFranjasYAdmisiones } from './sync_guardia_franjas_admisiones
 import { syncCirugiasConversion } from './sync_guardia_cirugias_conversion.mjs';
 import { syncGuardiaInternado } from './sync_guardia_internado.mjs';
 import { getDxIAnalytics, getDxICasosNominales } from './sync_dxi.mjs';
+import { syncInternacionGobernanza } from './sync_internacion_gobernanza.mjs';
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || 'https://hakysnqiryimxbwdslwe.supabase.co';
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY;
@@ -562,6 +563,17 @@ export async function runDailySync({ skipDoctors = false } = {}) {
         log('Paso 11 completado: Caché fija y casos recientes de Diagnóstico por Imágenes actualizados.');
     } catch (eDxi) {
         log(`⚠️ Error no bloqueante en Paso 11 (DxI): ${eDxi.message}`);
+    }
+
+    // ──────────────────────────────────────────────────────────
+    // PASO 12: Tablero de Internación (Gobernanza de Datos — 2025+)
+    // ──────────────────────────────────────────────────────────
+    log('PASO 12/12: Sincronizando Tablero de Internación (Neonatología, Pediatría, Internado, UCI, HdD)...');
+    try {
+        await syncInternacionGobernanza({ startYear: 2025, nominalStartYear: 2025 });
+        log('Paso 12 completado: Tablero de Internación actualizado.');
+    } catch (eInt) {
+        log(`⚠️ Error no bloqueante en Paso 12 (Internación): ${eInt.message}`);
     }
 
     const elapsed = ((Date.now() - t0) / 1000).toFixed(1);

@@ -6,6 +6,7 @@ import QuirofanoDashboard from './Gobernanza/QuirofanoDashboard';
 import DiasOcupacionDashboard from './Gobernanza/DiasOcupacionDashboard';
 import EpidemiologiaDashboard from './Gobernanza/EpidemiologiaDashboard';
 import DiagnosticoImagenesDashboard from './Gobernanza/DiagnosticoImagenesDashboard';
+import InternacionDashboard from './Gobernanza/InternacionDashboard';
 
 function AutoExpandTextarea({ value, onChange, placeholder, style, minHeight = 80, ...props }) {
     const textareaRef = useRef(null);
@@ -70,7 +71,12 @@ export default function GobernanzaIndicadores({ proyectoId, currentUser, proyect
         lowerName.includes('dxi') ||
         proyectoId === '645ab8b2-18f1-4620-8271-f41e31677b5c'
     );
-    const hasInteractiveDashboard = isGuardia || isQuirofano || isUci || isEpidemiologia || isDxi;
+    const isInternacion = Boolean(
+        lowerName.includes('internacion') ||
+        lowerName.includes('internación') ||
+        lowerName.includes('internado')
+    );
+    const hasInteractiveDashboard = isGuardia || isQuirofano || isUci || isEpidemiologia || isDxi || isInternacion;
     const [viewMode, setViewMode] = useState('especificaciones');
     const [indicadores, setIndicadores] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -310,6 +316,10 @@ export default function GobernanzaIndicadores({ proyectoId, currentUser, proyect
 
             {isDxi && viewMode === 'graficos' && (
                 <DiagnosticoImagenesDashboard />
+            )}
+
+            {isInternacion && viewMode === 'graficos' && (
+                <InternacionDashboard />
             )}
 
             {/* Vista 2: Catálogo de Especificaciones Técnicas y SQL */}

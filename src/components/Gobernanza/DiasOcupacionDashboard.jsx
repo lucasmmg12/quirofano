@@ -36,6 +36,7 @@ import GuardiaClinicaDashboard from './GuardiaClinicaDashboard';
 import QuirofanoDashboard from './QuirofanoDashboard';
 import EpidemiologiaDashboard from './EpidemiologiaDashboard';
 import DiagnosticoImagenesDashboard from './DiagnosticoImagenesDashboard';
+import InternacionDashboard from './InternacionDashboard';
 
 const SIDEBAR_INDICATOR_GROUPS = [
     {
@@ -777,7 +778,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
     }, [sectorId, fechaDesde, fechaHasta]);
 
     const fetchData = async () => {
-        if (sectorId === 'GUARDIA' || sectorId === 'QUIROFANO' || sectorId === 'EPIDEMIOLOGIA' || sectorId === 'DXI') {
+        if (sectorId === 'GUARDIA' || sectorId === 'QUIROFANO' || sectorId === 'EPIDEMIOLOGIA' || sectorId === 'DXI' || sectorId === 'INTERNACION') {
             setLoading(false);
             setLoadingPeticiones(false);
             return;
@@ -1627,7 +1628,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
         // 2. Sincronizar contexto activo para que Beto IA responda exactamente con los mismos números del dashboard
         if (typeof window !== 'undefined') {
             window.__telar_active_sector = sectorId;
-            const isBedOccupancySector = !['GUARDIA', 'QUIROFANO', 'EPIDEMIOLOGIA', 'DXI'].includes(sectorId);
+            const isBedOccupancySector = !['GUARDIA', 'QUIROFANO', 'EPIDEMIOLOGIA', 'DXI', 'INTERNACION'].includes(sectorId);
 
             if (isBedOccupancySector) {
                 const uciPayload = {
@@ -1668,6 +1669,8 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                 window.__indicadores_active_context = window.__dxi_active_context;
             } else if (sectorId === 'EPIDEMIOLOGIA' && window.__epidemiologia_active_context) {
                 window.__indicadores_active_context = window.__epidemiologia_active_context;
+            } else if (sectorId === 'INTERNACION' && window.__internacion_active_context) {
+                window.__indicadores_active_context = window.__internacion_active_context;
             }
         }
 
@@ -4144,13 +4147,72 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                     )}
                                 </div>
                             )}
+
+                            {/* ── SECTOR INTERNACIÓN (TABLERO INTEGRAL) ── */}
+                            {!isUciOnly && (
+                                <div style={{
+                                    borderRadius: '10px',
+                                    border: `1.5px solid ${sectorId === 'INTERNACION' ? '#0284C7' : '#E2E8F0'}`,
+                                    background: '#FFFFFF',
+                                    overflow: 'hidden',
+                                    boxShadow: sectorId === 'INTERNACION' ? '0 4px 12px -2px rgba(2, 132, 199, 0.16)' : '0 1px 2px rgba(0,0,0,0.03)',
+                                    transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)'
+                                }}>
+                                    <button
+                                        type="button"
+                                        onClick={() => handleSelectSector('INTERNACION')}
+                                        style={{
+                                            width: '100%',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'space-between',
+                                            padding: '10px 12px',
+                                            background: sectorId === 'INTERNACION' ? '#F0F9FF' : '#F8FAFC',
+                                            border: 'none',
+                                            cursor: 'pointer',
+                                            transition: 'background 0.15s ease'
+                                        }}
+                                        onMouseEnter={e => { if (sectorId !== 'INTERNACION') e.currentTarget.style.background = '#F1F5F9'; }}
+                                        onMouseLeave={e => { if (sectorId !== 'INTERNACION') e.currentTarget.style.background = '#F8FAFC'; }}
+                                    >
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                            <span style={{ fontSize: '1.1rem' }}>🛏️</span>
+                                            <div style={{ textAlign: 'left' }}>
+                                                <div style={{ fontSize: '0.8rem', fontWeight: 700, color: sectorId === 'INTERNACION' ? '#003B73' : '#334155' }}>
+                                                    Internación
+                                                </div>
+                                                <div style={{ fontSize: '0.65rem', color: '#64748B' }}>
+                                                    Neo, Ped, Adultos, UCI, HdD (2021+)
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <span style={{
+                                            fontSize: '0.6rem',
+                                            fontWeight: 800,
+                                            padding: '2px 6px',
+                                            borderRadius: '999px',
+                                            background: sectorId === 'INTERNACION' ? '#0284C7' : '#E0F2FE',
+                                            color: sectorId === 'INTERNACION' ? '#FFFFFF' : '#0369A1',
+                                        }}>
+                                            Nuevo
+                                        </span>
+                                    </button>
+                                </div>
+                            )}
                         </div>
                     </div>
                 )}
 
                 {/* LIENZO PRINCIPAL DEL TELAR (MODULAR) */}
                 <div style={{ flex: 1, overflowY: 'auto', padding: '24px' }}>
-                    {sectorId === 'EPIDEMIOLOGIA' ? (
+                    {sectorId === 'INTERNACION' ? (
+                        <InternacionDashboard
+                            fechaDesde={fechaDesde}
+                            fechaHasta={fechaHasta}
+                            datePresetMode={datePresetMode}
+                            addToast={addToast}
+                        />
+                    ) : sectorId === 'EPIDEMIOLOGIA' ? (
                         <EpidemiologiaDashboard 
                             selectedCenter="TODOS"
                             dateRange={{ fechaDesde, fechaHasta }}

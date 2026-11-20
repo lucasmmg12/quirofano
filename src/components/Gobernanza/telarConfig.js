@@ -78,6 +78,17 @@ export const SECTORES_CONFIG = [
         descripcion: 'Ecografía, Mamografía, Tomografía (sin contrastes), Radiología y Densitometría Ósea (2022+)',
         activo: true,
         badge: 'Nuevo'
+    },
+    { 
+        id: 'INTERNACION', 
+        label: 'Internación (Tablero Integral)', 
+        shortLabel: 'Internación',
+        icon: '🛏️', 
+        camasDefault: 40,
+        serviciosSalus: ['INTERNADO', 'NEONATOLOGIA', 'PEDIATRIA', 'UCI', 'TERAPIA INTERMEDIA', 'HOSPITAL DE DIA'],
+        descripcion: 'Neonatología, Pediatría (Piso y UTIP), Internado Adultos, Terapia Adultos, Hospital de Día y Matrices de Ocupación (2021+)',
+        activo: true,
+        badge: 'Nuevo'
     }
 ];
 
