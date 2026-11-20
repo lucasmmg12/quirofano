@@ -9,7 +9,7 @@ import {
     Power, Sparkles, Stethoscope, DollarSign, CreditCard,
     Edit3, Save, X, History, Activity, FileCheck, RefreshCw,
     Zap, CalendarCheck, PlusCircle, ShieldCheck, BarChart3, Volume2, VolumeX,
-    GripVertical, Download, ZoomIn, ZoomOut, RotateCw, RotateCcw, Copy,
+    GripVertical, Download, ZoomIn, ZoomOut, RotateCw, Copy,
     FileText, FileSpreadsheet, File, Maximize2, Palette, LayoutTemplate,
     Mic, Square, Trash2, Loader2, Upload, Link, Unlink, Users,
     CheckCheck, Reply, Smile, ArrowLeft, Globe, Plus, Brush, CalendarX
@@ -272,10 +272,7 @@ import {
     getAgentFirstName,
     CONTACT_CENTER_FALLBACK_TEMPLATES,
     sendContactCenterTemplate,
-    searchContactCenterConversations,
-    fetchSweepUndoHistory,
-    undoSweepBatch,
-    redoSweepBatch
+    searchContactCenterConversations
 } from '../../services/contactCenterService';
 import { fetchMetaTemplates } from '../../services/metaTemplateService';
 import { normalizeArgentinePhone } from '../../services/builderbotApi';
@@ -780,53 +777,13 @@ export default function ContactCenterChatConsole({
     const [shiftSummaryModalOpen, setShiftSummaryModalOpen] = useState(false);
     // Contexto de auditoría para retorno inmediato a "Pacientes por Intención" o "Resumen de Turno"
     const [shiftAuditReturnContext, setShiftAuditReturnContext] = useState(null);
-    // Modal de Barrido Rápido de Conversaciones Inactivas (+24h) y Undo/Redo rápido
+    // Modal de Barrido Rápido de Conversaciones Inactivas (+24h)
     const [sweepModalOpen, setSweepModalOpen] = useState(false);
-    const [sweepHistoryTop, setSweepHistoryTop] = useState([]);
-    const [quickUndoRedoBusy, setQuickUndoRedoBusy] = useState(false);
 
     const isStrictLMarinero = useMemo(() => {
         const u = String(currentUser?.usuario || activeAgent?.username || activeAgent?.id || '').toLowerCase().trim().split('@')[0];
         return u === 'lmarinero' || u === 'lucas';
     }, [currentUser?.usuario, activeAgent?.username, activeAgent?.id]);
-
-    useEffect(() => {
-        if (!isStrictLMarinero) return;
-        fetchSweepUndoHistory().then(h => {
-            if (Array.isArray(h)) setSweepHistoryTop(h);
-        }).catch(() => {});
-    }, [isStrictLMarinero, sweepModalOpen]);
-
-    const latestAppliedSweep = useMemo(() => sweepHistoryTop.find(b => b.state === 'applied') || null, [sweepHistoryTop]);
-    const latestUndoneSweep = useMemo(() => sweepHistoryTop.find(b => b.state === 'undone') || null, [sweepHistoryTop]);
-
-    const handleQuickUndoSweep = async () => {
-        if (!latestAppliedSweep || quickUndoRedoBusy) return;
-        setQuickUndoRedoBusy(true);
-        try {
-            const res = await undoSweepBatch(latestAppliedSweep.id);
-            if (res.success && Array.isArray(res.history)) {
-                setSweepHistoryTop(res.history);
-                if (onReloadChats) setTimeout(() => onReloadChats(), 250);
-            }
-        } finally {
-            setQuickUndoRedoBusy(false);
-        }
-    };
-
-    const handleQuickRedoSweep = async () => {
-        if (!latestUndoneSweep || quickUndoRedoBusy) return;
-        setQuickUndoRedoBusy(true);
-        try {
-            const res = await redoSweepBatch(latestUndoneSweep.id);
-            if (res.success && Array.isArray(res.history)) {
-                setSweepHistoryTop(res.history);
-                if (onReloadChats) setTimeout(() => onReloadChats(), 250);
-            }
-        } finally {
-            setQuickUndoRedoBusy(false);
-        }
-    };
     const [handoverTargetAgent, setHandoverTargetAgent] = useState(() => {
         const other = CONTACT_CENTER_AGENTS.find(a => a.id !== activeAgent.id);
         return other ? other.id : 'unassign';
@@ -4720,8 +4677,7 @@ export default function ContactCenterChatConsole({
                     <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                         {/* Botón Barrido Inactivos +24h y Undo/Redo rápido: Exclusivo para perfil lmarinero */}
                         {isStrictLMarinero && (
-                            <>
-                                <button
+                            <button
                                     type="button"
                                     onClick={() => setSweepModalOpen(true)}
                                     title="Barrer inactivos (+24h / +8h / +4h / +2h): archiva en lote conversaciones sin actividad con ventana Meta WhatsApp expirada (Exclusivo lmarinero)"
@@ -4755,63 +4711,6 @@ export default function ContactCenterChatConsole({
                                         </span>
                                     )}
                                 </button>
-
-                                {sweepHistoryTop.length > 0 && (
-                                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
-                                        <button
-                                            type="button"
-                                            onClick={handleQuickUndoSweep}
-                                            disabled={!latestAppliedSweep || quickUndoRedoBusy}
-                                            title={latestAppliedSweep
-                                                ? `Deshacer último barrido (+${latestAppliedSweep.hoursThreshold || 24}h · ${latestAppliedSweep.count} chats)`
-                                                : 'No hay barrido aplicado para deshacer (Undo)'}
-                                            style={{
-                                                padding: '3px 7px',
-                                                borderRadius: '6px',
-                                                border: latestAppliedSweep ? '1px solid #F59E0B' : '1px solid #CBD5E1',
-                                                background: latestAppliedSweep ? '#FFFBEB' : '#F8FAFC',
-                                                color: latestAppliedSweep ? '#B45309' : '#94A3B8',
-                                                fontSize: '0.65rem',
-                                                fontWeight: 800,
-                                                cursor: (!latestAppliedSweep || quickUndoRedoBusy) ? 'not-allowed' : 'pointer',
-                                                display: 'inline-flex',
-                                                alignItems: 'center',
-                                                gap: '3px',
-                                                opacity: latestAppliedSweep ? 1 : 0.65
-                                            }}
-                                        >
-                                            <RotateCcw size={11} />
-                                            <span>Undo</span>
-                                        </button>
-
-                                        <button
-                                            type="button"
-                                            onClick={handleQuickRedoSweep}
-                                            disabled={!latestUndoneSweep || quickUndoRedoBusy}
-                                            title={latestUndoneSweep
-                                                ? `Rehacer último barrido deshecho (+${latestUndoneSweep.hoursThreshold || 24}h · ${latestUndoneSweep.count} chats)`
-                                                : 'No hay barrido deshecho para rehacer (Redo)'}
-                                            style={{
-                                                padding: '3px 7px',
-                                                borderRadius: '6px',
-                                                border: latestUndoneSweep ? '1px solid #0284C7' : '1px solid #CBD5E1',
-                                                background: latestUndoneSweep ? '#F0F9FF' : '#F8FAFC',
-                                                color: latestUndoneSweep ? '#0369A1' : '#94A3B8',
-                                                fontSize: '0.65rem',
-                                                fontWeight: 800,
-                                                cursor: (!latestUndoneSweep || quickUndoRedoBusy) ? 'not-allowed' : 'pointer',
-                                                display: 'inline-flex',
-                                                alignItems: 'center',
-                                                gap: '3px',
-                                                opacity: latestUndoneSweep ? 1 : 0.65
-                                            }}
-                                        >
-                                            <RotateCw size={11} />
-                                            <span>Redo</span>
-                                        </button>
-                                    </div>
-                                )}
-                            </>
                         )}
 
                         <button
@@ -12766,9 +12665,6 @@ Fecha de solicitud: ${viewerImage.orderAnalysis.fecha_solicitud || 'No especific
                     currentUser={currentUser}
                     chats={chats}
                     onSweepSuccess={(result) => {
-                        if (Array.isArray(result?.history)) {
-                            setSweepHistoryTop(result.history);
-                        }
                         if (!result?.isUndoRedo && typeof onBulkCloseChats === 'function' && Array.isArray(result?.targetChatIds) && result.targetChatIds.length > 0) {
                             onBulkCloseChats(result.targetChatIds, result.resolutionReason || 'Cierre automático por inactividad');
                         }
