@@ -7,6 +7,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
 const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY') ?? '';
+const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY') ?? '';
 
 Deno.serve(async (req) => {
     const corsHeaders = {
@@ -37,8 +38,8 @@ Deno.serve(async (req) => {
             });
         }
 
-        if (!OPENAI_API_KEY) {
-            return new Response(JSON.stringify({ error: 'OPENAI_API_KEY not configured' }), {
+        if (!OPENAI_API_KEY && !GEMINI_API_KEY) {
+            return new Response(JSON.stringify({ error: 'Neither OPENAI_API_KEY nor GEMINI_API_KEY configured' }), {
                 status: 500,
                 headers: { ...corsHeaders, 'Content-Type': 'application/json' },
             });
@@ -67,21 +68,8 @@ Deno.serve(async (req) => {
         const base64Data = btoa(binary);
         const dataUrl = `data:${contentType};base64,${base64Data}`;
 
-        // 2. Llamada a OpenAI Vision (gpt-4o-mini o gpt-4o)
-        const openAiRes = await fetch('https://api.openai.com/v1/chat/completions', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${OPENAI_API_KEY}`,
-            },
-            body: JSON.stringify({
-                model: 'gpt-4o',
-                temperature: 0.1,
-                response_format: { type: 'json_object' },
-                messages: [
-                    {
-                        role: 'system',
-                        content: `Eres un auditor médico y administrativo experto de Sanatorio Argentino (San Juan, Argentina).
+        // 2. Llamada a OpenAI Vision con fallback automático a Gemini Flash Vision
+        const systemPrompt = `Eres un auditor médico y administrativo experto de Sanatorio Argentino (San Juan, Argentina).
 Tu tarea es examinar con precisión la imagen de una orden médica, prescripción, pedido médico o receta enviada por un paciente para gestionar una autorización.
 
 Debes extraer los datos específicos y responder ÚNICAMENTE un JSON con este formato exacto:
@@ -101,35 +89,102 @@ Reglas estrictas:
 2. La "matricula" es la M.P. o M.N. del médico obtenida de su sello.
 3. La "fecha_solicitud" es la fecha de emisión del pedido médico (fundamental para validar los 30 días de vigencia).
 4. Si la imagen NO es una orden médica o pedido de salud (ej: selfie, meme, comprobante de pago no médico), pon "es_orden_medica": false y explica en "estudio".
-5. Si algún dato no figura o es ilegible, coloca "No especificado" o "Ilegible".`,
+5. Si algún dato no figura o es ilegible, coloca "No especificado" o "Ilegible".`;
+
+        let rawContent = '{}';
+
+        if (OPENAI_API_KEY) {
+            try {
+                const openAiRes = await fetch('https://api.openai.com/v1/chat/completions', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${OPENAI_API_KEY}`,
                     },
-                    {
-                        role: 'user',
-                        content: [
+                    body: JSON.stringify({
+                        model: 'gpt-4o',
+                        temperature: 0.1,
+                        response_format: { type: 'json_object' },
+                        messages: [
+                            { role: 'system', content: systemPrompt },
                             {
-                                type: 'text',
-                                text: 'Analiza esta orden médica y extrae estudio a autorizar, solicitante por sello, matrícula por sello, diagnóstico y fecha de solicitud:',
-                            },
-                            {
-                                type: 'image_url',
-                                image_url: {
-                                    url: dataUrl,
-                                    detail: 'high',
-                                },
+                                role: 'user',
+                                content: [
+                                    {
+                                        type: 'text',
+                                        text: 'Analiza esta orden médica y extrae estudio a autorizar, solicitante por sello, matrícula por sello, diagnóstico y fecha de solicitud:',
+                                    },
+                                    {
+                                        type: 'image_url',
+                                        image_url: {
+                                            url: dataUrl,
+                                            detail: 'high',
+                                        },
+                                    },
+                                ],
                             },
                         ],
-                    },
-                ],
-            }),
-        });
+                    }),
+                });
 
-        if (!openAiRes.ok) {
-            const errText = await openAiRes.text();
-            throw new Error(`OpenAI Vision error: HTTP ${openAiRes.status} - ${errText}`);
+                if (openAiRes.ok) {
+                    const aiJson = await openAiRes.json();
+                    rawContent = aiJson.choices?.[0]?.message?.content || '{}';
+                } else {
+                    const errText = await openAiRes.text();
+                    console.warn(`[analyze-medical-order] OpenAI Vision falló (${openAiRes.status}): ${errText}. Activando fallback a Gemini Vision...`);
+                }
+            } catch (err: any) {
+                console.warn(`[analyze-medical-order] Error conectando con OpenAI: ${err.message}. Activando fallback a Gemini Vision...`);
+            }
         }
 
-        const aiJson = await openAiRes.json();
-        const rawContent = aiJson.choices?.[0]?.message?.content || '{}';
+        // Fallback resiliente a Gemini Flash Vision si OpenAI falló o no tiene saldo
+        if ((!rawContent || rawContent === '{}') && GEMINI_API_KEY) {
+            try {
+                const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${GEMINI_API_KEY}`;
+                const geminiRes = await fetch(geminiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        contents: [
+                            {
+                                role: 'user',
+                                parts: [
+                                    { text: `${systemPrompt}\n\nAnaliza esta orden médica y extrae estudio a autorizar, solicitante por sello, matrícula por sello, diagnóstico y fecha de solicitud:` },
+                                    {
+                                        inline_data: {
+                                            mime_type: contentType,
+                                            data: base64Data
+                                        }
+                                    }
+                                ]
+                            }
+                        ],
+                        generationConfig: {
+                            temperature: 0.1,
+                            response_mime_type: 'application/json'
+                        }
+                    })
+                });
+
+                if (geminiRes.ok) {
+                    const gData = await geminiRes.json();
+                    rawContent = gData.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
+                    console.log(`[analyze-medical-order] ✅ Orden médica analizada con éxito vía Gemini Flash Vision.`);
+                } else {
+                    const gErr = await geminiRes.text();
+                    console.error(`[analyze-medical-order] Gemini Vision falló: ${gErr}`);
+                }
+            } catch (gEx: any) {
+                console.error(`[analyze-medical-order] Error en llamada a Gemini Vision: ${gEx.message}`);
+            }
+        }
+
+        if (!rawContent || rawContent === '{}') {
+            throw new Error('No se pudo analizar la orden médica con los proveedores de IA.');
+        }
+
         const parsedAnalysis = JSON.parse(rawContent);
 
         // 3. Cálculo de vigencia de 30 días para auditoría de Obras Sociales

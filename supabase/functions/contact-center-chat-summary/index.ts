@@ -7,6 +7,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
 const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY') ?? '';
+const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY') ?? '';
 
 Deno.serve(async (req) => {
     const corsHeaders = {
@@ -37,8 +38,8 @@ Deno.serve(async (req) => {
             });
         }
 
-        if (!OPENAI_API_KEY) {
-            return new Response(JSON.stringify({ error: 'OPENAI_API_KEY not configured' }), {
+        if (!OPENAI_API_KEY && !GEMINI_API_KEY) {
+            return new Response(JSON.stringify({ error: 'Neither OPENAI_API_KEY nor GEMINI_API_KEY configured' }), {
                 status: 500,
                 headers: { ...corsHeaders, 'Content-Type': 'application/json' },
             });
@@ -371,51 +372,99 @@ Debes responder ÚNICAMENTE un objeto JSON válido con la siguiente estructura e
 } `;
 
         const summaryStartTime = Date.now();
-        const aiRes = await fetch('https://api.openai.com/v1/chat/completions', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${OPENAI_API_KEY}`,
-            },
-            body: JSON.stringify({
-                model: 'gpt-4o-mini',
-                temperature: 0.1,
-                response_format: { type: 'json_object' },
-                messages: [
-                    { role: 'user', content: prompt }
-                ]
-            }),
-        });
+        let rawContent = '{}';
+        let usedModel = 'gpt-4o-mini';
+        let summaryExecMs = 0;
 
-        if (!aiRes.ok) {
-            const errText = await aiRes.text();
-            throw new Error(`OpenAI error: HTTP ${aiRes.status} - ${errText}`);
+        if (OPENAI_API_KEY) {
+            try {
+                const aiRes = await fetch('https://api.openai.com/v1/chat/completions', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${OPENAI_API_KEY}`,
+                    },
+                    body: JSON.stringify({
+                        model: 'gpt-4o-mini',
+                        temperature: 0.1,
+                        response_format: { type: 'json_object' },
+                        messages: [
+                            { role: 'user', content: prompt }
+                        ]
+                    }),
+                });
+
+                if (aiRes.ok) {
+                    const aiJson = await aiRes.json();
+                    summaryExecMs = Date.now() - summaryStartTime;
+                    rawContent = aiJson.choices?.[0]?.message?.content || '{}';
+
+                    // Log de telemetría de tokens y costo
+                    if (aiJson.usage) {
+                        const promptTok = aiJson.usage.prompt_tokens || 0;
+                        const compTok = aiJson.usage.completion_tokens || 0;
+                        const cost = ((promptTok * 0.15) + (compTok * 0.60)) / 1_000_000;
+                        supabase.from('contact_center_ai_usage_logs').insert({
+                            phone: phone || null,
+                            service_name: 'chat_summary',
+                            model: 'gpt-4o-mini',
+                            prompt_tokens: promptTok,
+                            completion_tokens: compTok,
+                            total_tokens: aiJson.usage.total_tokens || (promptTok + compTok),
+                            estimated_cost_usd: cost,
+                            execution_ms: summaryExecMs,
+                            metadata: { message_count: messages.length }
+                        }).then(({ error }: any) => {
+                            if (error) console.warn('[chat-summary] Error guardando log de uso:', error.message);
+                        }).catch(() => {});
+                    }
+                } else {
+                    const errText = await aiRes.text();
+                    console.warn(`[chat-summary] OpenAI falló (${aiRes.status}): ${errText}. Activando fallback a Gemini...`);
+                }
+            } catch (err: any) {
+                console.warn(`[chat-summary] Error conectando con OpenAI: ${err.message}. Activando fallback a Gemini...`);
+            }
         }
 
-        const aiJson = await aiRes.json();
-        const summaryExecMs = Date.now() - summaryStartTime;
+        // Fallback automático de alta velocidad a Google Gemini Flash si OpenAI falló o no tiene saldo
+        if ((!rawContent || rawContent === '{}') && GEMINI_API_KEY) {
+            try {
+                const geminiStartTime = Date.now();
+                const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${GEMINI_API_KEY}`;
+                const geminiRes = await fetch(geminiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+                        generationConfig: {
+                            temperature: 0.1,
+                            response_mime_type: 'application/json'
+                        }
+                    })
+                });
 
-        // Log de telemetría de tokens y costo
-        if (aiJson.usage) {
-            const promptTok = aiJson.usage.prompt_tokens || 0;
-            const compTok = aiJson.usage.completion_tokens || 0;
-            const cost = ((promptTok * 0.15) + (compTok * 0.60)) / 1_000_000;
-            supabase.from('contact_center_ai_usage_logs').insert({
-                phone: phone || null,
-                service_name: 'chat_summary',
-                model: 'gpt-4o-mini',
-                prompt_tokens: promptTok,
-                completion_tokens: compTok,
-                total_tokens: aiJson.usage.total_tokens || (promptTok + compTok),
-                estimated_cost_usd: cost,
-                execution_ms: summaryExecMs,
-                metadata: { message_count: messages.length }
-            }).then(({ error }: any) => {
-                if (error) console.warn('[chat-summary] Error guardando log de uso:', error.message);
-            }).catch(() => {});
+                if (geminiRes.ok) {
+                    const gData = await geminiRes.json();
+                    summaryExecMs = Date.now() - geminiStartTime;
+                    rawContent = gData.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
+                    usedModel = 'gemini-flash-latest';
+                    console.log(`[chat-summary] ✅ Resumen generado exitosamente vía Gemini Flash en ${summaryExecMs}ms.`);
+                } else {
+                    const gErr = await geminiRes.text();
+                    console.error(`[chat-summary] Gemini falló (${geminiRes.status}): ${gErr}`);
+                    throw new Error(`Proveedores de IA no disponibles: OpenAI y Gemini (${geminiRes.status})`);
+                }
+            } catch (gEx: any) {
+                console.error(`[chat-summary] Excepción en llamada a Gemini: ${gEx.message}`);
+                throw gEx;
+            }
         }
 
-        const rawContent = aiJson.choices?.[0]?.message?.content || '{}';
+        if (!rawContent || rawContent === '{}') {
+            throw new Error('No se pudo obtener respuesta de ningún modelo de IA disponible');
+        }
+
         const parsed = JSON.parse(rawContent);
 
         // 4. Recopilar médicos solicitantes de órdenes médicas adjuntas en el chat
