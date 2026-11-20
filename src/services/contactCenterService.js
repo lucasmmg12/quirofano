@@ -3824,6 +3824,7 @@ export async function undoSweepBatch(batchId = null) {
             return { success: false, error: 'No hay ningún barrido activo para deshacer (Undo).' };
         }
 
+        const nowUndoIso = new Date().toISOString();
         let restoredCount = 0;
         for (const item of targetBatch.items) {
             if (!item?.phone) continue;
@@ -3838,7 +3839,7 @@ export async function undoSweepBatch(batchId = null) {
                     closed_by_agent_id: b.closed_by_agent_id ?? null,
                     closed_by_agent_name: b.closed_by_agent_name ?? null,
                     resolution_reason: b.resolution_reason ?? null,
-                    updated_at: b.updated_at || new Date().toISOString()
+                    updated_at: nowUndoIso
                 })
                 .eq('phone', item.phone);
 
@@ -4137,28 +4138,77 @@ export async function searchContactCenterConversations(term, limit = 25) {
             }
         }
 
-        // 4. Motivo de consulta
-        if (raw.length >= 4) {
+        // 4. Motivo de consulta y último mensaje
+        if (raw.length >= 3) {
             filters.push(`motivo_consulta.ilike.%${raw}%`);
+            filters.push(`last_message_text.ilike.%${raw}%`);
+        }
+        if (cleanDigits.length >= 6 && cleanDigits !== raw) {
+            filters.push(`motivo_consulta.ilike.%${cleanDigits}%`);
+            filters.push(`last_message_text.ilike.%${cleanDigits}%`);
         }
 
-        const { data: convs, error } = await supabase
-            .from('contact_center_conversations')
-            .select('*')
-            .or(filters.join(','))
-            .order('updated_at', { ascending: false })
-            .limit(limit);
-
-        if (error) {
-            console.warn('[contactCenterService] Error en búsqueda remota:', error);
-            return [];
+        // 5. Búsqueda simultánea en whatsapp_messages (para encontrar DNI o palabras clave en mensajes históricos, ej: "16469680zulema")
+        let msgFilters = [`content.ilike.%${raw}%`];
+        if (cleanDigits.length >= 6 && cleanDigits !== raw) {
+            msgFilters.push(`content.ilike.%${cleanDigits}%`);
         }
 
-        return (convs || []).map(conv => {
+        const [convsRes, msgsRes] = await Promise.all([
+            supabase
+                .from('contact_center_conversations')
+                .select('*')
+                .or(filters.join(','))
+                .order('updated_at', { ascending: false })
+                .limit(limit),
+            raw.length >= 3
+                ? supabase
+                    .from('whatsapp_messages')
+                    .select('phone, content, created_at')
+                    .eq('line_id', 'contact_center')
+                    .or(msgFilters.join(','))
+                    .order('created_at', { ascending: false })
+                    .limit(40)
+                : Promise.resolve({ data: [] })
+        ]);
+
+        const convs = [...(convsRes.data || [])];
+        const matchedMsgSnippetByPhone = new Map();
+
+        if (Array.isArray(msgsRes?.data) && msgsRes.data.length > 0) {
+            const seenConvPhones = new Set(convs.map(c => normalizeArgentinePhone(c.phone || '')));
+            const extraPhonesToFetch = [];
+
+            for (const m of msgsRes.data) {
+                const normP = normalizeArgentinePhone(m.phone || '');
+                if (!normP) continue;
+                if (!matchedMsgSnippetByPhone.has(normP) && m.content) {
+                    matchedMsgSnippetByPhone.set(normP, String(m.content).slice(0, 90));
+                }
+                if (!seenConvPhones.has(normP)) {
+                    seenConvPhones.add(normP);
+                    extraPhonesToFetch.push(normP);
+                }
+            }
+
+            if (extraPhonesToFetch.length > 0) {
+                const { data: extraConvs } = await supabase
+                    .from('contact_center_conversations')
+                    .select('*')
+                    .in('phone', extraPhonesToFetch.slice(0, 25));
+
+                if (Array.isArray(extraConvs)) {
+                    convs.push(...extraConvs);
+                }
+            }
+        }
+
+        return convs.map(conv => {
             const phone = normalizeArgentinePhone(conv.phone || '');
             const resolvedName = (conv.nombre_completo && String(conv.nombre_completo).trim()) || `+${phone.replace(/\D/g, '')}`;
             const cleanPhone = phone || normalizeArgentinePhone(conv.phone || '') || String(conv.phone || '').replace(/\D/g, '');
             const effectiveDni = conv.dni || null;
+            const remoteSnippet = matchedMsgSnippetByPhone.get(phone) || null;
 
             return {
                 id: 'REAL_' + cleanPhone,
@@ -4168,7 +4218,7 @@ export async function searchContactCenterConversations(term, limit = 25) {
                 channelNumber: '5492645825637',
                 status: conv.status || 'finalizado',
                 unread: false,
-                lastMessage: conv.last_message_text || 'Conversación registrada',
+                lastMessage: conv.last_message_text || remoteSnippet || 'Conversación registrada',
                 lastMessageTimestamp: conv.updated_at ? new Date(conv.updated_at).getTime() : 0,
                 timeAgo: formatRelativeTime(conv.updated_at),
                 department: 'Atención al cliente',
@@ -4193,6 +4243,7 @@ export async function searchContactCenterConversations(term, limit = 25) {
                 chatbot: '#triage-sanatorio',
                 avatarColor: '#0284C7',
                 tags: resolveConversationTags(conv, []),
+                _remoteMatchedSnippet: remoteSnippet,
                 customFields: {
                     dni: effectiveDni,
                     pacienteDni: effectiveDni,

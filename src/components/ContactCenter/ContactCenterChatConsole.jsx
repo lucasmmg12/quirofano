@@ -3335,6 +3335,9 @@ export default function ContactCenterChatConsole({
         if (summaryText && normalizeSearch(summaryText).includes(q)) {
             return { isMatch: true, matchType: 'resumen_ia', snippet: `IA: ${String(summaryText).slice(0, 55)}...` };
         }
+        if (chat._remoteMatchedSnippet) {
+            return { isMatch: true, matchType: 'mensaje', snippet: chat._remoteMatchedSnippet };
+        }
 
         return { isMatch: false, matchType: null, snippet: null };
     };
@@ -3344,35 +3347,42 @@ export default function ContactCenterChatConsole({
     // Evaluar todas las conversaciones con el buscador (incluye activos, archivados y remotos de Supabase)
     const searchedChats = useMemo(() => {
         if (!isSearching) return [];
-        const seenPhones = new Set();
-        const pool = [];
+        const poolMap = new Map();
 
         // 1. Activos en memoria
         (chats || []).forEach(c => {
             const p = normalizeArgentinePhone(c.phone || '');
-            if (p && !seenPhones.has(p)) {
-                seenPhones.add(p);
-                pool.push(c);
+            if (p && !poolMap.has(p)) {
+                poolMap.set(p, c);
             }
         });
         // 2. Archivados cargados
         (archivedChats || []).forEach(c => {
             const p = normalizeArgentinePhone(c.phone || '');
-            if (p && !seenPhones.has(p)) {
-                seenPhones.add(p);
-                pool.push(c);
+            if (p && !poolMap.has(p)) {
+                poolMap.set(p, c);
             }
         });
-        // 3. Resultados remotos de Supabase (pacientes históricos)
+        // 3. Resultados remotos de Supabase (pacientes históricos y coincidencias en mensajes completos)
         (remoteSearchChats || []).forEach(c => {
             const p = normalizeArgentinePhone(c.phone || '');
-            if (p && !seenPhones.has(p)) {
-                seenPhones.add(p);
-                pool.push(c);
+            if (!p) return;
+            if (!poolMap.has(p)) {
+                poolMap.set(p, c);
+            } else if (c._remoteMatchedSnippet) {
+                const existing = poolMap.get(p);
+                poolMap.set(p, {
+                    ...existing,
+                    _remoteMatchedSnippet: c._remoteMatchedSnippet,
+                    customFields: {
+                        ...(existing.customFields || {}),
+                        dni: existing.customFields?.dni || c.customFields?.dni
+                    }
+                });
             }
         });
 
-        return pool.map(chat => {
+        return Array.from(poolMap.values()).map(chat => {
             const matchInfo = getSearchMatchInfo(chat, searchTerm);
             return matchInfo.isMatch ? { ...chat, _searchMatch: matchInfo } : null;
         }).filter(Boolean);
