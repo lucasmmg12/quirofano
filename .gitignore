@@ -22,6 +22,8 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+~$*
+Thumbs.db
 
 antigravity-awesome-skills/
 .env
@@ -33,11 +35,13 @@ antigravity-awesome-skills/
 *.dat
 *.pdf
 !public/Informe_Contact_Center_Sanatorio_Argentino.pdf
+gobernanza/
 
 # Import scripts and migration payloads (may contain sensitive data)
 import_pacientes.mjs
 migrate_body.json
 fonts/
+generar_excel_cymin*.mjs
 
 # Temp patch scripts
 patch_surgery.*
