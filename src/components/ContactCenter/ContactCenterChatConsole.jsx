@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { 
-    Search, Paperclip, Send, Lock, Tag, User, 
-    Calendar, CheckCircle2, ChevronDown, Check, Star, 
+import {
+    Search, Paperclip, Send, Lock, Tag, User,
+    Calendar, CheckCircle2, ChevronDown, Check, Star,
     Phone, Mail, MapPin, Building, Bot, Shield, ExternalLink,
     Filter, Archive, UserCheck, MoreVertical, Eye, AlertTriangle,
     Unlock, ArrowRightLeft, Clock, MessageSquare, AlertCircle,
@@ -23,7 +23,7 @@ function getDocumentMeta(url, explicitType = '', caption = '', text = '') {
     const cleanUrl = String(url || '').toLowerCase();
     const cleanCaption = String(caption || '').trim();
     const cleanText = String(text || '').trim();
-    
+
     const isVoiceNoteEvent = cleanText.startsWith('_event_voice_note_') || cleanCaption.startsWith('_event_voice_note_');
     const isAudio = explicitType === 'audio' || explicitType === 'voice' || isVoiceNoteEvent || /\.(mp3|ogg|oga|opus|wav|m4a|aac|webm)($|\?)/i.test(cleanUrl) || cleanUrl.includes('/audio') || cleanUrl.includes('audio_') || cleanUrl.includes('voice');
     const isSticker = explicitType === 'sticker' || cleanText === '[sticker]' || cleanCaption === '[sticker]' || cleanUrl.includes('/sticker') || (cleanUrl.includes('.webp') && !explicitType);
@@ -32,14 +32,14 @@ function getDocumentMeta(url, explicitType = '', caption = '', text = '') {
     const isWord = !isAudio && !isImage && !isSticker && (cleanUrl.includes('.docx') || cleanUrl.includes('.doc') || explicitType === 'word' || cleanCaption.toLowerCase().includes('.doc') || cleanText.toLowerCase().includes('.doc'));
     const isExcel = !isAudio && !isImage && !isSticker && (cleanUrl.includes('.xlsx') || cleanUrl.includes('.xls') || cleanUrl.includes('.csv') || explicitType === 'excel' || cleanCaption.toLowerCase().includes('.xls') || cleanText.toLowerCase().includes('.xls') || cleanCaption.toLowerCase().includes('.csv'));
     const isTxt = !isAudio && !isImage && !isSticker && !isPdf && !isWord && !isExcel && (cleanUrl.includes('.txt') || cleanCaption.toLowerCase().endsWith('.txt') || cleanText.toLowerCase().endsWith('.txt'));
-    
+
     let fileType = 'document';
     let label = 'Documento Adjunto';
     let color = '#2563EB';
     let bgColor = '#EFF6FF';
     let borderColor = '#BFDBFE';
     let ext = 'DOC';
-    
+
     if (isSticker) {
         fileType = 'sticker';
         label = 'Sticker WhatsApp';
@@ -90,7 +90,7 @@ function getDocumentMeta(url, explicitType = '', caption = '', text = '') {
         borderColor = '#CBD5E1';
         ext = 'TXT';
     }
-    
+
     let filename = cleanCaption || (cleanText && !cleanText.startsWith('[') && !cleanText.startsWith('_event_') && cleanText.length < 80 ? cleanText : '');
     if (!filename && url) {
         try {
@@ -113,7 +113,7 @@ function getDocumentMeta(url, explicitType = '', caption = '', text = '') {
     } else if (!filename) {
         filename = `${label}.${ext.toLowerCase()}`;
     }
-    
+
     return {
         fileType,
         label,
@@ -257,8 +257,8 @@ function formatChatDateDivider(dateVal) {
 
     return d.toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 }
-import { 
-    CONTACT_CENTER_AGENTS, getAgentById, isChatLockedForUser, 
+import {
+    CONTACT_CENTER_AGENTS, getAgentById, isChatLockedForUser,
     MASTER_ADMINS, toggleBotActive, fetchDoctorParameters,
     saveCrmPatientCard, unlinkThirdPartyPatient, lookupPatientFromSalus, resetBotWorkflow,
     deleteChatHistoryAndContext,
@@ -280,10 +280,10 @@ import {
 import { fetchMetaTemplates } from '../../services/metaTemplateService';
 import { normalizeArgentinePhone } from '../../services/builderbotApi';
 import { fetchPacienteDetalle, normalizeTimeTo24h } from '../../services/pacienteUnificadoService';
-import { 
-    getContactCenterQuickReplies, 
-    findQuickReplyByShortcut, 
-    filterQuickReplies, 
+import {
+    getContactCenterQuickReplies,
+    findQuickReplyByShortcut,
+    filterQuickReplies,
     syncQuickRepliesFromDb,
     interpolateQuickReplyVariables,
     saveQuickReply,
@@ -342,7 +342,7 @@ function isTurnosOnlineChat(chat) {
 function renderBotTags(chat, theme) {
     if (!chat) return null;
     const rawTags = Array.isArray(chat.tags) ? chat.tags : [];
-    
+
     const botTags = [];
     const seen = new Set();
 
@@ -350,7 +350,7 @@ function renderBotTags(chat, theme) {
         seen.add('turnos online');
         botTags.push('turnos online');
     }
-    
+
     for (const t of rawTags) {
         if (!t || typeof t !== 'string') continue;
         const norm = t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
@@ -360,7 +360,7 @@ function renderBotTags(chat, theme) {
             botTags.push(canonical);
         }
     }
-    
+
     if (botTags.length === 0) return null;
 
     return botTags.map((tagKey) => {
@@ -727,13 +727,13 @@ function SidebarLoadingSkeleton({ ccTheme, rightCardBg, rightCardBorder, themeCa
     );
 }
 
-export default function ContactCenterChatConsole({ 
-    chats = [], 
-    activeChatId, 
+export default function ContactCenterChatConsole({
+    chats = [],
+    activeChatId,
     activeAgent = CONTACT_CENTER_AGENTS[0],
     currentUser,
-    onSelectChat, 
-    onSendMessage, 
+    onSelectChat,
+    onSendMessage,
     onSendTemplate,
     onAssignChat,
     onUnassignChat,
@@ -785,11 +785,16 @@ export default function ContactCenterChatConsole({
     const [sweepHistoryTop, setSweepHistoryTop] = useState([]);
     const [quickUndoRedoBusy, setQuickUndoRedoBusy] = useState(false);
 
+    const isStrictLMarinero = useMemo(() => {
+        const u = String(currentUser?.usuario || activeAgent?.username || activeAgent?.id || '').toLowerCase().trim().split('@')[0];
+        return u === 'lmarinero' || u === 'lucas';
+    }, [currentUser?.usuario, activeAgent?.username, activeAgent?.id]);
+
     useEffect(() => {
         if (!isStrictLMarinero) return;
         fetchSweepUndoHistory().then(h => {
             if (Array.isArray(h)) setSweepHistoryTop(h);
-        }).catch(() => {});
+        }).catch(() => { });
     }, [isStrictLMarinero, sweepModalOpen]);
 
     const latestAppliedSweep = useMemo(() => sweepHistoryTop.find(b => b.state === 'applied') || null, [sweepHistoryTop]);
@@ -888,8 +893,8 @@ export default function ContactCenterChatConsole({
         const chatDni = String(chat.customFields?.dni || chat.dni || '').replace(/\D/g, '');
         const chatPhone8 = String(chat.phone || '').replace(/\D/g, '').slice(-8);
 
-        const inSalus = (chatDni && salusAuditIndex.dniMap.get(chatDni)) || 
-                        (chatPhone8 && salusAuditIndex.phoneMap.get(chatPhone8)) || null;
+        const inSalus = (chatDni && salusAuditIndex.dniMap.get(chatDni)) ||
+            (chatPhone8 && salusAuditIndex.phoneMap.get(chatPhone8)) || null;
 
         const textToAudit = `${chat.customFields?.motivoConsulta || ''} ${chat.motivoConsulta || ''} ${chat.aiSummary?.tipo_tramite || ''} ${chat.lastMessage || ''} ${(chat.tags || []).join(' ')}`.toLowerCase();
         const isTurnoRequest = textToAudit.includes('turno') || textToAudit.includes('cita') || textToAudit.includes('agendar') || textToAudit.includes('solicitud de turno');
@@ -1023,7 +1028,7 @@ export default function ContactCenterChatConsole({
     useEffect(() => {
         try {
             if (filterTab) localStorage.setItem('sa_cc_filter_tab', filterTab);
-        } catch (_) {}
+        } catch (_) { }
     }, [filterTab]);
 
     // Carga inicial de chats finalizados al cambiar a la pestaña de Finalizados
@@ -1170,7 +1175,7 @@ export default function ContactCenterChatConsole({
     // Orden de mensajes: Cronológico clásico estándar de WhatsApp (más recientes abajo)
     const [messageSortOrder] = useState('chronological');
     useEffect(() => {
-        try { localStorage.removeItem('cc_message_sort_order'); } catch (_) {}
+        try { localStorage.removeItem('cc_message_sort_order'); } catch (_) { }
     }, []);
     // Renderizar inicialmente hasta 150 mensajes en el thread para mostrar la conversación completa de inmediato
     const [visibleMessageCount, setVisibleMessageCount] = useState(150);
@@ -1183,7 +1188,7 @@ export default function ContactCenterChatConsole({
     }, [activeChatId]);
 
     // Estado del Visor Profesional de Documentos y Órdenes Médicas
-    const [viewerImage, setViewerImage] = useState(null); 
+    const [viewerImage, setViewerImage] = useState(null);
     const [viewerZoom, setViewerZoom] = useState(1);
     const [viewerRotation, setViewerRotation] = useState(0);
     const [isDownloadingImage, setIsDownloadingImage] = useState(false);
@@ -1596,11 +1601,6 @@ export default function ContactCenterChatConsole({
     const [chatTargetToDelete, setChatTargetToDelete] = useState(null);
     const [isDeletingChatContext, setIsDeletingChatContext] = useState(false);
 
-    const isStrictLMarinero = useMemo(() => {
-        const u = String(currentUser?.usuario || activeAgent?.username || activeAgent?.id || '').toLowerCase().trim().split('@')[0];
-        return u === 'lmarinero' || u === 'lucas';
-    }, [currentUser?.usuario, activeAgent?.username, activeAgent?.id]);
-
     const handleConfirmDeleteChatContext = async () => {
         if (!chatTargetToDelete?.phone) return;
         setIsDeletingChatContext(true);
@@ -1694,7 +1694,7 @@ export default function ContactCenterChatConsole({
         setFilterTab('asignadas_mi');
         try {
             localStorage.setItem('sa_cc_filter_tab', 'asignadas_mi');
-        } catch (_) {}
+        } catch (_) { }
 
         if (!onAssignChat) return;
         try {
@@ -1744,8 +1744,8 @@ export default function ContactCenterChatConsole({
     // Alias del agente actual (id, username, legacyId, aliases). Debe declararse ANTES de selectedChat:
     // se usa en el fallback de la pestaña "Mis chats" (antes provocaba ReferenceError TDZ).
     const myAliases = [
-        activeAgent?.id, 
-        activeAgent?.username, 
+        activeAgent?.id,
+        activeAgent?.username,
         activeAgent?.legacyId,
         ...(activeAgent?.aliases || [])
     ].filter(Boolean).map(a => a.toLowerCase());
@@ -1844,12 +1844,12 @@ export default function ContactCenterChatConsole({
     if (isFinalizadosCurrentTab && !activeChatIsClosed && !isSearchActive) {
         candidateChat = tabFallbackChat || activeChatFromPool || null;
     } else {
-        candidateChat = activeChatFromPool || 
+        candidateChat = activeChatFromPool ||
             (lastValidSelectedChatRef.current && matchChat(lastValidSelectedChatRef.current, activeChatId) ? lastValidSelectedChatRef.current : null) ||
-            tabFallbackChat || 
-            chats.find(c => isMineChat(c)) || 
-            chats.find(c => (!c.assignedTo && c.status === 'sin_asignar') && !isClosedOrArchived(c)) || 
-            (isSupervisor ? (chats[0] || archivedChats[0]) : null) || 
+            tabFallbackChat ||
+            chats.find(c => isMineChat(c)) ||
+            chats.find(c => (!c.assignedTo && c.status === 'sin_asignar') && !isClosedOrArchived(c)) ||
+            (isSupervisor ? (chats[0] || archivedChats[0]) : null) ||
             {};
     }
 
@@ -2062,7 +2062,7 @@ export default function ContactCenterChatConsole({
                             selectedChat.customFields.esPacienteExistente = true;
                         }
                     }
-                }).catch(() => {}).finally(() => {
+                }).catch(() => { }).finally(() => {
                     setIsSidebarLoading(false);
                 });
             }
@@ -2196,7 +2196,7 @@ export default function ContactCenterChatConsole({
                 });
             }
         }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [associatedPatients, selectedChat?.id, selectedChat?.messages?.length]);
 
     // Rastrear en tiempo real qué conversación está mirando este agente ("El Ojito")
@@ -2212,7 +2212,7 @@ export default function ContactCenterChatConsole({
     useEffect(() => {
         syncQuickRepliesFromDb(currentAgentId).then(list => {
             if (list && list.length > 0) setQuickRepliesList(list);
-        }).catch(() => {});
+        }).catch(() => { });
     }, [currentAgentId]);
 
     const failedSummaryPhonesRef = useRef(new Set());
@@ -2225,7 +2225,7 @@ export default function ContactCenterChatConsole({
 
         try {
             setIsGeneratingSummary(true);
-            const timeoutPromise = new Promise((_, reject) => 
+            const timeoutPromise = new Promise((_, reject) =>
                 setTimeout(() => reject(new Error('Tiempo de espera agotado al generar resumen IA')), 12000)
             );
             const summary = await Promise.race([
@@ -2260,8 +2260,8 @@ export default function ContactCenterChatConsole({
     };
 
     // Auto-generar Resumen IA automáticamente tras cada mensaje entrante del paciente
-    const lastMsgInChat = selectedChat?.messages && selectedChat.messages.length > 0 
-        ? selectedChat.messages[selectedChat.messages.length - 1] 
+    const lastMsgInChat = selectedChat?.messages && selectedChat.messages.length > 0
+        ? selectedChat.messages[selectedChat.messages.length - 1]
         : null;
     const lastMsgId = lastMsgInChat?.id || lastMsgInChat?.realId;
     const lastMsgSender = lastMsgInChat?.sender || (lastMsgInChat?.direction === 'incoming' ? 'patient' : 'agent');
@@ -2617,7 +2617,7 @@ export default function ContactCenterChatConsole({
                 historyRequestedForChat.current = null; // Permitir reintento ante error
             })
             .finally(() => setLoadingHistory(false));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [activeDetailTab, selectedChat?.id, crmForm.dni]);
 
     // Limpiar el tracking al cambiar de chat para que se pueda recargar si vuelve al mismo
@@ -3109,7 +3109,7 @@ export default function ContactCenterChatConsole({
         hasInitialAlignedRef.current = true;
 
         const isMine = (currentChat.assignedTo && myAliases.includes(currentChat.assignedTo.toLowerCase())) ||
-                       (currentChat.assignedToName && currentChat.assignedToName.toLowerCase().includes(activeAgent.name.toLowerCase()));
+            (currentChat.assignedToName && currentChat.assignedToName.toLowerCase().includes(activeAgent.name.toLowerCase()));
 
         if (isClosedOrArchived(currentChat)) {
             if (filterTab !== 'finalizados' && filterTab !== 'archivadas') {
@@ -3494,10 +3494,10 @@ export default function ContactCenterChatConsole({
                 let ts = Number(chat.lastMessageTimestamp) || 0;
                 if (chat.messages && chat.messages.length > 0) {
                     const lastMsg = chat.messages[chat.messages.length - 1];
-                    const msgTime = lastMsg?.created_at 
-                        ? new Date(lastMsg.created_at).getTime() 
-                        : (typeof lastMsg?.timestamp === 'number' 
-                            ? lastMsg.timestamp 
+                    const msgTime = lastMsg?.created_at
+                        ? new Date(lastMsg.created_at).getTime()
+                        : (typeof lastMsg?.timestamp === 'number'
+                            ? lastMsg.timestamp
                             : (lastMsg?.time ? new Date(lastMsg.time).getTime() : 0));
                     if (!isNaN(msgTime) && msgTime > ts) ts = msgTime;
                 }
@@ -3651,7 +3651,7 @@ export default function ContactCenterChatConsole({
         let detectedType = forceType || 'document';
         if (!forceType) {
             if (
-                file.type?.startsWith('image/') || 
+                file.type?.startsWith('image/') ||
                 /\.(jpe?g|png|webp|gif|bmp|svg|tiff?)$/i.test(fileNameLower) ||
                 fileNameLower.includes('captura') ||
                 fileNameLower === 'image.png'
@@ -3669,7 +3669,7 @@ export default function ContactCenterChatConsole({
         const rawName = customName || file.name || defaultCapName;
         const finalName = (rawName === 'image.png' || rawName === 'blob' || !rawName) ? defaultCapName : rawName;
 
-        const effectiveMime = (detectedType === 'image') 
+        const effectiveMime = (detectedType === 'image')
             ? (file.type?.startsWith('image/') ? file.type : 'image/png')
             : (file.type || 'application/octet-stream');
 
@@ -3799,7 +3799,7 @@ export default function ContactCenterChatConsole({
                         }
                     }
                 }
-            } catch (_) {}
+            } catch (_) { }
         }
 
         // 4. Fallback con API moderna asíncrona navigator.clipboard.read()
@@ -3815,7 +3815,7 @@ export default function ContactCenterChatConsole({
                         }
                     }
                 }
-            } catch (_) {}
+            } catch (_) { }
         }
 
         return null;
@@ -3855,8 +3855,8 @@ export default function ContactCenterChatConsole({
         const now = new Date();
         const pad = (n) => String(n).padStart(2, '0');
         const timeStr = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
-        const fileName = (imageFile.name && imageFile.name !== 'image.png' && imageFile.name !== 'blob') 
-            ? imageFile.name 
+        const fileName = (imageFile.name && imageFile.name !== 'image.png' && imageFile.name !== 'blob')
+            ? imageFile.name
             : `captura_${timeStr}.png`;
 
         processAttachmentFile(imageFile, fileName, 'image');
@@ -3981,10 +3981,10 @@ export default function ContactCenterChatConsole({
         }
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') 
-                ? 'audio/webm;codecs=opus' 
-                : MediaRecorder.isTypeSupported('audio/webm') 
-                    ? 'audio/webm' 
+            const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+                ? 'audio/webm;codecs=opus'
+                : MediaRecorder.isTypeSupported('audio/webm')
+                    ? 'audio/webm'
                     : 'audio/ogg';
             const mediaRecorder = new MediaRecorder(stream, { mimeType });
             mediaRecorderRef.current = mediaRecorder;
@@ -4051,7 +4051,7 @@ export default function ContactCenterChatConsole({
             const ext = mimeType.includes('ogg') ? 'ogg' : 'webm';
             const audioFile = new File([blob], `audio_${Date.now()}.${ext}`, { type: mimeType });
             const uploaded = await uploadContactCenterMedia(audioFile, 'audios');
-            
+
             onSendMessage(
                 selectedChat.id,
                 '🎤 Audio',
@@ -4216,7 +4216,7 @@ export default function ContactCenterChatConsole({
     };
 
     return (
-        <div 
+        <div
             ref={consoleContainerRef}
             style={{
                 display: 'grid',
@@ -4367,7 +4367,7 @@ export default function ContactCenterChatConsole({
                         ) : (
                             <Search size={15} color={isSearching ? (ccTheme.accentColor || '#0284C7') : themeCardSubtext} style={{ flexShrink: 0 }} />
                         )}
-                        <input 
+                        <input
                             ref={searchInputRef}
                             type="text"
                             placeholder="Buscar por nombre, DNI o texto en mensajes... (Atajo: /)"
@@ -4409,7 +4409,7 @@ export default function ContactCenterChatConsole({
                                 <X size={11} />
                             </button>
                         ) : (
-                            <span 
+                            <span
                                 title="Atajo de teclado: presiona / o Ctrl+K para buscar"
                                 style={{
                                     fontSize: '0.62rem',
@@ -4490,7 +4490,7 @@ export default function ContactCenterChatConsole({
                     {/* Fila 1: Bandejas de atención humana en tiempo real (50% - 50%) */}
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
                         {/* Sin Asignar */}
-                        <button 
+                        <button
                             type="button"
                             onClick={() => {
                                 setFilterTab('sin_asignar');
@@ -4532,7 +4532,7 @@ export default function ContactCenterChatConsole({
                         </button>
 
                         {/* Mis Chats */}
-                        <button 
+                        <button
                             type="button"
                             onClick={() => {
                                 setFilterTab('asignadas_mi');
@@ -4581,7 +4581,7 @@ export default function ContactCenterChatConsole({
                     {/* Fila 2: Supervisión, Bot y Archivo (33% - 33% - 33%) */}
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '6px' }}>
                         {/* Bot */}
-                        <button 
+                        <button
                             type="button"
                             onClick={() => {
                                 setFilterTab('bot');
@@ -4621,7 +4621,7 @@ export default function ContactCenterChatConsole({
                         </button>
 
                         {/* Otras */}
-                        <button 
+                        <button
                             type="button"
                             onClick={() => {
                                 setFilterTab('asignadas_otros');
@@ -4667,7 +4667,7 @@ export default function ContactCenterChatConsole({
                         </button>
 
                         {/* Finalizados (SIN NÚMERO / CONTADOR) */}
-                        <button 
+                        <button
                             type="button"
                             onClick={() => {
                                 setFilterTab('finalizados');
@@ -5012,8 +5012,8 @@ export default function ContactCenterChatConsole({
                     alignItems: selectedChatIds.size > 0 ? 'stretch' : 'center',
                     justifyContent: 'space-between',
                     padding: '5px 10px',
-                    background: selectedChatIds.size > 0 
-                        ? themeCardSelectedBg 
+                    background: selectedChatIds.size > 0
+                        ? themeCardSelectedBg
                         : (ccTheme.leftSidebarHeaderBg || (ccTheme.isDark ? '#0F172A' : '#F8FAFC')),
                     borderBottom: `1px solid ${ccTheme.leftSidebarBorder || '#E2E8F0'}`,
                     transition: 'background 0.15s ease'
@@ -5028,7 +5028,7 @@ export default function ContactCenterChatConsole({
                                 disabled={selectableChats.length === 0}
                                 style={{ cursor: 'pointer', width: '13px', height: '13px', accentColor: ccTheme.accentColor || '#2563EB' }}
                             />
-                            {selectedChatIds.size > 0 
+                            {selectedChatIds.size > 0
                                 ? <span>{selectedChatIds.size} sel.</span>
                                 : <span>Todos ({selectableChats.length})</span>}
                         </label>
@@ -5197,13 +5197,13 @@ export default function ContactCenterChatConsole({
 
                             const incomingMsgs = (chat.messages || []).filter(m => m.direction === 'incoming' || m.sender === 'patient').length;
                             const readAtCount = readChatMsgCountRef.current.get(chat.id);
-                            const chatUnreadCount = (chat.unread && readAtCount === undefined) 
+                            const chatUnreadCount = (chat.unread && readAtCount === undefined)
                                 ? Math.max(1, incomingMsgs)
                                 : (readAtCount !== undefined ? Math.max(0, incomingMsgs - readAtCount) : 0);
                             const isChatUnread = chatUnreadCount > 0 && !isClosed;
 
                             return (
-                                <div 
+                                <div
                                     key={chat.id}
                                     onClick={() => {
                                         const currentIncoming = (chat.messages || []).filter(m => m.direction === 'incoming' || m.sender === 'patient').length;
@@ -5217,10 +5217,10 @@ export default function ContactCenterChatConsole({
                                             ? `1px solid ${ccTheme.isDark ? '#7C2D12' : '#FED7AA'}`
                                             : `1px solid ${themeCardBorder}`,
                                         cursor: 'pointer',
-                                        background: isSelected 
+                                        background: isSelected
                                             ? (isTurnosOnline ? (ccTheme.isDark ? '#431407' : '#FFEDD5') : themeCardSelectedBg)
-                                            : isChecked 
-                                                ? (ccTheme.isDark ? '#064E3B' : '#F0FDF4') 
+                                            : isChecked
+                                                ? (ccTheme.isDark ? '#064E3B' : '#F0FDF4')
                                                 : isTurnosOnline
                                                     ? (isChatUnread
                                                         ? (ccTheme.isDark ? '#541C0A' : '#FED7AA')
@@ -5234,10 +5234,10 @@ export default function ContactCenterChatConsole({
                                                                 : themeCardBg,
                                         borderLeft: isTurnosOnline
                                             ? '4px solid #EA580C'
-                                            : isSelected 
-                                                ? `4px solid ${ccTheme.accentColor || '#1E40AF'}` 
-                                                : isChecked 
-                                                    ? '4px solid #16A34A' 
+                                            : isSelected
+                                                ? `4px solid ${ccTheme.accentColor || '#1E40AF'}`
+                                                : isChecked
+                                                    ? '4px solid #16A34A'
                                                     : isChatUnread
                                                         ? '4px solid #2563EB'
                                                         : (getChatSalusAudit(chat)?.isAlert)
@@ -5272,8 +5272,8 @@ export default function ContactCenterChatConsole({
                                                 />
                                             )}
                                             {chat.avatarUrl ? (
-                                                <img 
-                                                    src={chat.avatarUrl} 
+                                                <img
+                                                    src={chat.avatarUrl}
                                                     alt={getCleanChatName(chat)}
                                                     style={{
                                                         width: '22px', height: '22px', borderRadius: '50%',
@@ -5418,20 +5418,20 @@ export default function ContactCenterChatConsole({
                                             const salusAudit = getChatSalusAudit(chat);
                                             if (!salusAudit) return null;
                                             return (
-                                                <span 
+                                                <span
                                                     title={salusAudit.status === 'EN_SALUS' ? `Turno en SALUS: ${salusAudit.turno?.fechaVisita} ${salusAudit.turno?.horaVisita} (${salusAudit.turno?.especialidad})` : salusAudit.label}
                                                     style={{
                                                         fontSize: '0.64rem',
                                                         fontWeight: 800,
                                                         padding: '1px 6px',
                                                         borderRadius: '6px',
-                                                        background: ccTheme.isDark 
+                                                        background: ccTheme.isDark
                                                             ? (salusAudit.status === 'EN_SALUS' ? '#064E3B' : salusAudit.status === 'NO_REGISTRADO' ? '#450A0A' : '#451A03')
                                                             : salusAudit.bg,
-                                                        color: ccTheme.isDark 
+                                                        color: ccTheme.isDark
                                                             ? (salusAudit.status === 'EN_SALUS' ? '#6EE7B7' : salusAudit.status === 'NO_REGISTRADO' ? '#FCA5A5' : '#FDE68A')
                                                             : salusAudit.color,
-                                                        border: `1px solid ${ccTheme.isDark 
+                                                        border: `1px solid ${ccTheme.isDark
                                                             ? (salusAudit.status === 'EN_SALUS' ? '#047857' : salusAudit.status === 'NO_REGISTRADO' ? '#7F1D1D' : '#78350F')
                                                             : salusAudit.border}`,
                                                         display: 'inline-flex',
@@ -5467,7 +5467,7 @@ export default function ContactCenterChatConsole({
                                             const viewers = getViewersForChat(chat);
                                             if (!viewers.length) return null;
                                             return (
-                                                <span 
+                                                <span
                                                     title={`${viewers.map(v => v.agentName).join(', ')} está viendo este chat ahora mismo`}
                                                     style={{
                                                         fontSize: '0.64rem',
@@ -5618,13 +5618,13 @@ export default function ContactCenterChatConsole({
             {/* ═════════════════════════════════════════════════════════════════ */}
             {/* COLUMNA 2: VISOR DE CHAT Y COMPOSITOR                            */}
             {/* ═════════════════════════════════════════════════════════════════ */}
-            <div style={{ 
-                display: 'flex', 
-                flexDirection: 'column', 
-                height: '100%', 
-                minHeight: 0, 
-                overflow: 'hidden', 
-                background: ccTheme.chatBgColor || '#F8FAFC' 
+            <div style={{
+                display: 'flex',
+                flexDirection: 'column',
+                height: '100%',
+                minHeight: 0,
+                overflow: 'hidden',
+                background: ccTheme.chatBgColor || '#F8FAFC'
             }}>
                 {/* ═════════════════════════════════════════════════════════════════ */}
                 {/* BANNER DE RETORNO A AUDITORÍA / FINAL DE TURNO                    */}
@@ -5718,8 +5718,8 @@ export default function ContactCenterChatConsole({
                             <MessageSquare size={32} />
                         </div>
                         <h3 style={{ fontSize: '1.05rem', fontWeight: 700, margin: '0 0 8px 0', color: ccTheme.isDark ? '#F1F5F9' : '#0F172A' }}>
-                            {filterTab === 'asignadas_mi' 
-                                ? 'No tienes conversaciones asignadas activas' 
+                            {filterTab === 'asignadas_mi'
+                                ? 'No tienes conversaciones asignadas activas'
                                 : 'Selecciona una conversación para comenzar'}
                         </h3>
                         <p style={{ fontSize: '0.82rem', maxWidth: '380px', margin: 0, lineHeight: 1.5, opacity: 0.8 }}>
@@ -5730,7056 +5730,2745 @@ export default function ContactCenterChatConsole({
                     </div>
                 ) : (
                     <>
-                {/* Barra Superior del Chat con Control de Asignación Exclusiva */}
-                <div style={{
-                    padding: '5px 14px',
-                    flexShrink: 0,
-                    background: ccTheme.chatHeaderBg || '#FFFFFF',
-                    borderBottom: `1px solid ${ccTheme.chatHeaderBorder || '#E2E8F0'}`,
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    flexWrap: 'wrap',
-                    gap: '6px',
-                    position: 'relative',
-                    zIndex: 30
-                }}>
-                    {/* Izquierda: Nombre del paciente y datos */}
-                    <div style={{ minWidth: 0 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <span style={{ fontSize: '0.88rem', fontWeight: 800, color: ccTheme.accentColor || '#0284C7', lineHeight: 1.2 }}>
-                                {getCleanChatName(selectedChat)}
-                            </span>
-
-                            {/* CONDICIÓN PADRÓN */}
-                            <span 
-                                title="Condición de Padrón"
-                                style={{
-                                    fontSize: '0.62rem', fontWeight: 800,
-                                    padding: '1px 6px', borderRadius: '4px',
-                                    background: selectedChat.customFields?.esPacienteExistente ? '#ECFDF5' : '#EFF6FF',
-                                    color: selectedChat.customFields?.esPacienteExistente ? '#047857' : '#1D4ED8',
-                                    border: '1px solid', borderColor: selectedChat.customFields?.esPacienteExistente ? '#A7F3D0' : '#BFDBFE',
-                                    lineHeight: 1.2, whiteSpace: 'nowrap'
-                                }}
-                            >
-                                {selectedChat.customFields?.esPacienteExistente ? '✓ Paciente Registrado' : '+ Nuevo Paciente'}
-                            </span>
-
-                            {/* ALERTA FERVIENTE DE TELÉFONO COMPARTIDO / MÚLTIPLES CONTACTOS ASOCIADOS */}
-                            {associatedPatients.length > 1 && (
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        setRightSidebarCollapsed(false);
-                                        setActiveDetailTab('ficha');
-                                        setShowAssociatedDrawer(true);
-                                    }}
-                                    title={`¡ATENCIÓN! Este número telefónico pertenece a ${associatedPatients.length} pacientes distintos en SALUS: ${associatedPatients.map(p => p.nombre).join(' / ')}. Haz clic para verificar a quién corresponde el turno.`}
-                                    style={{
-                                        fontSize: '0.64rem',
-                                        fontWeight: 900,
-                                        padding: '2px 8px',
-                                        borderRadius: '6px',
-                                        background: '#FEF3C7',
-                                        color: '#B45309',
-                                        border: '1.5px solid #F59E0B',
-                                        boxShadow: '0 1px 4px rgba(245, 158, 11, 0.28)',
-                                        lineHeight: 1.2,
-                                        whiteSpace: 'nowrap',
-                                        display: 'inline-flex',
-                                        alignItems: 'center',
-                                        gap: '4px',
-                                        cursor: 'pointer'
-                                    }}
-                                >
-                                    <AlertTriangle size={11} style={{ color: '#D97706', flexShrink: 0 }} />
-                                    <span>⚠️ TELÉFONO COMPARTIDO ({associatedPatients.length} CONTACTOS ASOCIADOS)</span>
-                                </button>
-                            )}
-
-                            {/* ETIQUETAS BOT EN CABECERA */}
-                            {renderBotTags(selectedChat, ccTheme)}
-                        </div>
-                        <div style={{ fontSize: '0.67rem', color: ccTheme.chatHeaderColor || '#64748B', opacity: 0.9, display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '6px', marginTop: '2px', lineHeight: 1.2 }}>
-                            <span>Tel: {selectedChat.phone}</span>
-                            <span>•</span>
-                            <span>
-                                Última respuesta: <strong style={{ color: selectedChat.lastResponderRole === 'agent' ? (ccTheme.accentColor || '#1E40AF') : (ccTheme.isDark ? '#FCA5A5' : '#E11D48') }}>
-                                    {selectedChat.lastResponder || 'Paciente'}
-                                </strong>
-                            </span>
-                            <span>•</span>
-                            {is24hWindowExpired ? (
-                                <span 
-                                    title="Pasaron más de 24hs desde el último mensaje del paciente. Solo se puede responder con una plantilla oficial aprobada por Meta."
-                                    style={{
-                                        display: 'inline-flex', alignItems: 'center', gap: '3px',
-                                        padding: '1px 6px', borderRadius: '4px',
-                                        background: '#FEF3C7', border: '1px solid #FCD34D',
-                                        color: '#B45309', fontSize: '0.64rem', fontWeight: 800,
-                                        cursor: 'help'
-                                    }}
-                                >
-                                    <Clock size={10} color="#D97706" />
-                                    Ventana 24h: Expirada (Requiere Plantilla Meta)
-                                </span>
-                            ) : windowRemaining ? (
-                                <span 
-                                    title={`Ventana activa de conversación libre de WhatsApp. Vence en aprox. ${windowRemaining.hours} horas y ${windowRemaining.mins} minutos.`}
-                                    style={{
-                                        display: 'inline-flex', alignItems: 'center', gap: '3px',
-                                        padding: '1px 6px', borderRadius: '4px',
-                                        background: '#ECFDF5', border: '1px solid #A7F3D0',
-                                        color: '#047857', fontSize: '0.64rem', fontWeight: 800,
-                                        cursor: 'help'
-                                    }}
-                                >
-                                    <CheckCircle2 size={10} color="#10B981" />
-                                    Ventana 24h activa ({windowRemaining.hours}h {windowRemaining.mins}m)
-                                </span>
-                            ) : null}
-                            {/* Badge de Ojito si otro agente está leyendo este chat */}
-                            {otherViewersForCurrentChat.length > 0 && (
-                                <>
-                                    <span>•</span>
-                                    <span style={{
-                                        display: 'inline-flex',
-                                        alignItems: 'center',
-                                        gap: '3px',
-                                        padding: '1px 6px',
-                                        borderRadius: '9999px',
-                                        background: '#EFF6FF',
-                                        border: '1px solid #60A5FA',
-                                        color: '#1D4ED8',
-                                        fontSize: '0.64rem',
-                                        fontWeight: 800,
-                                        whiteSpace: 'nowrap'
-                                    }}>
-                                        <Eye size={10} color="#2563EB" />
-                                        <span>
-                                            {otherViewersForCurrentChat.map(v => v.agentName).join(', ')} {otherViewersForCurrentChat.length === 1 ? 'está viendo' : 'están viendo'}
-                                        </span>
-                                    </span>
-                                </>
-                            )}
-                            {!isClosedOrArchived(selectedChat) && (
-                                <>
-                                    <span>•</span>
-                                    {selectedChat.isWaitingResponse ? (
-                                        <span style={{
-                                            fontSize: '0.64rem', fontWeight: 800, padding: '1px 6px', borderRadius: '4px',
-                                            background: selectedChat.waitingMinutes >= 30 ? '#FEF2F2' : (selectedChat.waitingMinutes >= 10 ? '#FFFBEB' : '#F0FDF4'),
-                                            color: selectedChat.waitingMinutes >= 30 ? '#DC2626' : (selectedChat.waitingMinutes >= 10 ? '#D97706' : '#15803D'),
-                                            border: `1px solid ${selectedChat.waitingMinutes >= 30 ? '#FECACA' : (selectedChat.waitingMinutes >= 10 ? '#FDE68A' : '#BBF7D0')}`,
-                                            display: 'inline-flex', alignItems: 'center', gap: '3px', whiteSpace: 'nowrap'
-                                        }}>
-                                            <Clock size={10} />
-                                            {selectedChat.waitingMinutes >= 30 ? '🚨 ' : (selectedChat.waitingMinutes >= 10 ? '⚠️ ' : '⏳ ')}
-                                            {selectedChat.waitingTimeText || 'Esperando respuesta'}
-                                        </span>
-                                    ) : (
-                                        <span style={{
-                                            fontSize: '0.64rem', fontWeight: 700, padding: '1px 6px', borderRadius: '4px',
-                                            background: '#F0FDF4', color: '#15803D', border: '1px solid #BBF7D0',
-                                            display: 'inline-flex', alignItems: 'center', gap: '3px', whiteSpace: 'nowrap'
-                                        }}>
-                                            <Check size={10} /> Respondido por agente
-                                        </span>
-                                    )}
-                                </>
-                            )}
-                        </div>
-                    </div>
-
-                    {/* Derecha: Bot Controls + Asignación */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', position: 'relative' }}>
-                        {/* BOTÓN DESPLEGABLE COMPACTO DE BOT (EXCLUSIVO PARA LMARINERO) */}
-                        {isStrictLMarinero && (
-                            <div ref={botMenuRef} style={{ position: 'relative' }}>
-                                <button
-                                    type="button"
-                                    onClick={() => setBotMenuOpen(prev => !prev)}
-                                    title="Opciones de Bot y Contexto de IA (Exclusivo lmarinero)"
-                                    style={{
-                                        display: 'inline-flex',
-                                        alignItems: 'center',
-                                        gap: '5px',
-                                        padding: '2px 8px',
-                                        borderRadius: '6px',
-                                        border: '1px solid',
-                                        borderColor: botActive ? '#BBF7D0' : '#FDE68A',
-                                        background: botActive ? '#F0FDF4' : '#FFFBEB',
-                                        color: botActive ? '#15803D' : '#B45309',
-                                        fontSize: '0.68rem',
-                                        fontWeight: 800,
-                                        cursor: 'pointer',
-                                        height: '24px',
-                                        boxShadow: '0 1px 2px rgba(0,0,0,0.03)',
-                                        transition: 'all 0.15s ease'
-                                    }}
-                                >
-                                    <Bot size={13} color={botActive ? '#16A34A' : '#D97706'} />
-                                    <span>Bot</span>
-                                    <span style={{
-                                        width: '6px',
-                                        height: '6px',
-                                        borderRadius: '50%',
-                                        background: botActive ? '#16A34A' : '#EF4444',
-                                        display: 'inline-block'
-                                    }} />
-                                    <ChevronDown 
-                                        size={11} 
-                                        color={botActive ? '#15803D' : '#B45309'} 
-                                        style={{ transform: botMenuOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s ease' }} 
-                                    />
-                                </button>
-
-                                {botMenuOpen && (
-                                    <div style={{
-                                        position: 'absolute',
-                                        top: 'calc(100% + 4px)',
-                                        left: 0,
-                                        zIndex: 150,
-                                        width: '240px',
-                                        background: '#FFFFFF',
-                                        borderRadius: '10px',
-                                        border: '1px solid #E2E8F0',
-                                        boxShadow: '0 12px 30px -4px rgba(0,0,0,0.18), 0 4px 8px -2px rgba(0,0,0,0.06)',
-                                        padding: '6px',
-                                        display: 'flex',
-                                        flexDirection: 'column',
-                                        gap: '4px'
-                                    }}>
-                                        {/* Header Estado */}
-                                        <div style={{
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            justifyContent: 'space-between',
-                                            padding: '6px 8px',
-                                            borderRadius: '6px',
-                                            background: botActive ? '#F0FDF4' : '#FFFBEB',
-                                            border: `1px solid ${botActive ? '#BBF7D0' : '#FDE68A'}`,
-                                            marginBottom: '2px'
-                                        }}>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.72rem', fontWeight: 800, color: botActive ? '#15803D' : '#B45309' }}>
-                                                <Bot size={13} />
-                                                <span>{botActive ? 'Bot Activo (Triage)' : 'Bot Silenciado'}</span>
-                                            </div>
-                                            {TEST_BOT_RESET_INDICATOR_ENABLED && (
-                                                <span style={{ fontSize: '0.60rem', fontWeight: 800, color: '#B45309', background: '#FEF3C7', padding: '1px 4px', borderRadius: '4px' }}>
-                                                    ⏱️ 3m
-                                                </span>
-                                            )}
-                                        </div>
-
-                                        {/* Opción 1: Silenciar / Reanudar */}
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                handleToggleBot();
-                                                setBotMenuOpen(false);
-                                            }}
-                                            style={{
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                gap: '8px',
-                                                width: '100%',
-                                                padding: '7px 10px',
-                                                borderRadius: '6px',
-                                                border: 'none',
-                                                background: 'transparent',
-                                                color: '#1E293B',
-                                                fontSize: '0.74rem',
-                                                fontWeight: 600,
-                                                cursor: 'pointer',
-                                                textAlign: 'left'
-                                            }}
-                                            onMouseEnter={(e) => e.currentTarget.style.background = '#F1F5F9'}
-                                            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                                        >
-                                            <div style={{
-                                                width: '22px',
-                                                height: '22px',
-                                                borderRadius: '5px',
-                                                background: botActive ? '#FEE2E2' : '#DCFCE7',
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                justifyContent: 'center',
-                                                color: botActive ? '#DC2626' : '#16A34A',
-                                                flexShrink: 0
-                                            }}>
-                                                <Power size={12} />
-                                            </div>
-                                            <div>
-                                                <div style={{ fontWeight: 700, color: '#0F172A' }}>{botActive ? 'Silenciar Bot' : 'Reanudar Bot'}</div>
-                                                <div style={{ fontSize: '0.64rem', color: '#64748B' }}>
-                                                    {botActive ? 'Pausar respuestas automáticas' : 'Permitir triage automático'}
-                                                </div>
-                                            </div>
-                                        </button>
-
-                                        {/* Opción 2: Reiniciar flujo */}
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                setBotMenuOpen(false);
-                                                handleOpenResetBotModal();
-                                            }}
-                                            style={{
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                gap: '8px',
-                                                width: '100%',
-                                                padding: '7px 10px',
-                                                borderRadius: '6px',
-                                                border: 'none',
-                                                background: 'transparent',
-                                                color: '#1E293B',
-                                                fontSize: '0.74rem',
-                                                fontWeight: 600,
-                                                cursor: 'pointer',
-                                                textAlign: 'left'
-                                            }}
-                                            onMouseEnter={(e) => e.currentTarget.style.background = '#F1F5F9'}
-                                            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                                        >
-                                            <div style={{
-                                                width: '22px',
-                                                height: '22px',
-                                                borderRadius: '5px',
-                                                background: '#E0F2FE',
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                justifyContent: 'center',
-                                                color: '#0284C7',
-                                                flexShrink: 0
-                                            }}>
-                                                <RefreshCw size={12} />
-                                            </div>
-                                            <div>
-                                                <div style={{ fontWeight: 700, color: '#0F172A' }}>Reiniciar Flujo</div>
-                                                <div style={{ fontSize: '0.64rem', color: '#64748B' }}>Volver al saludo inicial de triage</div>
-                                            </div>
-                                        </button>
-
-                                        <div style={{ height: '1px', background: '#F1F5F9', margin: '2px 0' }} />
-
-                                        {/* Opción 3: Borrar Contexto e Historial */}
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                setBotMenuOpen(false);
-                                                if (selectedChat?.phone) {
-                                                    setChatTargetToDelete(selectedChat);
-                                                    setDeleteContextModalOpen(true);
-                                                }
-                                            }}
-                                            style={{
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                gap: '8px',
-                                                width: '100%',
-                                                padding: '7px 10px',
-                                                borderRadius: '6px',
-                                                border: 'none',
-                                                background: 'transparent',
-                                                color: '#DC2626',
-                                                fontSize: '0.74rem',
-                                                fontWeight: 600,
-                                                cursor: 'pointer',
-                                                textAlign: 'left'
-                                            }}
-                                            onMouseEnter={(e) => e.currentTarget.style.background = '#FEF2F2'}
-                                            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                                        >
-                                            <div style={{
-                                                width: '22px',
-                                                height: '22px',
-                                                borderRadius: '5px',
-                                                background: '#FEE2E2',
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                justifyContent: 'center',
-                                                color: '#DC2626',
-                                                flexShrink: 0
-                                            }}>
-                                                <Trash2 size={12} />
-                                            </div>
-                                            <div>
-                                                <div style={{ fontWeight: 700, color: '#DC2626' }}>Borrar Contexto</div>
-                                                <div style={{ fontSize: '0.64rem', color: '#991B1B' }}>Purgar historial e IA del chat</div>
-                                            </div>
-                                        </button>
-                                    </div>
-                                )}
-                            </div>
-                        )}
-
-                        {/* BOTONES DE ASIGNACIÓN / BLOQUEO EXCLUSIVO */}
-                        {isClosedOrArchived(selectedChat) ? (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                <div style={{
-                                    display: 'flex', alignItems: 'center', gap: '4px',
-                                    padding: '2px 8px', borderRadius: '6px',
-                                    background: '#ECFDF5', border: '1px solid #A7F3D0', color: '#047857',
-                                    fontSize: '0.68rem', fontWeight: 800, height: '24px'
-                                }}>
-                                    <CheckCircle2 size={12} color="#047857" />
-                                    Finalizada {selectedChat.resolutionReason ? `(${selectedChat.resolutionReason})` : ''}
-                                </div>
-                                <button
-                                    onClick={() => handleAssignChatAndSwitchTab(selectedChat.id, activeAgent.id)}
-                                    title="Reabrir esta conversación para continuar atendiendo al paciente"
-                                    style={{
-                                        padding: '2px 8px', borderRadius: '6px', border: '1px solid #0284C7',
-                                        background: '#F0F9FF', color: '#0284C7', fontWeight: 700, fontSize: '0.68rem',
-                                        cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', height: '24px'
-                                    }}
-                                >
-                                    <RefreshCw size={11} /> Reabrir
-                                </button>
-                            </div>
-                        ) : isBot ? (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                <button 
-                                    onClick={() => handleAssignChatAndSwitchTab(selectedChat.id, activeAgent.id)}
-                                    title="Tomar el control de la conversación y pausar el bot automático"
-                                    style={{
-                                        padding: '3px 10px', borderRadius: '6px', border: 'none',
-                                        background: 'linear-gradient(135deg, #7C3AED 0%, #6D28D9 100%)',
-                                        color: '#FFFFFF', fontWeight: 700, fontSize: '0.70rem',
-                                        cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px',
-                                        height: '24px',
-                                        boxShadow: '0 1px 3px rgba(124, 58, 237, 0.25)'
-                                    }}
-                                >
-                                    <UserCheck size={12} /> Asignarme y pausar Bot
-                                </button>
-                                <button
-                                    onClick={() => setCloseModalOpen(true)}
-                                    title="Finalizar esta charla y archivar conversación"
-                                    style={{
-                                        padding: '2px 8px', borderRadius: '6px', border: 'none',
-                                        background: 'linear-gradient(135deg, #059669 0%, #047857 100%)',
-                                        color: '#FFFFFF', fontWeight: 700, fontSize: '0.68rem',
-                                        cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px',
-                                        height: '24px',
-                                        boxShadow: '0 1px 3px rgba(5, 150, 105, 0.2)'
-                                    }}
-                                >
-                                    <CheckCircle2 size={11} /> Finalizar
-                                </button>
-                            </div>
-                        ) : isUnassigned ? (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                <button 
-                                    onClick={() => handleAssignChatAndSwitchTab(selectedChat.id, activeAgent.id)}
-                                    title="Asignarme este chat para responder"
-                                    style={{
-                                        padding: '3px 10px', borderRadius: '6px', border: 'none',
-                                        background: 'linear-gradient(135deg, #0284C7 0%, #0369A1 100%)',
-                                        color: '#FFFFFF', fontWeight: 700, fontSize: '0.70rem',
-                                        cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px',
-                                        height: '24px',
-                                        boxShadow: '0 1px 3px rgba(2, 132, 199, 0.25)'
-                                    }}
-                                >
-                                    <UserCheck size={12} /> Asignarme
-                                </button>
-                                <button
-                                    onClick={() => setCloseModalOpen(true)}
-                                    title="Finalizar esta charla y archivar conversación"
-                                    style={{
-                                        padding: '2px 8px', borderRadius: '6px', border: 'none',
-                                        background: 'linear-gradient(135deg, #059669 0%, #047857 100%)',
-                                        color: '#FFFFFF', fontWeight: 700, fontSize: '0.68rem',
-                                        cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px',
-                                        height: '24px',
-                                        boxShadow: '0 1px 3px rgba(5, 150, 105, 0.2)'
-                                    }}
-                                >
-                                    <CheckCircle2 size={11} /> Finalizar
-                                </button>
-                            </div>
-                        ) : null}
-
-                        {/* CASO 2: ASIGNADA A MÍ -> PUEDO LIBERAR O TRANSFERIR (Solo si NO está cerrado) */}
-                        {!isClosedOrArchived(selectedChat) && isAssignedToMe && (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                <span style={{
-                                    fontSize: '0.68rem', fontWeight: 800, padding: '2px 8px', borderRadius: '6px',
-                                    background: '#DCFCE7', color: '#15803D', border: '1px solid #86EFAC',
-                                    display: 'flex', alignItems: 'center', gap: '4px', height: '24px', whiteSpace: 'nowrap'
-                                }}>
-                                    <CheckCircle2 size={12} /> Asignada a ti ({activeAgent.name})
-                                </span>
-
-                                <button
-                                    onClick={handleUnassignWithAudit}
-                                    title="Liberar chat a la cola general (registra nota de pase en auditoría)"
-                                    style={{
-                                        padding: '2px 8px', borderRadius: '6px', border: '1px solid #CBD5E1',
-                                        background: '#FFFFFF', color: '#475569', fontWeight: 600, fontSize: '0.68rem',
-                                        cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px', height: '24px'
-                                    }}
-                                >
-                                    <Unlock size={11} /> Liberar
-                                </button>
-
-
-                                <button
-                                    onClick={() => setTransferMenuOpen(!transferMenuOpen)}
-                                    title="Transferir a otra agente"
-                                    style={{
-                                        padding: '2px 8px', borderRadius: '6px', border: '1px solid #0284C7',
-                                        background: '#F0F9FF', color: '#0284C7', fontWeight: 700, fontSize: '0.68rem',
-                                        cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px', height: '24px'
-                                    }}
-                                >
-                                    <ArrowRightLeft size={11} /> Transferir <ChevronDown size={11} />
-                                </button>
-
-                                <button
-                                    onClick={() => setCloseModalOpen(true)}
-                                    title="Finalizar atención y archivar conversación"
-                                    style={{
-                                        padding: '2px 8px', borderRadius: '6px', border: 'none',
-                                        background: 'linear-gradient(135deg, #059669 0%, #047857 100%)',
-                                        color: '#FFFFFF', fontWeight: 700, fontSize: '0.68rem',
-                                        cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px',
-                                        height: '24px',
-                                        boxShadow: '0 1px 3px rgba(5, 150, 105, 0.2)'
-                                    }}
-                                >
-                                    <CheckCircle2 size={11} /> Finalizar
-                                </button>
-                            </div>
-                        )}
-
-                        {/* CASO 3: ASIGNADA A OTRA AGENTE -> BLOQUEO CON OPCIÓN DE REASIGNACIÓN (Solo si NO está cerrado y realmente asignada) */}
-                        {!isClosedOrArchived(selectedChat) && !isUnassigned && !isBot && !isAssignedToMe && selectedChat.assignedTo && (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                                <div style={{
-                                    display: 'flex', alignItems: 'center', gap: '4px',
-                                    padding: '2px 8px', borderRadius: '6px',
-                                    background: '#FEE2E2', border: '1px solid #FCA5A5', color: '#991B1B',
-                                    fontSize: '0.68rem', fontWeight: 800, height: '24px', whiteSpace: 'nowrap'
-                                }}>
-                                    <Lock size={11} />
-                                    Asignada a {assignedAgentObj?.name || selectedChat.assignedTo} (Bloqueada)
-                                </div>
-
-                                {/* Botón para que CUALQUIER agente pueda reasignarse el chat a sí misma tras aceptar advertencia */}
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        setReassignNote('');
-                                        setReassignModalOpen(true);
-                                    }}
-                                    style={{
-                                        padding: '2px 9px', borderRadius: '6px', border: 'none',
-                                        background: 'linear-gradient(135deg, #0284C7 0%, #0369A1 100%)',
-                                        color: '#FFFFFF', fontWeight: 800, fontSize: '0.68rem',
-                                        cursor: 'pointer', height: '24px',
-                                        display: 'flex', alignItems: 'center', gap: '4px',
-                                        boxShadow: '0 2px 4px rgba(2, 132, 199, 0.25)',
-                                        whiteSpace: 'nowrap'
-                                    }}
-                                    title={`Reasignar esta conversación a ${activeAgent.name}`}
-                                >
-                                    <ArrowRightLeft size={11} />
-                                    Reasignar a mí
-                                </button>
-
-                                {/* Solo supervisor lmarinero puede transferir a terceros */}
-                                {isSupervisor && (
-                                    <button
-                                        onClick={() => setTransferMenuOpen(!transferMenuOpen)}
-                                        style={{
-                                            padding: '2px 8px', borderRadius: '6px', border: '1px solid #DC2626',
-                                            background: '#FFFFFF', color: '#DC2626', fontWeight: 700, fontSize: '0.68rem',
-                                            cursor: 'pointer', height: '24px'
-                                        }}
-                                    >
-                                        Supervisión: Reasignar
-                                    </button>
-                                )}
-                            </div>
-                        )}
-
-
-                        {/* Menú de Transferencia entre las 4 agentes */}
-                        {transferMenuOpen && (
-                            <div 
-                                ref={transferMenuRef}
-                                style={{
-                                    position: 'absolute', top: '100%', right: 0, marginTop: '6px',
-                                    background: '#FFFFFF', borderRadius: '10px', border: '1px solid #CBD5E1',
-                                    boxShadow: '0 10px 25px rgba(0,0,0,0.15)', width: '250px', zIndex: 60,
-                                    padding: '8px', display: 'flex', flexDirection: 'column', gap: '4px'
-                                }}
-                            >
-                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 6px', borderBottom: '1px solid #F1F5F9' }}>
-                                    <div style={{ fontSize: '0.7rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase' }}>
-                                        Transferir conversación a:
-                                    </div>
-                                    <button 
-                                        type="button" 
-                                        onClick={() => setTransferMenuOpen(false)}
-                                        style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#94A3B8' }}
-                                    >
-                                        <X size={13} />
-                                    </button>
-                                </div>
-                                {CONTACT_CENTER_AGENTS.filter(a => {
-                                    const assignedId = (selectedChat.assignedTo || '').toLowerCase();
-                                    const myId = (activeAgent?.id || '').toLowerCase();
-                                    const myUser = (activeAgent?.username || '').toLowerCase();
-                                    const aId = a.id.toLowerCase();
-                                    const aUser = (a.username || '').toLowerCase();
-                                    return aId !== assignedId && aUser !== assignedId && aId !== myId && aUser !== myUser;
-                                }).map(targetAgent => {
-                                    const isTargetViewing = otherViewersForCurrentChat.some(v => 
-                                        (v.agentId && v.agentId.toLowerCase() === targetAgent.id.toLowerCase()) ||
-                                        (v.agentName && targetAgent.name && v.agentName.toLowerCase().includes(targetAgent.name.toLowerCase()))
-                                    );
-                                    return (
-                                        <button
-                                            key={targetAgent.id}
-                                            onClick={() => {
-                                                setConfirmTransferAgent(targetAgent);
-                                                setTransferNote('');
-                                                setTransferMenuOpen(false);
-                                            }}
-                                            style={{
-                                                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                                                padding: '8px 10px', borderRadius: '6px', border: 'none',
-                                                background: 'transparent', cursor: 'pointer', textAlign: 'left',
-                                                width: '100%', transition: 'background 0.15s'
-                                            }}
-                                            onMouseEnter={(e) => e.currentTarget.style.background = '#F8FAFC'}
-                                            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                                        >
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                <div style={{
-                                                    width: '24px', height: '24px', borderRadius: '50%',
-                                                    background: targetAgent.color, color: '#FFF',
-                                                    fontSize: '0.7rem', fontWeight: 800, display: 'flex',
-                                                    alignItems: 'center', justifyContent: 'center'
-                                                }}>
-                                                    {targetAgent.avatar}
-                                                </div>
-                                                <div>
-                                                    <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#0F172A' }}>
-                                                        {targetAgent.fullName}
-                                                    </div>
-                                                    <div style={{ fontSize: '0.66rem', color: '#64748B' }}>
-                                                        {targetAgent.role}
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            {isTargetViewing ? (
-                                                <span style={{ fontSize: '0.62rem', fontWeight: 800, color: '#1D4ED8', display: 'flex', alignItems: 'center', gap: '2px', background: '#EFF6FF', padding: '2px 5px', borderRadius: '4px' }}>
-                                                    <Eye size={10} /> Viendo
-                                                </span>
-                                            ) : (
-                                                <ArrowRightLeft size={13} color="#94A3B8" />
-                                            )}
-                                        </button>
-                                    );
-                                })}
-                            </div>
-                        )}
-                    </div>
-                </div>
-
-                {/* Banner de Presencia en Vivo ("El Ojito"): Si otro usuario está viendo esta conversación */}
-                {otherViewersForCurrentChat.length > 0 && (
-                    <div style={{
-                        flexShrink: 0,
-                        padding: '2px 14px',
-                        background: '#EFF6FF',
-                        borderBottom: '1px solid #BFDBFE',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        fontSize: '0.68rem',
-                        color: '#1E40AF',
-                        fontWeight: 600,
-                        height: '22px'
-                    }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <Eye size={12} color="#1D4ED8" />
-                            <span>
-                                <strong>{otherViewersForCurrentChat.map(v => v.agentName).join(', ')}</strong> {otherViewersForCurrentChat.length === 1 ? 'está leyendo esta conversación en este momento.' : 'están leyendo esta conversación en este momento.'}
-                            </span>
-                        </div>
-                        <div style={{ fontSize: '0.62rem', color: '#2563EB', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                            <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#2563EB', display: 'inline-block' }} />
-                            En tiempo real
-                        </div>
-                    </div>
-                )}
-
-                {/* Banner de Cancelación de Turno */}
-                {(
-                    selectedChat?.tags?.includes('Cancelación') &&
-                    !(selectedChat?.motivoConsulta || '').toLowerCase().includes('consulta de turno') &&
-                    !(selectedChat?.motivoConsulta || '').toLowerCase().includes('consultar turno') &&
-                    !((selectedChat?.aiSummary?.tipo_tramite || '').toLowerCase().includes('informacion') && !(selectedChat?.aiSummary?.resumen_solicitud || '').toLowerCase().includes('cancelar'))
-                ) && (
-                    <div style={{
-                        flexShrink: 0,
-                        padding: '6px 14px',
-                        background: '#FEF2F2',
-                        borderBottom: '1px solid #FECACA',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        fontSize: '0.72rem',
-                        color: '#991B1B',
-                        fontWeight: 600
-                    }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <CalendarX size={14} color="#DC2626" />
-                            <span>
-                                <strong>Cancelación de Turno:</strong> Este paciente solicitó dar de baja un turno. Registrado en la Bolsa de Cancelaciones.
-                            </span>
-                        </div>
-                        <button
-                            type="button"
-                            onClick={() => onNavigateTab && onNavigateTab('cancelaciones')}
-                            style={{
-                                background: '#DC2626',
-                                color: '#FFFFFF',
-                                border: 'none',
-                                borderRadius: '5px',
-                                padding: '3px 8px',
-                                fontSize: '0.66rem',
-                                fontWeight: 800,
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '4px',
-                                boxShadow: '0 1px 3px rgba(220,38,38,0.2)'
-                            }}
-                        >
-                            <CalendarX size={11} />
-                            Ver en Cancelaciones
-                        </button>
-                    </div>
-                )}
-
-                {/* Área de Mensajes con Estilo AsisteClick + Tags de Autoría */}
-                <div 
-                    ref={messagesContainerRef}
-                    style={{
-                        flex: 1,
-                        minHeight: 0,
-                        overflowY: 'auto',
-                        overflowX: 'hidden',
-                        width: '100%',
-                        boxSizing: 'border-box',
-                        padding: '16px 20px',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: '12px',
-                        background: ccTheme.chatBgColor || '#F8FAFC',
-                        backgroundImage: ccTheme.chatBgImage 
-                            ? `linear-gradient(rgba(15, 23, 42, ${ccTheme.chatOverlayOpacity ?? 0.70}), rgba(15, 23, 42, ${ccTheme.chatOverlayOpacity ?? 0.70})), url('${ccTheme.chatBgImage}')`
-                            : 'radial-gradient(#E2E8F0 1px, transparent 1px)',
-                        backgroundSize: ccTheme.chatBgImage ? 'cover' : '20px 20px',
-                        backgroundPosition: 'center',
-                        backgroundAttachment: 'fixed'
-                    }}
-                >
-                    {(() => {
-                        const normSelectedPhone = selectedChat?.phone ? (normalizeArgentinePhone(selectedChat.phone) || selectedChat.phone) : null;
-                        const persistedHistory = normSelectedPhone ? (loadedMessagesByPhone[normSelectedPhone] || []) : [];
-                        const rawList = persistedHistory.length > 0
-                            ? mergeAndSortMessages(persistedHistory, selectedChat.messages || [])
-                            : (selectedChat.messages || []);
-                        // Deduplicación visual preventiva (elimina colisiones entre mensajes optimistas y eventos Realtime)
-                        const rawMsgs = (() => {
-                            if (rawList.length <= 1) return rawList;
-                            const seenRealIds = new Set();
-                            const seenMsgIds = new Set();
-                            const seenOutboxKeys = new Set();
-                            const deduplicated = [];
-
-                            for (const m of rawList) {
-                                // Descartar duplicados exactos por id
-                                if (m.id && seenMsgIds.has(String(m.id))) continue;
-                                if (m.id) seenMsgIds.add(String(m.id));
-
-                                // Descartar duplicados exactos por realId de base de datos
-                                if (m.realId) {
-                                    const rId = String(m.realId);
-                                    if (seenRealIds.has(rId)) continue;
-                                    seenRealIds.add(rId);
-                                }
-
-                                // Descartar mensaje optimista si ya existe el mensaje real saliente con el mismo texto
-                                if (m.sender === 'agent' || m.sender === 'note') {
-                                    const textSnippet = (m.text || '').trim();
-                                    const approxTime = m.created_at ? Math.round(new Date(m.created_at).getTime() / 20000) : 0;
-                                    const key = `${m.sender}_${textSnippet}_${approxTime}`;
-                                    if (seenOutboxKeys.has(key)) continue;
-                                    seenOutboxKeys.add(key);
-                                }
-
-                                deduplicated.push(m);
-                            }
-                            return deduplicated;
-                        })();
-
-                        const hasMore = rawMsgs.length > visibleMessageCount;
-                        const remainingCount = rawMsgs.length - visibleMessageCount;
-
-                        if (loadingChatMessages && rawMsgs.length === 0) {
-                            return (
-                                <div style={{
-                                    display: 'flex',
-                                    flexDirection: 'column',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    padding: '60px 20px',
-                                    gap: '12px',
-                                    color: '#0284C7'
-                                }}>
-                                    <RefreshCw size={26} style={{ animation: 'spin 1s linear infinite' }} />
-                                    <span style={{ fontSize: '0.85rem', fontWeight: 600, color: '#475569' }}>
-                                        Cargando mensajes de la conversación...
-                                    </span>
-                                </div>
-                            );
-                        }
-
-                        if (!loadingChatMessages && rawMsgs.length === 0) {
-                            return (
-                                <div style={{
-                                    display: 'flex',
-                                    flexDirection: 'column',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    padding: '60px 20px',
-                                    textAlign: 'center',
-                                    color: '#64748B'
-                                }}>
-                                    <div style={{
-                                        width: '48px',
-                                        height: '48px',
-                                        borderRadius: '50%',
-                                        background: '#E0F2FE',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                        marginBottom: '12px',
-                                        color: '#0284C7'
-                                    }}>
-                                        <MessageSquare size={24} />
-                                    </div>
-                                    <div style={{ fontSize: '0.88rem', fontWeight: 700, color: '#1E293B', marginBottom: '4px' }}>
-                                        No hay mensajes previos en esta conversación
-                                    </div>
-                                    <div style={{ fontSize: '0.78rem', color: '#64748B', maxWidth: '320px' }}>
-                                        Escribe un mensaje abajo para iniciar la atención con el paciente.
-                                    </div>
-                                </div>
-                            );
-                        }
-
-                        // Orden cronológico estándar (abajo los más recientes)
-                        const ordered = rawMsgs;
-                        const visibleMsgs = ordered.slice(Math.max(0, ordered.length - visibleMessageCount));
-
-                        return (
-                            <>
-                                {hasMore && (
-                                    <div style={{ display: 'flex', justifyContent: 'center', margin: '8px 0 14px' }}>
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                const containerEl = messagesContainerRef.current;
-                                                const prevScrollHeight = containerEl ? containerEl.scrollHeight : 0;
-                                                const prevScrollTop = containerEl ? containerEl.scrollTop : 0;
-                                                setVisibleMessageCount(c => c + 100);
-                                                setTimeout(() => {
-                                                    const el = messagesContainerRef.current;
-                                                    if (el && prevScrollHeight > 0) {
-                                                        el.scrollTop = Math.max(0, el.scrollHeight - prevScrollHeight + prevScrollTop);
-                                                    }
-                                                }, 20);
-                                            }}
-                                            style={{
-                                                background: '#F8FAFC',
-                                                border: '1px solid #CBD5E1',
-                                                color: '#334155',
-                                                borderRadius: '20px',
-                                                padding: '6px 16px',
-                                                fontSize: '0.72rem',
-                                                fontWeight: 700,
-                                                cursor: 'pointer',
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                gap: '6px',
-                                                boxShadow: '0 1px 2px rgba(0,0,0,0.04)'
-                                            }}
-                                        >
-                                            <Clock size={12} color="#64748B" />
-                                            Cargar mensajes anteriores ({remainingCount} más en memoria)
-                                        </button>
-                                    </div>
-                                )}
-                                {!hasMore && !noMoreOlder && rawMsgs.length > 0 && (
-                                    <div style={{ display: 'flex', justifyContent: 'center', margin: '8px 0 14px' }}>
-                                        <button
-                                            type="button"
-                                            onClick={handleLoadOlderMessages}
-                                            disabled={loadingOlder}
-                                            style={{
-                                                background: '#F0F9FF',
-                                                border: '1px solid #BAE6FD',
-                                                color: '#0284C7',
-                                                borderRadius: '20px',
-                                                padding: '6px 16px',
-                                                fontSize: '0.72rem',
-                                                fontWeight: 700,
-                                                cursor: loadingOlder ? 'wait' : 'pointer',
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                gap: '6px',
-                                                boxShadow: '0 1px 2px rgba(2,132,199,0.06)'
-                                            }}
-                                        >
-                                            <RefreshCw size={12} className={loadingOlder ? 'spin' : ''} />
-                                            {loadingOlder ? 'Cargando mensajes anteriores...' : 'Cargar mensajes más antiguos del historial'}
-                                        </button>
-                                    </div>
-                                )}
-                                {visibleMsgs.map((msg, idx) => {
-                                    const currDateStr = msg.created_at ? new Date(msg.created_at).toDateString() : null;
-                                    const prevMsg = idx > 0 ? visibleMsgs[idx - 1] : null;
-                                    const prevDateStr = prevMsg?.created_at ? new Date(prevMsg.created_at).toDateString() : null;
-                                    const showDateDivider = currDateStr && currDateStr !== prevDateStr;
-                                    const dateDividerLabel = showDateDivider ? formatChatDateDivider(msg.created_at) : null;
-
-                                    if (msg.sender === 'system') {
-                                        return (
-                                            <React.Fragment key={msg.id || `sys_${idx}`}>
-                                                {showDateDivider && dateDividerLabel && (
-                                                    <div style={{ display: 'flex', justifyContent: 'center', margin: '14px 0 8px', width: '100%' }}>
-                                                        <span style={{
-                                                            background: ccTheme.isDark ? '#1E293B' : 'rgba(241, 245, 249, 0.95)',
-                                                            backdropFilter: 'blur(4px)',
-                                                            border: `1px solid ${ccTheme.isDark ? '#334155' : '#CBD5E1'}`,
-                                                            color: ccTheme.isDark ? '#94A3B8' : '#334155',
-                                                            fontSize: '0.72rem',
-                                                            fontWeight: 700,
-                                                            padding: '4px 16px',
-                                                            borderRadius: '16px',
-                                                            boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
-                                                            display: 'inline-flex',
-                                                            alignItems: 'center',
-                                                            gap: '6px',
-                                                            textTransform: 'capitalize'
-                                                        }}>
-                                                            <Calendar size={13} color="#0284C7" />
-                                                            {dateDividerLabel}
-                                                        </span>
-                                                    </div>
-                                                )}
-                                                <div style={{ display: 'flex', justifyContent: 'center', margin: '4px 0' }}>
-                                                    <span style={{
-                                                        background: '#FFFFFF', border: '1px solid #E2E8F0',
-                                                        color: '#475569', fontSize: '0.72rem', fontWeight: 600, padding: '4px 14px',
-                                                        borderRadius: '20px', boxShadow: '0 1px 2px rgba(0,0,0,0.03)',
-                                                        display: 'flex', alignItems: 'center', gap: '6px'
-                                                    }}>
-                                                        <Clock size={12} color="#94A3B8" />
-                                                        {msg.text}
-                                                    </span>
-                                                </div>
-                                            </React.Fragment>
-                                        );
-                                    }
-
-                                    const isPatient = msg.sender === 'patient';
-                                    const isNote = Boolean(msg.isNote || msg.direction === 'note' || msg.sender === 'note' || msg.is_note);
-                                    const agentObj = !isPatient ? getAgentById(msg.senderAgentId || msg.senderName) : null;
-
-                                    return (
-                                        <React.Fragment key={msg.id || idx}>
-                                            {showDateDivider && dateDividerLabel && (
-                                                <div style={{ display: 'flex', justifyContent: 'center', margin: '14px 0 8px', width: '100%' }}>
-                                                    <span style={{
-                                                        background: ccTheme.isDark ? '#1E293B' : 'rgba(241, 245, 249, 0.95)',
-                                                        backdropFilter: 'blur(4px)',
-                                                        border: `1px solid ${ccTheme.isDark ? '#334155' : '#CBD5E1'}`,
-                                                        color: ccTheme.isDark ? '#94A3B8' : '#334155',
-                                                        fontSize: '0.72rem',
-                                                        fontWeight: 700,
-                                                        padding: '4px 16px',
-                                                        borderRadius: '16px',
-                                                        boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
-                                                        display: 'inline-flex',
-                                                        alignItems: 'center',
-                                                        gap: '6px',
-                                                        textTransform: 'capitalize'
-                                                    }}>
-                                                        <Calendar size={13} color="#0284C7" />
-                                                        {dateDividerLabel}
-                                                    </span>
-                                                </div>
-                                            )}
-                                            <div 
-                                                style={{
-                                                    display: 'flex',
-                                                    flexDirection: 'column',
-                                                    alignItems: isPatient ? 'flex-start' : 'flex-end',
-                                                    maxWidth: '96%',
-                                                    width: 'fit-content',
-                                                    alignSelf: isPatient ? 'flex-start' : 'flex-end',
-                                                    minWidth: 0,
-                                                    boxSizing: 'border-box'
-                                                }}
-                                            >
-                                <div 
-                                    onMouseEnter={() => setHoveredMsgId(msg.id)}
-                                    onMouseLeave={() => setHoveredMsgId(null)}
-                                    style={{
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '8px',
-                                        flexDirection: isPatient ? 'row' : 'row-reverse',
-                                        maxWidth: '100%',
-                                        minWidth: 0,
-                                        boxSizing: 'border-box'
-                                    }}>
-                                    {/* Avatar circular con color de la agente o del paciente */}
-                                    <div style={{
-                                        width: '28px', height: '28px', borderRadius: '50%',
-                                        background: isPatient 
-                                            ? (selectedChat.avatarColor || '#E11D48') 
-                                            : (isNote ? '#EA580C' : (agentObj?.color || '#0284C7')),
-                                        color: '#FFFFFF', fontSize: '0.72rem', fontWeight: 800,
-                                        display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
-                                    }}>
-                                        {isPatient ? selectedChat.contactName.charAt(0) : (isNote ? '🔒' : (agentObj?.avatar || 'A'))}
-                                    </div>
-
-                                    {/* Burbuja de Mensaje con Tag de Autoría */}
-                                    <div 
-                                        style={{
-                                            position: 'relative',
-                                            background: isNote ? '#FFF7ED' : (isPatient ? '#DCFCE7' : '#FFFFFF'),
-                                            border: isNote ? '1px solid #FED7AA' : '1px solid #E2E8F0',
-                                            padding: '10px 14px',
-                                            borderRadius: isPatient ? '4px 16px 16px 16px' : '16px 4px 16px 16px',
-                                            boxShadow: '0 2px 4px rgba(0,0,0,0.03)',
-                                            color: '#1E293B',
-                                            fontSize: '0.86rem',
-                                            lineHeight: 1.45,
-                                            maxWidth: '680px',
-                                            minWidth: 0,
-                                            boxSizing: 'border-box',
-                                            wordBreak: 'break-word',
-                                            overflowWrap: 'anywhere',
-                                            userSelect: 'text'
-                                        }}>
-
-                                        {/* AVISO DE AUDITORÍA: MENSAJE ELIMINADO POR EL REMITENTE EN WHATSAPP */}
-                                        {(msg.isDeleted || msg.rawPayload?.is_deleted || msg.rawPayload?.revoked || msg.text === '[Mensaje eliminado]') && (
-                                            <div style={{
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                gap: '6px',
-                                                padding: '4px 8px',
-                                                borderRadius: '6px',
-                                                background: '#FEF2F2',
-                                                border: '1px solid #FECACA',
-                                                color: '#DC2626',
-                                                fontSize: '0.70rem',
-                                                fontWeight: 700,
-                                                marginBottom: '6px'
-                                            }}>
-                                                <AlertTriangle size={12} color="#DC2626" />
-                                                <span>Mensaje eliminado por el remitente en WhatsApp • Conservado para auditoría médica</span>
-                                            </div>
-                                        )}
-
-                                        {/* PREVIEW DE MENSAJE CITADO (ESTILO WHATSAPP) */}
-                                        {(() => {
-                                            const q = msg.quotedMessage || msg.rawPayload?.quoted_message;
-                                            if (!q) return null;
-                                            return (
-                                                <div style={{
-                                                    background: isPatient ? 'rgba(0, 0, 0, 0.04)' : 'rgba(2, 132, 199, 0.08)',
-                                                    borderLeft: `3.5px solid ${isPatient ? '#0284C7' : '#0369A1'}`,
-                                                    borderRadius: '6px',
-                                                    padding: '5px 9px',
-                                                    marginBottom: '8px',
-                                                    maxWidth: '460px',
-                                                    width: '100%',
-                                                    minWidth: 0,
-                                                    boxSizing: 'border-box',
-                                                    overflow: 'hidden'
-                                                }}>
-                                                    <div style={{
-                                                        fontWeight: 800,
-                                                        color: isPatient ? '#0284C7' : '#0369A1',
-                                                        fontSize: '0.68rem',
-                                                        marginBottom: '2px',
-                                                        display: 'flex',
-                                                        alignItems: 'center',
-                                                        gap: '4px',
-                                                        whiteSpace: 'nowrap',
-                                                        overflow: 'hidden',
-                                                        textOverflow: 'ellipsis'
-                                                    }}>
-                                                        <Reply size={11} />
-                                                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                                            {q.senderName || 'Mensaje citado'}
-                                                        </span>
-                                                    </div>
-                                                    <div style={{
-                                                        color: '#475569',
-                                                        fontSize: '0.74rem',
-                                                        lineHeight: 1.35,
-                                                        display: '-webkit-box',
-                                                        WebkitLineClamp: 2,
-                                                        WebkitBoxOrient: 'vertical',
-                                                        overflow: 'hidden',
-                                                        textOverflow: 'ellipsis',
-                                                        wordBreak: 'break-word',
-                                                        overflowWrap: 'anywhere'
-                                                    }}>
-                                                        {q.text || (q.type === 'image' ? '📷 Foto' : q.type === 'audio' ? '🎤 Audio' : q.type === 'sticker' ? '🏷️ Sticker' : '📎 Archivo')}
-                                                    </div>
-                                                </div>
-                                            );
-                                        })()}
-
-                                        {/* TAG DE AUTORÍA CLARO */}
-                                        {!isPatient && (
-                                            <div style={{
-                                                display: 'flex', alignItems: 'center', gap: '6px',
-                                                marginBottom: '6px', paddingBottom: '4px',
-                                                borderBottom: isNote ? '1px dashed #FDBA74' : '1px solid #F1F5F9'
-                                            }}>
-                                                <span style={{
-                                                    fontSize: '0.68rem', fontWeight: 800,
-                                                    color: isNote ? '#C2410C' : (agentObj?.color || '#0284C7'),
-                                                    background: isNote ? '#FFEDD5' : '#F8FAFC',
-                                                    padding: '1px 6px', borderRadius: '4px', border: '1px solid #E2E8F0'
-                                                }}>
-                                                    {isNote ? `🔒 NOTA INTERNA • ${msg.senderName}` : `👤 ${msg.senderName} (${agentObj?.role || 'Agente'})`}
-                                                </span>
-                                            </div>
-                                        )}
-
-                                        {(() => {
-                                            const docMeta = getDocumentMeta(msg.mediaUrl, msg.type, msg.caption, msg.text);
-                                            return (
-                                                <>
-                                                    {/* TARJETA DE AUDIO / NOTA DE VOZ CON TRANSCRIPCIÓN IA WHISPER */}
-                                                    {(msg.type === 'audio' || msg.type === 'voice' || (docMeta && docMeta.fileType === 'audio') || msg.audioTranscription) && (
-                                                        <div style={{
-                                                            marginBottom: '10px',
-                                                            maxWidth: '420px',
-                                                            borderRadius: '12px',
-                                                            border: '1.5px solid #DDD6FE',
-                                                            backgroundColor: '#FAF5FF',
-                                                            padding: '12px 14px',
-                                                            boxShadow: '0 2px 8px rgba(124, 58, 237, 0.08)',
-                                                            textAlign: 'left'
-                                                        }}>
-                                                            {/* Cabecera del Audio */}
-                                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                                    <div style={{
-                                                                        width: '32px',
-                                                                        height: '32px',
-                                                                        borderRadius: '50%',
-                                                                        backgroundColor: '#7C3AED',
-                                                                        display: 'flex',
-                                                                        alignItems: 'center',
-                                                                        justifyContent: 'center',
-                                                                        color: '#FFFFFF',
-                                                                        flexShrink: 0,
-                                                                        boxShadow: '0 2px 4px rgba(124, 58, 237, 0.25)'
-                                                                    }}>
-                                                                        <Volume2 size={17} />
-                                                                    </div>
-                                                                    <div>
-                                                                        <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#4C1D95', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                                                            Mensaje de Voz
-                                                                        </span>
-                                                                        <span style={{ fontSize: '0.68rem', color: '#6B21A8' }}>
-                                                                            Audio WhatsApp {msg.timestamp ? `• ${msg.timestamp}` : ''}
-                                                                        </span>
-                                                                    </div>
-                                                                </div>
-
-                                                                {/* Descarga de audio */}
-                                                                {msg.mediaUrl && (
-                                                                    <button
-                                                                        type="button"
-                                                                        onClick={(e) => {
-                                                                            e.preventDefault();
-                                                                            e.stopPropagation();
-                                                                            downloadAudioMedia(msg.mediaUrl, docMeta?.filename || 'audio_whatsapp.ogg');
-                                                                        }}
-                                                                        style={{
-                                                                            padding: '4px 8px',
-                                                                            borderRadius: '6px',
-                                                                            backgroundColor: '#FFFFFF',
-                                                                            border: '1px solid #DDD6FE',
-                                                                            color: '#6D28D9',
-                                                                            fontSize: '0.72rem',
-                                                                            fontWeight: 600,
-                                                                            display: 'flex',
-                                                                            alignItems: 'center',
-                                                                            gap: '4px',
-                                                                            cursor: 'pointer'
-                                                                        }}
-                                                                        title="Descargar audio original (.ogg)"
-                                                                    >
-                                                                        <Download size={13} />
-                                                                    </button>
-                                                                )}
-                                                            </div>
-
-                                                            {/* Reproductor de Audio HTML5 Robusto */}
-                                                            {msg.mediaUrl && (
-                                                                <WhatsAppAudioPlayer mediaUrl={msg.mediaUrl} />
-                                                            )}
-
-                                                            {/* SECCIÓN DE TRANSCRIPCIÓN IA */}
-                                                            {msg.audioTranscription ? (
-                                                                <div style={{
-                                                                    backgroundColor: '#FFFFFF',
-                                                                    borderRadius: '8px',
-                                                                    border: '1px solid #E9D5FF',
-                                                                    padding: '10px 12px',
-                                                                    marginTop: '6px'
-                                                                }}>
-                                                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px', borderBottom: '1px solid #F3E8FF', paddingBottom: '5px' }}>
-                                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '0.74rem', fontWeight: 800, color: '#6D28D9' }}>
-                                                                            <Sparkles size={14} color="#7C3AED" />
-                                                                            <span>TRANSCRIPCIÓN ASISTIDA (IA)</span>
-                                                                        </div>
-                                                                        <button
-                                                                            type="button"
-                                                                            onClick={(e) => {
-                                                                                e.stopPropagation();
-                                                                                navigator.clipboard.writeText(msg.audioTranscription);
-                                                                                setCopiedAudioMsgId(msg.id);
-                                                                                setTimeout(() => setCopiedAudioMsgId(null), 2000);
-                                                                            }}
-                                                                            style={{
-                                                                                display: 'inline-flex',
-                                                                                alignItems: 'center',
-                                                                                gap: '4px',
-                                                                                background: copiedAudioMsgId === msg.id ? '#DCFCE7' : '#F5F3FF',
-                                                                                border: `1px solid ${copiedAudioMsgId === msg.id ? '#86EFAC' : '#DDD6FE'}`,
-                                                                                borderRadius: '4px',
-                                                                                padding: '2px 8px',
-                                                                                fontSize: '0.68rem',
-                                                                                fontWeight: 700,
-                                                                                color: copiedAudioMsgId === msg.id ? '#15803D' : '#6D28D9',
-                                                                                cursor: 'pointer'
-                                                                            }}
-                                                                        >
-                                                                            {copiedAudioMsgId === msg.id ? <Check size={12} /> : <Copy size={12} />}
-                                                                            {copiedAudioMsgId === msg.id ? 'Copiado' : 'Copiar'}
-                                                                        </button>
-                                                                    </div>
-
-                                                                    {/* Texto de la transcripción */}
-                                                                    <p style={{
-                                                                        fontSize: '0.85rem',
-                                                                        color: '#1E1B4B',
-                                                                        lineHeight: '1.45',
-                                                                        margin: '0 0 6px 0',
-                                                                        fontStyle: 'normal',
-                                                                        fontWeight: 500
-                                                                    }}>
-                                                                        "{msg.audioTranscription}"
-                                                                    </p>
-
-                                                                    {/* Comprensión Clínica Extraída */}
-                                                                    {msg.audioUnderstanding && (
-                                                                        <div style={{
-                                                                            marginTop: '8px',
-                                                                            paddingTop: '6px',
-                                                                            borderTop: '1px dashed #E9D5FF',
-                                                                            display: 'flex',
-                                                                            flexWrap: 'wrap',
-                                                                            gap: '6px',
-                                                                            alignItems: 'center'
-                                                                        }}>
-                                                                            {msg.audioUnderstanding.intent && (
-                                                                                <span style={{
-                                                                                    fontSize: '0.68rem',
-                                                                                    fontWeight: 700,
-                                                                                    backgroundColor: '#EDE9FE',
-                                                                                    color: '#5B21B6',
-                                                                                    padding: '2px 7px',
-                                                                                    borderRadius: '4px'
-                                                                                }}>
-                                                                                    🎯 {msg.audioUnderstanding.intent}
-                                                                                </span>
-                                                                            )}
-                                                                            {msg.audioUnderstanding.doctor && (
-                                                                                <span style={{
-                                                                                    fontSize: '0.68rem',
-                                                                                    fontWeight: 700,
-                                                                                    backgroundColor: '#E0E7FF',
-                                                                                    color: '#3730A3',
-                                                                                    padding: '2px 7px',
-                                                                                    borderRadius: '4px'
-                                                                                }}>
-                                                                                    👨‍⚕️ Dr/a: {msg.audioUnderstanding.doctor}
-                                                                                </span>
-                                                                            )}
-                                                                            {msg.audioUnderstanding.healthInsurance && (
-                                                                                <span style={{
-                                                                                    fontSize: '0.68rem',
-                                                                                    fontWeight: 700,
-                                                                                    backgroundColor: '#FEF3C7',
-                                                                                    color: '#92400E',
-                                                                                    padding: '2px 7px',
-                                                                                    borderRadius: '4px'
-                                                                                }}>
-                                                                                    🏥 O.S: {msg.audioUnderstanding.healthInsurance}
-                                                                                </span>
-                                                                            )}
-                                                                            {msg.audioUnderstanding.urgency && msg.audioUnderstanding.urgency !== 'baja' && msg.audioUnderstanding.urgency !== 'normal' && (
-                                                                                <span style={{
-                                                                                    fontSize: '0.68rem',
-                                                                                    fontWeight: 700,
-                                                                                    backgroundColor: '#FEE2E2',
-                                                                                    color: '#991B1B',
-                                                                                    padding: '2px 7px',
-                                                                                    borderRadius: '4px'
-                                                                                }}>
-                                                                                    ⚠️ Urgencia {msg.audioUnderstanding.urgency.toUpperCase()}
-                                                                                </span>
-                                                                            )}
-                                                                        </div>
-                                                                    )}
-                                                                </div>
-                                                            ) : (
-                                                                /* Botón para solicitar Transcripción con IA a demanda */
-                                                                <div style={{ marginTop: '8px' }}>
-                                                                    <button
-                                                                        type="button"
-                                                                        disabled={transcribingMsgId === msg.id || !msg.mediaUrl}
-                                                                        onClick={async (e) => {
-                                                                            e.stopPropagation();
-                                                                            try {
-                                                                                setTranscribingMsgId(msg.id);
-                                                                                const result = await transcribeAudioMessage(msg.mediaUrl, msg.realId || msg.id, selectedChat?.phone);
-                                                                                if (result && result.transcription) {
-                                                                                    msg.audioTranscription = result.transcription;
-                                                                                    msg.audioUnderstanding = result.understanding;
-                                                                                    setForceUpdate(k => k + 1);
-                                                                                }
-                                                                            } catch (err) {
-                                                                                alert('No se pudo transcribir el audio: ' + (err.message || 'Error'));
-                                                                            } finally {
-                                                                                setTranscribingMsgId(null);
-                                                                            }
-                                                                        }}
-                                                                        style={{
-                                                                            width: '100%',
-                                                                            display: 'flex',
-                                                                            alignItems: 'center',
-                                                                            justifyContent: 'center',
-                                                                            gap: '6px',
-                                                                            padding: '6px 12px',
-                                                                            borderRadius: '6px',
-                                                                            backgroundColor: '#7C3AED',
-                                                                            color: '#FFFFFF',
-                                                                            border: 'none',
-                                                                            fontSize: '0.74rem',
-                                                                            fontWeight: 700,
-                                                                            cursor: transcribingMsgId === msg.id ? 'wait' : 'pointer',
-                                                                            boxShadow: '0 1px 3px rgba(124,58,237,0.2)'
-                                                                        }}
-                                                                    >
-                                                                        {transcribingMsgId === msg.id ? (
-                                                                            <>
-                                                                                <RefreshCw size={13} className="animate-spin" />
-                                                                                <span>Transcribiendo audio con IA...</span>
-                                                                            </>
-                                                                        ) : (
-                                                                            <>
-                                                                                <Sparkles size={13} />
-                                                                                <span>Transcribir y entender audio con IA</span>
-                                                                            </>
-                                                                        )}
-                                                                    </button>
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    )}
-
-                                                    {/* TARJETA DE DOCUMENTO ADJUNTO (PDF, WORD, EXCEL, ETC.) - EXCLUIR ESTRICTAMENTE AUDIOS */}
-                                                    {docMeta && docMeta.fileType !== 'image' && docMeta.fileType !== 'audio' && msg.type !== 'audio' && msg.type !== 'voice' && !msg.text?.startsWith('_event_voice_note_') && msg.mediaUrl && (
-                                                        <div style={{
-                                                            marginBottom: '10px',
-                                                            maxWidth: '380px',
-                                                            borderRadius: '10px',
-                                                            border: `1.5px solid ${docMeta.borderColor}`,
-                                                            backgroundColor: docMeta.bgColor,
-                                                            padding: '12px 14px',
-                                                            boxShadow: '0 2px 6px rgba(0,0,0,0.05)',
-                                                            textAlign: 'left'
-                                                        }}>
-                                                            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
-                                                                <div style={{
-                                                                    width: '40px',
-                                                                    height: '40px',
-                                                                    borderRadius: '8px',
-                                                                    backgroundColor: '#FFFFFF',
-                                                                    border: `1px solid ${docMeta.borderColor}`,
-                                                                    display: 'flex',
-                                                                    alignItems: 'center',
-                                                                    justifyContent: 'center',
-                                                                    color: docMeta.color,
-                                                                    flexShrink: 0,
-                                                                    boxShadow: '0 1px 3px rgba(0,0,0,0.08)'
-                                                                }}>
-                                                                    {docMeta.fileType === 'pdf' && <FileText size={22} />}
-                                                                    {docMeta.fileType === 'word' && <FileText size={22} />}
-                                                                    {docMeta.fileType === 'excel' && <FileSpreadsheet size={22} />}
-                                                                    {docMeta.fileType === 'document' && <File size={22} />}
-                                                                </div>
-                                                                <div style={{ flex: 1, minWidth: 0 }}>
-                                                                    <div style={{
-                                                                        fontSize: '0.82rem',
-                                                                        fontWeight: 700,
-                                                                        color: '#0F172A',
-                                                                        whiteSpace: 'nowrap',
-                                                                        overflow: 'hidden',
-                                                                        textOverflow: 'ellipsis'
-                                                                    }} title={docMeta.filename}>
-                                                                        {docMeta.filename}
-                                                                    </div>
-                                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '3px' }}>
-                                                                        <span style={{
-                                                                            fontSize: '0.68rem',
-                                                                            fontWeight: 700,
-                                                                            backgroundColor: docMeta.color,
-                                                                            color: '#FFFFFF',
-                                                                            padding: '1px 6px',
-                                                                            borderRadius: '4px',
-                                                                            letterSpacing: '0.5px'
-                                                                        }}>
-                                                                            {docMeta.ext}
-                                                                        </span>
-                                                                        <span style={{ fontSize: '0.72rem', color: '#64748B' }}>
-                                                                            {docMeta.label}
-                                                                        </span>
-                                                                    </div>
-                                                                </div>
-                                                            </div>
-
-                                                            {/* BOTONES DE ACCIÓN */}
-                                                            <div style={{
-                                                                display: 'flex',
-                                                                alignItems: 'center',
-                                                                gap: '8px',
-                                                                marginTop: '10px',
-                                                                paddingTop: '8px',
-                                                                borderTop: `1px solid ${docMeta.borderColor}`
-                                                            }}>
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() => {
-                                                                        setViewerZoom(1);
-                                                                        setViewerRotation(0);
-                                                                        setCopiedViewerData(false);
-                                                                        setViewerImage({
-                                                                            url: msg.mediaUrl,
-                                                                            caption: msg.caption || docMeta.filename,
-                                                                            filename: docMeta.filename,
-                                                                            fileType: docMeta.fileType,
-                                                                            ext: docMeta.ext,
-                                                                            orderAnalysis: msg.orderAnalysis,
-                                                                            senderName: selectedChat?.contactName || msg.senderName || 'Paciente',
-                                                                            dni: selectedChat?.dni,
-                                                                            timestamp: msg.timestamp
-                                                                        });
-                                                                    }}
-                                                                    style={{
-                                                                        flex: 1,
-                                                                        display: 'flex',
-                                                                        alignItems: 'center',
-                                                                        justifyContent: 'center',
-                                                                        gap: '6px',
-                                                                        padding: '6px 12px',
-                                                                        borderRadius: '6px',
-                                                                        backgroundColor: docMeta.color,
-                                                                        color: '#FFFFFF',
-                                                                        border: 'none',
-                                                                        fontSize: '0.74rem',
-                                                                        fontWeight: 700,
-                                                                        cursor: 'pointer',
-                                                                        boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
-                                                                    }}
-                                                                >
-                                                                    <Eye size={14} /> Abrir en Visor Profesional
-                                                                </button>
-                                                                <a
-                                                                    href={msg.mediaUrl}
-                                                                    target="_blank"
-                                                                    rel="noopener noreferrer"
-                                                                    download={docMeta.filename}
-                                                                    style={{
-                                                                        display: 'flex',
-                                                                        alignItems: 'center',
-                                                                        justifyContent: 'center',
-                                                                        padding: '6px 10px',
-                                                                        borderRadius: '6px',
-                                                                        backgroundColor: '#FFFFFF',
-                                                                        color: '#475569',
-                                                                        border: `1px solid ${docMeta.borderColor}`,
-                                                                        fontSize: '0.74rem',
-                                                                        fontWeight: 600,
-                                                                        textDecoration: 'none',
-                                                                        cursor: 'pointer'
-                                                                    }}
-                                                                    title="Descargar o abrir en pestaña nueva"
-                                                                >
-                                                                    <Download size={14} />
-                                                                </a>
-                                                            </div>
-                                                        </div>
-                                                    )}
-
-                                                    {/* TARJETA DE STICKER NATIVO WHATSAPP */}
-                                                    {(msg.type === 'sticker' || msg.mediaType === 'sticker' || (docMeta && docMeta.fileType === 'sticker') || (msg.mediaUrl && (msg.text === '[sticker]' || msg.mediaUrl.endsWith('.webp')))) && (
-                                                        <div style={{ margin: '4px 0', display: 'flex', flexDirection: 'column', alignItems: isPatient ? 'flex-start' : 'flex-end' }}>
-                                                            {msg.mediaUrl ? (
-                                                                <img 
-                                                                    src={msg.mediaUrl} 
-                                                                    alt="Sticker WhatsApp" 
-                                                                    style={{ 
-                                                                        maxWidth: '135px', 
-                                                                        maxHeight: '135px', 
-                                                                        objectFit: 'contain', 
-                                                                        background: 'transparent',
-                                                                        filter: 'drop-shadow(0 2px 5px rgba(0,0,0,0.15))'
-                                                                    }} 
-                                                                />
-                                                            ) : (
-                                                                <div style={{
-                                                                    display: 'inline-flex', alignItems: 'center', gap: '6px',
-                                                                    padding: '6px 12px', background: '#F1F5F9', borderRadius: '8px',
-                                                                    fontSize: '0.78rem', color: '#475569'
-                                                                }}>
-                                                                    <span style={{ fontSize: '1.2rem' }}>🏷️</span> Sticker WhatsApp
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    )}
-
-                                                    {/* TARJETA DE IMAGEN MÉDICA / ORDEN */}
-                                                    {(msg.type === 'image' || (docMeta && docMeta.fileType === 'image' && msg.mediaUrl)) && (
-                                                        <div style={{ marginBottom: '8px', maxWidth: '340px' }}>
-                                                            <div 
-                                                                style={{ 
-                                                                    borderRadius: '8px', 
-                                                                    overflow: 'hidden', 
-                                                                    border: '1px solid #CBD5E1', 
-                                                                    cursor: 'pointer',
-                                                                    position: 'relative',
-                                                                    boxShadow: '0 2px 6px rgba(0,0,0,0.06)'
-                                                                }}
-                                                                onClick={() => {
-                                                                    if (!msg.mediaUrl) return;
-                                                                    setViewerZoom(1);
-                                                                    setViewerRotation(0);
-                                                                    setCopiedViewerData(false);
-                                                                    setViewerImage({
-                                                                        url: msg.mediaUrl,
-                                                                        caption: msg.caption,
-                                                                        filename: docMeta?.filename || 'orden_medica.jpg',
-                                                                        fileType: 'image',
-                                                                        ext: 'IMG',
-                                                                        orderAnalysis: msg.orderAnalysis,
-                                                                        senderName: selectedChat?.contactName || msg.senderName || 'Paciente',
-                                                                        dni: selectedChat?.dni,
-                                                                        timestamp: msg.timestamp
-                                                                    });
-                                                                }}
-                                                                title="Click para abrir en el visor profesional integrado"
-                                                            >
-                                                                <img src={msg.mediaUrl} alt={msg.caption || 'Foto de Orden'} style={{ width: '100%', maxHeight: '220px', objectFit: 'contain', background: '#0F172A', display: 'block' }} />
-                                                                <div style={{
-                                                                    position: 'absolute', bottom: msg.caption ? '36px' : '8px', right: '8px',
-                                                                    background: 'rgba(15, 23, 42, 0.8)', backdropFilter: 'blur(4px)',
-                                                                    color: '#FFFFFF', padding: '3px 8px', borderRadius: '4px',
-                                                                    fontSize: '0.68rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px',
-                                                                    boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
-                                                                }}>
-                                                                    <Eye size={12} /> Abrir Visor
-                                                                </div>
-                                                                {msg.caption && (
-                                                                    <div style={{ padding: '6px 10px', background: '#F8FAFC', fontSize: '0.75rem', color: '#64748B' }}>
-                                                                        📄 {msg.caption}
-                                                                    </div>
-                                                                )}
-                                                            </div>
-
-                                                            {/* Tarjeta de Análisis Clínico IA de la Orden Médica (Exclusivo para el Operador) */}
-                                                            {msg.orderAnalysis ? (
-                                                                <div style={{
-                                                                    marginTop: '6px',
-                                                                    padding: '10px 12px',
-                                                                    background: '#F0FDF4',
-                                                                    border: '1.5px solid #86EFAC',
-                                                                    borderRadius: '8px',
-                                                                    fontSize: '0.78rem',
-                                                                    color: '#0F172A',
-                                                                    lineHeight: 1.5,
-                                                                    boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
-                                                                    textAlign: 'left'
-                                                                }}>
-                                                                    <div style={{
-                                                                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                                                                        marginBottom: '6px', paddingBottom: '4px', borderBottom: '1px solid #BBF7D0'
-                                                                    }}>
-                                                                        <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#166534', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                                                                            🩺 DATOS DE LA ORDEN (IA)
-                                                                        </span>
-                                                                        <button
-                                                                            onClick={(e) => {
-                                                                                e.stopPropagation();
-                                                                                const textToCopy = msg.orderAnalysis.raw_summary || 
-`Estudio a autorizar: ${msg.orderAnalysis.estudio || 'No especificado'}
-Solicitante: ${msg.orderAnalysis.solicitante || 'No especificado'}
-Matricula: ${msg.orderAnalysis.matricula || 'No especificada'}
-Diagnostico: ${msg.orderAnalysis.diagnostico || 'No especificado'}
-Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
-                                                                                navigator.clipboard.writeText(textToCopy);
-                                                                                alert('Ficha copiada al portapapeles');
-                                                                            }}
-                                                                            style={{
-                                                                                background: 'none', border: 'none', cursor: 'pointer',
-                                                                                fontSize: '0.68rem', color: '#15803D', fontWeight: 700, padding: 0
-                                                                            }}
-                                                                            title="Copiar datos de la orden"
-                                                                        >
-                                                                            📋 Copiar
-                                                                        </button>
-                                                                    </div>
-                                                                    <div style={{ display: 'grid', gap: '3px' }}>
-                                                                        <div><span style={{ fontWeight: 700, color: '#1E293B' }}>Estudio a autorizar:</span> {msg.orderAnalysis.estudio || 'No especificado'}</div>
-                                                                        <div><span style={{ fontWeight: 700, color: '#1E293B' }}>Solicitante:</span> {msg.orderAnalysis.solicitante || 'No especificado'}</div>
-                                                                        <div><span style={{ fontWeight: 700, color: '#1E293B' }}>Matricula:</span> {msg.orderAnalysis.matricula || 'No especificada'}</div>
-                                                                        <div><span style={{ fontWeight: 700, color: '#1E293B' }}>Diagnostico:</span> {msg.orderAnalysis.diagnostico || 'No especificado'}</div>
-                                                                        <div><span style={{ fontWeight: 700, color: '#1E293B' }}>Fecha de solicitud:</span> {msg.orderAnalysis.fecha_solicitud || 'No especificada'}</div>
-                                                                        {/* CONTROL DE VIGENCIA DE 30 DÍAS */}
-                                                                        {msg.orderAnalysis.vigencia_estado && (
-                                                                            <div style={{
-                                                                                marginTop: '5px',
-                                                                                padding: '6px 8px',
-                                                                                borderRadius: '6px',
-                                                                                background: msg.orderAnalysis.vigencia_estado === 'vencida' ? '#FEF2F2' : (msg.orderAnalysis.vigencia_estado === 'vigente' ? '#ECFDF5' : '#F8FAFC'),
-                                                                                border: `1px solid ${msg.orderAnalysis.vigencia_estado === 'vencida' ? '#FCA5A5' : (msg.orderAnalysis.vigencia_estado === 'vigente' ? '#86EFAC' : '#E2E8F0')}`,
-                                                                                color: msg.orderAnalysis.vigencia_estado === 'vencida' ? '#B91C1C' : (msg.orderAnalysis.vigencia_estado === 'vigente' ? '#15803D' : '#64748B'),
-                                                                                fontWeight: 700,
-                                                                                fontSize: '0.72rem',
-                                                                                display: 'flex',
-                                                                                flexDirection: 'column',
-                                                                                gap: '4px'
-                                                                            }}>
-                                                                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
-                                                                                    <span>{msg.orderAnalysis.alerta_vigencia}</span>
-                                                                                    {msg.orderAnalysis.vigencia_estado === 'vencida' && (
-                                                                                        <button
-                                                                                            type="button"
-                                                                                            onClick={(e) => {
-                                                                                                e.stopPropagation();
-                                                                                                const aviso = `Estimado/a paciente, verificamos su orden médica para "${msg.orderAnalysis.estudio || 'la práctica solicitada'}" pero observamos que fue emitida el ${msg.orderAnalysis.fecha_solicitud} (hace ${msg.orderAnalysis.dias_transcurridos || '>30'} días). Por normativa de las obras sociales, las órdenes médicas poseen una vigencia máxima de 30 días corridos para su autorización. Por favor solicite a su médico tratante la renovación o revalidación de la orden. ¡Muchas gracias!`;
-                                                                                                navigator.clipboard.writeText(aviso);
-                                                                                                alert('Aviso de orden vencida copiado al portapapeles. Podés pegarlo directamente en el chat.');
-                                                                                            }}
-                                                                                            style={{
-                                                                                                background: '#DC2626', color: '#FFFFFF', border: 'none',
-                                                                                                borderRadius: '4px', padding: '2px 6px', fontSize: '0.64rem',
-                                                                                                fontWeight: 800, cursor: 'pointer', whiteSpace: 'nowrap'
-                                                                                            }}
-                                                                                            title="Copiar respuesta modelo de orden vencida para el paciente"
-                                                                                        >
-                                                                                            Copiar aviso
-                                                                                        </button>
-                                                                                    )}
-                                                                                </div>
-                                                                            </div>
-                                                                        )}
-                                                                    </div>
-                                                                </div>
-                                                            ) : (
-                                                                <div style={{ marginTop: '6px', textAlign: 'left' }}>
-                                                                    <button
-                                                                        onClick={async (e) => {
-                                                                            e.stopPropagation();
-                                                                            try {
-                                                                                setAnalyzingMsgId(msg.id);
-                                                                                const analysis = await analyzeMedicalOrderImage(msg.mediaUrl, msg.realId, selectedChat?.phone);
-                                                                                if (analysis) {
-                                                                                    msg.orderAnalysis = analysis;
-                                                                                    setForceUpdate(k => k + 1);
-                                                                                }
-                                                                            } catch (err) {
-                                                                                alert('No se pudo analizar la imagen: ' + (err.message || 'Error'));
-                                                                            } finally {
-                                                                                setAnalyzingMsgId(null);
-                                                                            }
-                                                                        }}
-                                                                        disabled={analyzingMsgId === msg.id}
-                                                                        style={{
-                                                                            display: 'inline-flex', alignItems: 'center', gap: '5px',
-                                                                            padding: '4px 10px', borderRadius: '6px',
-                                                                            background: '#F1F5F9', border: '1px solid #CBD5E1',
-                                                                            fontSize: '0.72rem', fontWeight: 700, color: '#334155',
-                                                                            cursor: analyzingMsgId === msg.id ? 'wait' : 'pointer'
-                                                                        }}
-                                                                    >
-                                                                        {analyzingMsgId === msg.id ? (
-                                                                            <>⏳ Analizando orden con IA...</>
-                                                                        ) : (
-                                                                            <>🔍 Analizar orden médica con IA</>
-                                                                        )}
-                                                                    </button>
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    )}
-                                                </>
-                                            );
-                                        })()}
-
-                                        {msg.text && !msg.text.startsWith('_event_') && msg.text !== msg.audioTranscription && !(msg.text === '[sticker]' && (msg.type === 'sticker' || msg.mediaUrl)) && (
-                                            msg.text.startsWith('📋 [Plantilla Meta') ? (
-                                                <div style={{
-                                                    background: '#F0F9FF',
-                                                    border: '1px solid #BAE6FD',
-                                                    borderRadius: '8px',
-                                                    padding: '8px 10px',
-                                                    color: '#0369A1'
-                                                }}>
-                                                    <div style={{
-                                                        fontSize: '0.67rem',
-                                                        fontWeight: 800,
-                                                        color: '#0284C7',
-                                                        textTransform: 'uppercase',
-                                                        marginBottom: '4px',
-                                                        display: 'flex',
-                                                        alignItems: 'center',
-                                                        gap: '4px'
-                                                    }}>
-                                                        <LayoutTemplate size={12} /> Plantilla Oficial de Meta WhatsApp
-                                                    </div>
-                                                    <div style={{ whiteSpace: 'pre-line', fontSize: '0.84rem', color: '#1E293B', lineHeight: 1.45, wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
-                                                        {formatWhatsAppText(msg.text.replace(/^📋\s*\[Plantilla Meta:[^\]]*\]\s*/, ''))}
-                                                    </div>
-                                                </div>
-                                            ) : (
-                                                <div style={{ whiteSpace: 'pre-line', wordBreak: 'break-word', overflowWrap: 'anywhere', maxWidth: '100%', minWidth: 0, userSelect: 'text', cursor: 'text' }}>
-                                                    {formatWhatsAppText(msg.text)}
-                                                </div>
-                                            )
-                                        )}
-
-                                        {/* Reacciones Emoji en la burbuja */}
-                                        {Array.isArray(msg.reactions) && msg.reactions.length > 0 && (
-                                            <div style={{
-                                                display: 'flex',
-                                                flexWrap: 'wrap',
-                                                gap: '4px',
-                                                marginTop: '6px',
-                                                marginBottom: '2px',
-                                                justifyContent: isPatient ? 'flex-start' : 'flex-end'
-                                            }}>
-                                                {msg.reactions.map((rx, rIdx) => (
-                                                    <button
-                                                        key={rIdx}
-                                                        type="button"
-                                                        title={`Reacción de ${rx.agentName || rx.name || 'Usuario'}`}
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            onToggleReaction?.(msg, rx.emoji);
-                                                        }}
-                                                        style={{
-                                                            display: 'inline-flex',
-                                                            alignItems: 'center',
-                                                            gap: '3px',
-                                                            background: '#FFFFFF',
-                                                            border: '1px solid #CBD5E1',
-                                                            borderRadius: '12px',
-                                                            padding: '1px 6px',
-                                                            fontSize: '0.72rem',
-                                                            cursor: 'pointer',
-                                                            boxShadow: '0 1px 2px rgba(0,0,0,0.06)',
-                                                            lineHeight: 1.2
-                                                        }}
-                                                    >
-                                                        <span>{rx.emoji}</span>
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        )}
-
-                                        <div style={{
-                                            fontSize: '0.68rem', color: '#94A3B8', marginTop: '6px',
-                                            textAlign: 'right', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '4px'
-                                        }}>
-                                            <span title={msg.created_at ? new Date(msg.created_at).toLocaleString('es-AR') : msg.timestamp}>
-                                                {msg.created_at && !formatChatDateDivider(msg.created_at)?.startsWith('Hoy') && (
-                                                    <span style={{ marginRight: '4px', opacity: 0.85, fontWeight: 700 }}>
-                                                        {new Date(msg.created_at).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' })}
-                                                    </span>
-                                                )}
-                                                {msg.timestamp}
-                                            </span>
-                                            {!isPatient && !isNote && (
-                                                <span title="Entregado al paciente por WhatsApp (Doble tilde)">
-                                                    <CheckCheck size={14} color="#0284C7" />
-                                                </span>
-                                            )}
-                                        </div>
-                                    </div>
-
-                                        {/* Micro-Barra Flotante de Acciones FUERA de la burbuja (renderizada a su lado en el espacio libre para no tapar el texto ni el DNI) */}
-                                        {hoveredMsgId === msg.id && (
-                                            <div style={{
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                gap: '3px',
-                                                background: '#FFFFFF',
-                                                border: '1px solid #CBD5E1',
-                                                borderRadius: '20px',
-                                                padding: '3px 8px',
-                                                boxShadow: '0 4px 12px rgba(0,0,0,0.12)',
-                                                zIndex: 20,
-                                                flexShrink: 0,
-                                                alignSelf: 'center',
-                                                userSelect: 'none',
-                                                whiteSpace: 'nowrap'
-                                            }}>
-                                                {/* Emojis Rápidos */}
-                                                {['👍', '❤️', '😂', '😮', '😢', '🙏'].map(emoji => (
-                                                    <button
-                                                        key={emoji}
-                                                        type="button"
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            onToggleReaction?.(msg, emoji);
-                                                        }}
-                                                        style={{
-                                                            background: 'none',
-                                                            border: 'none',
-                                                            cursor: 'pointer',
-                                                            fontSize: '0.85rem',
-                                                            padding: '1px 3px',
-                                                            borderRadius: '4px',
-                                                            lineHeight: 1
-                                                        }}
-                                                        title={`Reaccionar con ${emoji}`}
-                                                    >
-                                                        {emoji}
-                                                    </button>
-                                                ))}
-                                                
-                                                <div style={{ width: '1px', height: '14px', background: '#E2E8F0', margin: '0 2px' }} />
-
-                                                {/* Si se detectó DNI en el mensaje: Botón de copiado directo de DNI */}
-                                                {(() => {
-                                                    const detectedDni = extractDniFromText(msg.text);
-                                                    if (!detectedDni) return null;
-                                                    const isCopied = copiedDniMsgId === msg.id;
-                                                    return (
-                                                        <button
-                                                            type="button"
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                navigator.clipboard.writeText(detectedDni);
-                                                                setCopiedDniMsgId(msg.id);
-                                                                setTimeout(() => setCopiedDniMsgId(null), 2000);
-                                                            }}
-                                                            style={{
-                                                                display: 'flex',
-                                                                alignItems: 'center',
-                                                                gap: '3px',
-                                                                background: isCopied ? '#DCFCE7' : '#EFF6FF',
-                                                                border: `1px solid ${isCopied ? '#86EFAC' : '#BFDBFE'}`,
-                                                                color: isCopied ? '#15803D' : '#1D4ED8',
-                                                                fontSize: '0.70rem',
-                                                                fontWeight: 800,
-                                                                cursor: 'pointer',
-                                                                padding: '2px 7px',
-                                                                borderRadius: '12px'
-                                                            }}
-                                                            title={`Copiar DNI detectado: ${detectedDni}`}
-                                                        >
-                                                            {isCopied ? <Check size={11} color="#15803D" /> : <Copy size={11} />}
-                                                            <span>{isCopied ? '¡DNI Copiado!' : `DNI: ${detectedDni}`}</span>
-                                                        </button>
-                                                    );
-                                                })()}
-
-                                                {/* Botón Copiar Texto Completo del Mensaje */}
-                                                {msg.text && (
-                                                    <button
-                                                        type="button"
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            navigator.clipboard.writeText(msg.text);
-                                                            setCopiedMsgId(msg.id);
-                                                            setTimeout(() => setCopiedMsgId(null), 2000);
-                                                        }}
-                                                        style={{
-                                                            display: 'flex',
-                                                            alignItems: 'center',
-                                                            gap: '3px',
-                                                            background: copiedMsgId === msg.id ? '#DCFCE7' : 'none',
-                                                            border: 'none',
-                                                            color: copiedMsgId === msg.id ? '#15803D' : '#475569',
-                                                            fontSize: '0.70rem',
-                                                            fontWeight: 700,
-                                                            cursor: 'pointer',
-                                                            padding: '2px 6px',
-                                                            borderRadius: '4px'
-                                                        }}
-                                                        title="Copiar texto del mensaje"
-                                                    >
-                                                        {copiedMsgId === msg.id ? <Check size={11} color="#15803D" /> : <Copy size={11} />}
-                                                        <span>{copiedMsgId === msg.id ? 'Copiado' : 'Copiar'}</span>
-                                                    </button>
-                                                )}
-
-                                                <div style={{ width: '1px', height: '14px', background: '#E2E8F0', margin: '0 2px' }} />
-
-                                                {/* Botón Responder */}
-                                                <button
-                                                    type="button"
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        setReplyingToMessage({
-                                                            id: msg.id,
-                                                            senderName: msg.senderName,
-                                                            text: msg.text || msg.caption || (msg.type === 'audio' ? 'Nota de voz' : msg.type === 'image' ? 'Foto médica' : msg.type === 'sticker' ? 'Sticker' : 'Adjunto'),
-                                                            type: msg.type,
-                                                            isPatient
-                                                        });
-                                                        inputRef.current?.focus();
-                                                    }}
-                                                    style={{
-                                                        display: 'flex',
-                                                        alignItems: 'center',
-                                                        gap: '3px',
-                                                        background: 'none',
-                                                        border: 'none',
-                                                        color: '#0284C7',
-                                                        fontSize: '0.70rem',
-                                                        fontWeight: 700,
-                                                        cursor: 'pointer',
-                                                        padding: '2px 6px',
-                                                        borderRadius: '4px'
-                                                    }}
-                                                    title="Responder citando este mensaje"
-                                                >
-                                                    <Reply size={12} />
-                                                    <span>Responder</span>
-                                                </button>
-                                            </div>
-                                        )}
-                                </div>
-                            </div>
-                        </React.Fragment>
-                    );
-                })}
-                            </>
-                        );
-                })()}
-                    <div ref={messagesEndRef} />
-                </div>
-
-                {/* COMPOSITOR DE MENSAJE: CON CONTROL DE ASIGNACIÓN ESTRICTO (DOS AGENTES NO PUEDEN ESCRIBIR A LA VEZ) */}
-                <div style={{ flexShrink: 0, padding: '14px 20px', background: '#FFFFFF', borderTop: '1px solid #E2E8F0' }}>
-                    {/* CASO 1: CHAT CERRADO / ARCHIVADO */}
-                    {isClosedOrArchived(selectedChat) ? (
+                        {/* Barra Superior del Chat con Control de Asignación Exclusiva */}
                         <div style={{
-                            padding: '12px 16px', borderRadius: '10px',
-                            background: '#ECFDF5', border: '1px solid #A7F3D0', color: '#047857',
-                            display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.78rem'
-                        }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 600 }}>
-                                <CheckCircle2 size={16} color="#047857" /> 
-                                Conversación finalizada {selectedChat.resolutionReason ? `• Motivo: ${selectedChat.resolutionReason}` : ''}. Reabre para continuar la atención.
-                            </div>
-                            <button
-                                type="button"
-                                onClick={() => handleAssignChatAndSwitchTab(selectedChat.id, activeAgent.id)}
-                                style={{
-                                    padding: '6px 14px', borderRadius: '6px', border: 'none',
-                                    background: '#059669', color: '#FFFFFF', fontSize: '0.74rem', fontWeight: 700,
-                                    cursor: 'pointer'
-                                }}
-                            >
-                                Reabrir y Asignarme
-                            </button>
-                        </div>
-                    ) : isLocked ? (
-                        /* CASO 2: ASIGNADA A OTRA AGENTE -> BLOQUEO ESTRICTO (MODO SOLO LECTURA) */
-                        <div style={{
-                            padding: '14px 18px', borderRadius: '10px',
-                            background: '#FEF2F2', border: '1.5px solid #F87171', color: '#991B1B',
-                            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px'
-                        }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                <Lock size={20} color="#DC2626" />
-                                <div>
-                                    <div style={{ fontSize: '0.84rem', fontWeight: 800 }}>
-                                        Conversación asignada exclusivamente a {assignedAgentObj?.name || selectedChat.assignedTo}
-                                    </div>
-                                    <div style={{ fontSize: '0.74rem', fontWeight: 400, color: '#B91C1C', marginTop: '2px' }}>
-                                        Modo solo lectura. Para evitar colisiones y que dos agentes escriban a la vez al paciente, el teclado está bloqueado.
-                                    </div>
-                                </div>
-                            </div>
-                            {isSupervisor && (
-                                <button
-                                    type="button"
-                                    onClick={() => handleAssignChatAndSwitchTab(selectedChat.id, activeAgent.id, { forceReassign: true })}
-                                    style={{
-
-                                        padding: '6px 14px', borderRadius: '6px', border: '1px solid #DC2626',
-                                        background: '#FFFFFF', color: '#DC2626', fontWeight: 700, fontSize: '0.74rem',
-                                        cursor: 'pointer', whiteSpace: 'nowrap'
-                                    }}
-                                >
-                                    Supervisión: Reasignar a mí
-                                </button>
-                            )}
-                        </div>
-                    ) : isBot ? (
-                        /* CASO BOT: GESTIONADO POR ASISTENTE VIRTUAL */
-                        <div style={{
-                            padding: '12px 18px', borderRadius: '10px',
-                            background: '#F5F3FF', border: '1.5px solid #DDD6FE', color: '#5B21B6',
-                            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px'
-                        }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                <Bot size={22} color="#7C3AED" />
-                                <div>
-                                    <div style={{ fontSize: '0.84rem', fontWeight: 800 }}>
-                                        Conversación en Auto-gestión (Bot Activo)
-                                    </div>
-                                    <div style={{ fontSize: '0.74rem', color: '#6D28D9', marginTop: '2px' }}>
-                                        El paciente está interactuando con el asistente o su consulta fue resuelta. Para responder como asesor humano, puedes asignártela.
-                                    </div>
-                                </div>
-                            </div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <button
-                                    type="button"
-                                    onClick={() => setCloseModalOpen(true)}
-                                    title="Finalizar esta charla y archivar conversación"
-                                    style={{
-                                        padding: '8px 14px', borderRadius: '8px',
-                                        border: '1.5px solid #059669',
-                                        background: '#FFFFFF',
-                                        color: '#059669', fontSize: '0.76rem', fontWeight: 700,
-                                        cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px',
-                                        whiteSpace: 'nowrap',
-                                        boxShadow: '0 1px 3px rgba(5, 150, 105, 0.15)'
-                                    }}
-                                >
-                                    <CheckCircle2 size={14} /> Finalizar charla
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => handleAssignChatAndSwitchTab(selectedChat.id, activeAgent.id)}
-                                    style={{
-                                        padding: '8px 16px', borderRadius: '8px', border: 'none',
-                                        background: 'linear-gradient(135deg, #7C3AED 0%, #6D28D9 100%)',
-                                        color: '#FFFFFF', fontSize: '0.76rem', fontWeight: 700,
-                                        cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px',
-                                        boxShadow: '0 2px 6px rgba(124, 58, 237, 0.3)', whiteSpace: 'nowrap'
-                                    }}
-                                >
-                                    <UserCheck size={14} /> Asignarme y pausar Bot
-                                </button>
-                            </div>
-                        </div>
-                    ) : isUnassigned ? (
-                        /* CASO 3: SIN ASIGNAR -> BLOQUEO DE TECLADO HASTA ASIGNARSE */
-                        <div style={{
-                            padding: '14px 18px', borderRadius: '10px',
-                            background: '#FFFBEB', border: '1.5px solid #FCD34D', color: '#92400E',
-                            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px'
-                        }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                <AlertCircle size={20} color="#D97706" />
-                                <div>
-                                    <div style={{ fontSize: '0.84rem', fontWeight: 800 }}>
-                                        Conversación en cola general (Sin Asignar)
-                                    </div>
-                                    <div style={{ fontSize: '0.74rem', color: '#B45309', marginTop: '2px' }}>
-                                        Para evitar que dos agentes respondan a la vez, debes asignártela antes de poder redactar mensajes.
-                                    </div>
-                                </div>
-                            </div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <button
-                                    type="button"
-                                    onClick={() => setCloseModalOpen(true)}
-                                    title="Finalizar esta charla y archivar conversación"
-                                    style={{
-                                        padding: '8px 14px', borderRadius: '8px',
-                                        border: '1.5px solid #059669',
-                                        background: '#FFFFFF',
-                                        color: '#059669', fontSize: '0.76rem', fontWeight: 700,
-                                        cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px',
-                                        whiteSpace: 'nowrap',
-                                        boxShadow: '0 1px 3px rgba(5, 150, 105, 0.15)'
-                                    }}
-                                >
-                                    <CheckCircle2 size={14} /> Finalizar charla
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => handleAssignChatAndSwitchTab(selectedChat.id, activeAgent.id)}
-                                    style={{
-                                        padding: '8px 16px', borderRadius: '8px', border: 'none',
-                                        background: 'linear-gradient(135deg, #0284C7 0%, #0369A1 100%)',
-                                        color: '#FFFFFF', fontSize: '0.76rem', fontWeight: 700,
-                                        cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px',
-                                        boxShadow: '0 2px 6px rgba(2, 132, 199, 0.3)', whiteSpace: 'nowrap'
-                                    }}
-                                >
-                                    <UserCheck size={14} /> Asignarme para responder
-                                </button>
-                            </div>
-                        </div>
-                    ) : null}
-
-                    {/* Formulario de redacción de mensaje: Habilitado ÚNICAMENTE si está asignado a mí */}
-                    {canWriteMessage && (
-                        <form onSubmit={handleSend} style={{ marginTop: '0px' }}>
-                        {/* BANNER DE RESPUESTA A MENSAJE CITADO (ESTILO WHATSAPP WEB) */}
-                        {replyingToMessage && (
-                            <div style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'space-between',
-                                padding: '8px 12px',
-                                marginBottom: '10px',
-                                background: '#F0F9FF',
-                                borderLeft: `4px solid ${replyingToMessage.isPatient ? '#0284C7' : '#059669'}`,
-                                borderTop: '1px solid #BAE6FD',
-                                borderRight: '1px solid #BAE6FD',
-                                borderBottom: '1px solid #BAE6FD',
-                                borderRadius: '8px',
-                                boxShadow: '0 2px 4px rgba(2, 132, 199, 0.08)'
-                            }}>
-                                <div style={{ minWidth: 0, flex: 1 }}>
-                                    <div style={{
-                                        fontSize: '0.74rem',
-                                        fontWeight: 800,
-                                        color: replyingToMessage.isPatient ? '#0284C7' : '#059669',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '6px'
-                                    }}>
-                                        <Reply size={13} />
-                                        <span>Respondiendo a <strong>{replyingToMessage.senderName}</strong></span>
-                                    </div>
-                                    <div style={{
-                                        fontSize: '0.76rem',
-                                        color: '#475569',
-                                        whiteSpace: 'nowrap',
-                                        overflow: 'hidden',
-                                        textOverflow: 'ellipsis',
-                                        marginTop: '3px'
-                                    }}>
-                                        {replyingToMessage.text}
-                                    </div>
-                                </div>
-                                <button
-                                    type="button"
-                                    onClick={() => setReplyingToMessage(null)}
-                                    style={{
-                                        background: '#FFFFFF',
-                                        border: '1px solid #CBD5E1',
-                                        color: '#64748B',
-                                        cursor: 'pointer',
-                                        padding: '4px',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                        borderRadius: '6px',
-                                        marginLeft: '10px'
-                                    }}
-                                    title="Cancelar respuesta"
-                                >
-                                    <X size={14} />
-                                </button>
-                            </div>
-                        )}
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                {/* Selector Segmentado: WhatsApp Público vs Nota Privada */}
-                                <div style={{
-                                    display: 'inline-flex',
-                                    background: '#F1F5F9',
-                                    padding: '2px',
-                                    borderRadius: '8px',
-                                    border: '1px solid #CBD5E1'
-                                }}>
-                                    <button
-                                        type="button"
-                                        onClick={() => setIsPrivateNote(false)}
-                                        style={{
-                                            padding: '4px 10px',
-                                            borderRadius: '6px',
-                                            fontSize: '0.72rem',
-                                            fontWeight: 700,
-                                            border: 'none',
-                                            background: !isPrivateNote ? '#0284C7' : 'transparent',
-                                            color: !isPrivateNote ? '#FFFFFF' : '#64748B',
-                                            cursor: 'pointer',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            gap: '4px',
-                                            boxShadow: !isPrivateNote ? '0 1px 3px rgba(2,132,199,0.3)' : 'none',
-                                            transition: 'all 0.15s'
-                                        }}
-                                    >
-                                        <Send size={12} />
-                                        WhatsApp
-                                    </button>
-
-                                    <button
-                                        type="button"
-                                        onClick={() => setIsPrivateNote(true)}
-                                        title="Registrar una nota interna confidencial para el equipo del Sanatorio (no se envía al paciente)"
-                                        style={{
-                                            padding: '4px 10px',
-                                            borderRadius: '6px',
-                                            fontSize: '0.72rem',
-                                            fontWeight: 700,
-                                            border: 'none',
-                                            background: isPrivateNote ? '#EA580C' : 'transparent',
-                                            color: isPrivateNote ? '#FFFFFF' : '#64748B',
-                                            cursor: 'pointer',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            gap: '4px',
-                                            boxShadow: isPrivateNote ? '0 1px 3px rgba(234,88,12,0.3)' : 'none',
-                                            transition: 'all 0.15s'
-                                        }}
-                                    >
-                                        <Lock size={12} />
-                                        Nota Privada
-                                    </button>
-                                </div>
-
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        setQuickReplyFilter('');
-                                        setQuickRepliesModalOpen(true);
-                                    }}
-                                    title="Abrir catálogo completo de respuestas rápidas (o tipea / en el chat)"
-                                    style={{
-                                        padding: '4px 10px', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 700,
-                                        border: '1px solid #BAE6FD', background: '#F0F9FF', color: '#0284C7',
-                                        cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px',
-                                        boxShadow: '0 1px 2px rgba(2, 132, 199, 0.08)'
-                                    }}
-                                >
-                                    <Zap size={12} /> Respuestas rápidas (/)
-                                </button>
-
-                                <button
-                                    type="button"
-                                    onClick={() => setTemplateModalOpen(true)}
-                                    title="Abrir catálogo de plantillas oficiales de Meta WhatsApp"
-                                    style={{
-                                        padding: '4px 10px', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 700,
-                                        border: '1px solid #C7D2FE', background: '#EEF2FF', color: '#4F46E5',
-                                        cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px',
-                                        boxShadow: '0 1px 2px rgba(79, 70, 229, 0.08)'
-                                    }}
-                                >
-                                    <LayoutTemplate size={12} /> Plantillas Meta
-                                </button>
-
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        const plantillaDatos = 'Indíqueme los siguientes datos del paciente:\nDNI (sin puntos ni espacios):\nNombre y Apellido:\nObra social:\nDepartamento donde vive:\nFecha de nacimiento:';
-                                        setMessageInput(prev => prev ? `${prev}\n\n${plantillaDatos}` : plantillaDatos);
-                                        setTimeout(() => inputRef.current?.focus(), 50);
-                                    }}
-                                    title="Insertar plantilla de solicitud de datos del paciente (/datos)"
-                                    style={{
-                                        padding: '4px 10px', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 700,
-                                        border: '1px solid #FED7AA', background: '#FFF7ED', color: '#C2410C',
-                                        cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px',
-                                        boxShadow: '0 1px 2px rgba(194, 65, 12, 0.08)'
-                                    }}
-                                >
-                                    <UserCheck size={12} /> Pedir Datos
-                                </button>
-                            </div>
-
-                            <span style={{ fontSize: '0.72rem', color: '#64748B', fontWeight: 600 }}>
-                                Respondiendo como: <strong style={{ color: activeAgent.color }}>{activeAgent.name} ({activeAgent.role})</strong>
-                            </span>
-                        </div>
-
-                        {/* BLOQUE MANDATORIO META: VENTANA DE 24HS EXPIRADA (SOLO SE PUEDE ESCRIBIR INICIANDO CON PLANTILLA) */}
-                        {!isPrivateNote && is24hWindowExpired ? (
-                            <div style={{
-                                background: '#FFFDF5',
-                                border: '1.5px solid #FCD34D',
-                                borderRadius: '12px',
-                                padding: '16px',
-                                boxShadow: '0 4px 12px rgba(245, 158, 11, 0.08)',
-                                display: 'flex',
-                                flexDirection: 'column',
-                                gap: '14px'
-                            }}>
-                                {/* Encabezado Clínico de la Alerta */}
-                                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px' }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                        <div style={{
-                                            width: '36px', height: '36px', borderRadius: '10px',
-                                            background: '#FEF3C7', border: '1px solid #FDE68A',
-                                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                            color: '#D97706', flexShrink: 0
-                                        }}>
-                                            <Clock size={20} />
-                                        </div>
-                                        <div>
-                                            <div style={{ fontSize: '0.86rem', fontWeight: 800, color: '#92400E', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                <span>Ventana de 24 horas Expirada</span>
-                                                <span style={{
-                                                    fontSize: '0.65rem', fontWeight: 800, padding: '1px 6px', borderRadius: '4px',
-                                                    background: '#D97706', color: '#FFFFFF', textTransform: 'uppercase'
-                                                }}>
-                                                    Política Oficial Meta
-                                                </span>
-                                            </div>
-                                            <div style={{ fontSize: '0.74rem', color: '#B45309', marginTop: '2px', lineHeight: 1.4 }}>
-                                                Han pasado más de 24 horas desde el último mensaje del paciente. La conversación <strong>únicamente puede iniciarse o reanudarse enviando una plantilla oficial aprobada</strong>.
-                                            </div>
-                                        </div>
-                                    </div>
-                                    
-                                    <button
-                                        type="button"
-                                        onClick={() => setIsPrivateNote(true)}
-                                        style={{
-                                            padding: '5px 10px', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 700,
-                                            border: '1px solid #FED7AA', background: '#FFF7ED', color: '#EA580C',
-                                            cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', whiteSpace: 'nowrap'
-                                        }}
-                                        title="Redactar nota confidencial para el equipo del Sanatorio"
-                                    >
-                                        <Lock size={12} /> Redactar Nota Interna
-                                    </button>
-                                </div>
-
-                                {/* Selector de Plantilla y Detalles */}
-                                <div style={{
-                                    background: '#FFFFFF',
-                                    border: '1px solid #E2E8F0',
-                                    borderRadius: '10px',
-                                    padding: '12px 14px',
-                                    display: 'flex',
-                                    flexDirection: 'column',
-                                    gap: '12px'
-                                }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                            <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#334155' }}>
-                                                Plantilla Oficial Aprobada:
-                                            </span>
-                                            {metaTemplates.length > 1 ? (
-                                                <select
-                                                    value={selectedTemplate?.name || ''}
-                                                    onChange={(e) => {
-                                                        const found = metaTemplates.find(t => t.name === e.target.value);
-                                                        if (found) setSelectedTemplate(found);
-                                                    }}
-                                                    style={{
-                                                        padding: '4px 8px', borderRadius: '6px', border: '1px solid #CBD5E1',
-                                                        fontSize: '0.76rem', fontWeight: 700, color: '#0F172A', outline: 'none',
-                                                        background: '#F8FAFC'
-                                                    }}
-                                                >
-                                                    {metaTemplates.map(t => (
-                                                        <option key={t.id || t.name} value={t.name}>
-                                                            {t.name} ({t.category || 'UTILIDAD'})
-                                                        </option>
-                                                    ))}
-                                                </select>
-                                            ) : (
-                                                <span style={{
-                                                    fontSize: '0.76rem', fontWeight: 800, color: '#0284C7',
-                                                    background: '#F0F9FF', padding: '2px 8px', borderRadius: '6px', border: '1px solid #BAE6FD'
-                                                }}>
-                                                    {selectedTemplate?.name || 'ojonoscobran'}
-                                                </span>
-                                            )}
-                                        </div>
-
-                                        <span style={{
-                                            fontSize: '0.68rem', fontWeight: 800, color: '#16A34A',
-                                            background: '#DCFCE7', padding: '2px 8px', borderRadius: '9999px',
-                                            display: 'flex', alignItems: 'center', gap: '4px'
-                                        }}>
-                                            <CheckCircle2 size={12} /> Aprobada por Meta ({selectedTemplate?.language || 'es_AR'})
-                                        </span>
-                                    </div>
-
-                                    {/* Inputs de las Variables 1 y 2 */}
-                                    <div style={{
-                                        display: 'grid',
-                                        gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-                                        gap: '10px'
-                                    }}>
-                                        {/* Variable 1: Nombre del paciente */}
-                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                            <label style={{ fontSize: '0.72rem', fontWeight: 800, color: '#475569', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                                <User size={12} color="#0284C7" />
-                                                Variable {'{{1}}'} — Nombre del Paciente:
-                                            </label>
-                                            <input
-                                                type="text"
-                                                value={templateVar1}
-                                                onChange={(e) => setTemplateVar1(e.target.value)}
-                                                placeholder="Ej: María (detectado por DNI / WhatsApp)"
-                                                style={{
-                                                    padding: '7px 10px',
-                                                    borderRadius: '8px',
-                                                    border: '1.5px solid #CBD5E1',
-                                                    fontSize: '0.82rem',
-                                                    fontWeight: 700,
-                                                    color: '#0F172A',
-                                                    background: '#F8FAFC',
-                                                    outline: 'none'
-                                                }}
-                                            />
-                                            <span style={{ fontSize: '0.65rem', color: '#64748B' }}>
-                                                Mapeado automáticamente por DNI / Ficha o webhook de WhatsApp ({'{name}'}).
-                                            </span>
-                                        </div>
-
-                                        {/* Variable 2: Nombre de la agente */}
-                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                            <label style={{ fontSize: '0.72rem', fontWeight: 800, color: '#475569', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                                <ShieldCheck size={12} color={activeAgent.color || '#0284C7'} />
-                                                Variable {'{{2}}'} — Nombre de la Agente:
-                                            </label>
-                                            <input
-                                                type="text"
-                                                value={templateVar2}
-                                                onChange={(e) => setTemplateVar2(e.target.value)}
-                                                placeholder="Ej: Daniela"
-                                                style={{
-                                                    padding: '7px 10px',
-                                                    borderRadius: '8px',
-                                                    border: '1.5px solid #CBD5E1',
-                                                    fontSize: '0.82rem',
-                                                    fontWeight: 700,
-                                                    color: '#0F172A',
-                                                    background: '#F8FAFC',
-                                                    outline: 'none'
-                                                }}
-                                            />
-                                            <span style={{ fontSize: '0.65rem', color: '#64748B' }}>
-                                                Nombre de la agente responsable que inicia la conversación.
-                                            </span>
-                                        </div>
-                                    </div>
-
-                                    {/* Vista Previa en Vivo Formato WhatsApp */}
-                                    <div style={{
-                                        background: '#EFEAE2',
-                                        borderRadius: '8px',
-                                        padding: '10px 14px',
-                                        border: '1px solid #D1D5DB'
-                                    }}>
-                                        <div style={{ fontSize: '0.65rem', fontWeight: 800, color: '#6B7280', textTransform: 'uppercase', marginBottom: '6px' }}>
-                                            Vista previa del mensaje que recibirá el paciente:
-                                        </div>
-                                        <div style={{
-                                            background: '#FFFFFF',
-                                            borderRadius: '8px 8px 8px 2px',
-                                            padding: '8px 12px',
-                                            maxWidth: '450px',
-                                            boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
-                                            fontSize: '0.82rem',
-                                            color: '#111827',
-                                            lineHeight: 1.45
-                                        }}>
-                                            Hola <strong style={{ color: '#0284C7' }}>{templateVar1 || '{{1}}'}</strong> soy <strong style={{ color: activeAgent.color || '#0284C7' }}>{templateVar2 || '{{2}}'}</strong> de *Sanatorio Argentino* , gracias por contactarnos. Te escribo por tu consulta realizada.
-                                            <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '3px', marginTop: '4px', fontSize: '0.65rem', color: '#9CA3AF' }}>
-                                                <span>{new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}</span>
-                                                <CheckCircle2 size={11} color="#3B82F6" />
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    {/* Botón de Envío */}
-                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', marginTop: '2px', flexWrap: 'wrap' }}>
-                                        <span style={{ fontSize: '0.72rem', color: '#64748B' }}>
-                                            💡 Al enviar la plantilla, la ventana de 24hs se reactivará en cuanto el paciente responda.
-                                        </span>
-
-                                        <button
-                                            type="button"
-                                            onClick={() => handleExecuteSendTemplate(selectedTemplate, templateVar1, templateVar2)}
-                                            disabled={sendingTemplate || !templateVar1.trim() || !templateVar2.trim() || isLocked}
-                                            style={{
-                                                padding: '9px 20px',
-                                                borderRadius: '8px',
-                                                border: 'none',
-                                                background: (!templateVar1.trim() || !templateVar2.trim() || isLocked || sendingTemplate)
-                                                    ? '#94A3B8'
-                                                    : 'linear-gradient(135deg, #0284C7 0%, #0369A1 100%)',
-                                                color: '#FFFFFF',
-                                                fontSize: '0.80rem',
-                                                fontWeight: 800,
-                                                cursor: (!templateVar1.trim() || !templateVar2.trim() || isLocked || sendingTemplate) ? 'not-allowed' : 'pointer',
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                gap: '8px',
-                                                boxShadow: '0 2px 6px rgba(2, 132, 199, 0.3)',
-                                                whiteSpace: 'nowrap',
-                                                transition: 'all 0.15s ease'
-                                            }}
-                                        >
-                                            {sendingTemplate ? (
-                                                <>
-                                                    <Loader2 size={15} className="animate-spin" />
-                                                    Enviando plantilla oficial...
-                                                </>
-                                            ) : (
-                                                <>
-                                                    <Send size={15} />
-                                                    Iniciar charla con Plantilla Oficial
-                                                </>
-                                            )}
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        ) : (
-                        <div style={{ position: 'relative' }}>
-                            {/* POPOVER FLOTANTE CONTEXTUAL DE ATAJOS RÁPIDOS CON TECLADO */}
-                            {quickRepliesOpen && (
-                                <div style={{
-                                    position: 'absolute', bottom: '100%', left: 0, right: 0, marginBottom: '8px',
-                                    background: '#FFFFFF', border: '1px solid #CBD5E1', borderRadius: '12px',
-                                    boxShadow: '0 -6px 20px rgba(0,0,0,0.12)', zIndex: 100, overflow: 'hidden'
-                                }}>
-                                    <div style={{
-                                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                                        padding: '8px 12px', background: '#F8FAFC', borderBottom: '1px solid #E2E8F0',
-                                        fontSize: '0.7rem', fontWeight: 700, color: '#475569'
-                                    }}>
-                                        <span>⚡ ATAJOS RÁPIDOS (Enter: Enviar • Tab: Editar • Esc: Cerrar)</span>
-                                        <span style={{ background: '#E2E8F0', padding: '1px 6px', borderRadius: '4px', fontSize: '0.65rem' }}>
-                                            {filterQuickReplies(quickReplyFilter, currentAgentId).length} resultados
-                                        </span>
-                                    </div>
-                                    <div style={{ maxHeight: '240px', overflowY: 'auto' }}>
-                                        {filterQuickReplies(quickReplyFilter, currentAgentId).length === 0 ? (
-                                            <div style={{ padding: '14px', fontSize: '0.76rem', color: '#94A3B8', textAlign: 'center' }}>
-                                                No hay atajos que coincidan con "<strong>/{quickReplyFilter}</strong>".
-                                            </div>
-                                        ) : (
-                                            filterQuickReplies(quickReplyFilter, currentAgentId).map((qr, idx) => {
-                                                const isSel = idx === selectedQuickReplyIndex;
-                                                return (
-                                                    <div 
-                                                        key={qr.id}
-                                                        onClick={() => sendDirectMessage(resolveQuickReplyText(qr.content), isPrivateNote)}
-                                                        style={{
-                                                            padding: '8px 12px', cursor: 'pointer',
-                                                            background: isSel ? '#F0F9FF' : '#FFFFFF',
-                                                            borderLeft: isSel ? '3px solid #0284C7' : '3px solid transparent',
-                                                            borderBottom: '1px solid #F1F5F9',
-                                                            display: 'flex', flexDirection: 'column', gap: '2px',
-                                                            transition: 'background 0.1s ease'
-                                                        }}
-                                                    >
-                                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                                <span style={{ fontSize: '0.76rem', fontWeight: 800, color: '#0284C7' }}>
-                                                                    /{qr.shortcut} <span style={{ color: '#0F172A', fontWeight: 700 }}>• {qr.title}</span>
-                                                                </span>
-                                                                {qr.isPersonal && (
-                                                                    <span style={{
-                                                                        fontSize: '0.62rem', fontWeight: 700, padding: '1px 5px',
-                                                                        borderRadius: '4px', background: '#EDE9FE', color: '#6D28D9'
-                                                                    }}>
-                                                                        👤 Mío
-                                                                    </span>
-                                                                )}
-                                                            </div>
-                                                            <div style={{ display: 'flex', gap: '4px' }}>
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={(e) => {
-                                                                        e.stopPropagation();
-                                                                        setMessageInput(resolveQuickReplyText(qr.content));
-                                                                        setQuickRepliesOpen(false);
-                                                                        inputRef.current?.focus();
-                                                                    }}
-                                                                    style={{
-                                                                        padding: '2px 8px', fontSize: '0.65rem', fontWeight: 600,
-                                                                        border: '1px solid #CBD5E1', borderRadius: '4px',
-                                                                        background: '#FFFFFF', color: '#475569', cursor: 'pointer'
-                                                                    }}
-                                                                >
-                                                                    Editar
-                                                                </button>
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={(e) => {
-                                                                        e.stopPropagation();
-                                                                        sendDirectMessage(resolveQuickReplyText(qr.content), isPrivateNote);
-                                                                    }}
-                                                                    style={{
-                                                                        padding: '2px 8px', fontSize: '0.65rem', fontWeight: 700,
-                                                                        border: 'none', borderRadius: '4px',
-                                                                        background: '#0284C7', color: '#FFFFFF', cursor: 'pointer'
-                                                                    }}
-                                                                >
-                                                                    Enviar ↵
-                                                                </button>
-                                                            </div>
-                                                        </div>
-                                                        <div style={{
-                                                            fontSize: '0.72rem', color: '#64748B', lineHeight: 1.3,
-                                                            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'
-                                                        }}>
-                                                            {qr.content}
-                                                        </div>
-                                                    </div>
-                                                );
-                                            })
-                                        )}
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Alert de Error en subida de archivo / audio */}
-                            {uploadError && (
-                                <div style={{
-                                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                                    padding: '6px 12px', marginBottom: '6px', background: '#FEF2F2',
-                                    border: '1px solid #FECACA', borderRadius: '8px', color: '#B91C1C',
-                                    fontSize: '0.72rem', fontWeight: 600
-                                }}>
-                                    <span>⚠️ {uploadError}</span>
-                                    <button 
-                                        type="button" 
-                                        onClick={() => setUploadError(null)}
-                                        style={{ background: 'none', border: 'none', color: '#B91C1C', cursor: 'pointer' }}
-                                    >
-                                        <X size={13} />
-                                    </button>
-                                </div>
-                            )}
-
-                            {/* Chip / Card de Archivo Adjunto Seleccionado */}
-                            {selectedFile && (
-                                <div style={{
-                                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                                    padding: '8px 12px', marginBottom: '8px', background: '#F0F9FF',
-                                    border: '1.5px solid #BAE6FD', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
-                                }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
-                                        {selectedFile.type === 'image' && selectedFile.previewUrl ? (
-                                            <img 
-                                                src={selectedFile.previewUrl} 
-                                                alt="Preview" 
-                                                onClick={() => {
-                                                    setImagePreviewModal({
-                                                        isOpen: true,
-                                                        file: selectedFile.file,
-                                                        previewUrl: selectedFile.previewUrl,
-                                                        name: selectedFile.name,
-                                                        size: selectedFile.size,
-                                                        caption: messageInput || ''
-                                                    });
-                                                }}
-                                                title="Clic para ver previsualización estilo WhatsApp Web y editar comentario"
-                                                style={{ width: '40px', height: '40px', borderRadius: '6px', objectFit: 'cover', cursor: 'pointer', border: '1.5px solid #0284C7', boxShadow: '0 1px 3px rgba(2,132,199,0.2)' }} 
-                                            />
-                                        ) : selectedFile.name.endsWith('.xlsx') || selectedFile.name.endsWith('.xls') || selectedFile.name.endsWith('.csv') ? (
-                                            <div style={{ width: '36px', height: '36px', borderRadius: '6px', background: '#DCFCE7', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#16A34A' }}>
-                                                <FileSpreadsheet size={20} />
-                                            </div>
-                                        ) : selectedFile.name.endsWith('.docx') || selectedFile.name.endsWith('.doc') ? (
-                                            <div style={{ width: '36px', height: '36px', borderRadius: '6px', background: '#DBEAFE', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#2563EB' }}>
-                                                <FileText size={20} />
-                                            </div>
-                                        ) : selectedFile.name.endsWith('.pdf') ? (
-                                            <div style={{ width: '36px', height: '36px', borderRadius: '6px', background: '#FEE2E2', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#DC2626' }}>
-                                                <FileText size={20} />
-                                            </div>
-                                        ) : selectedFile.name.endsWith('.txt') ? (
-                                            <div style={{ width: '36px', height: '36px', borderRadius: '6px', background: '#F1F5F9', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#475569' }}>
-                                                <FileText size={20} />
-                                            </div>
-                                        ) : (
-                                            <div style={{ width: '36px', height: '36px', borderRadius: '6px', background: '#E0F2FE', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0284C7' }}>
-                                                <File size={20} />
-                                            </div>
-                                        )}
-                                        <div 
-                                            style={{ minWidth: 0, cursor: selectedFile.type === 'image' ? 'pointer' : 'default' }}
-                                            onClick={() => {
-                                                if (selectedFile.type === 'image') {
-                                                    setImagePreviewModal({
-                                                        isOpen: true,
-                                                        file: selectedFile.file,
-                                                        previewUrl: selectedFile.previewUrl,
-                                                        name: selectedFile.name,
-                                                        size: selectedFile.size,
-                                                        caption: messageInput || ''
-                                                    });
-                                                }
-                                            }}
-                                        >
-                                            <div style={{ fontSize: '0.80rem', fontWeight: 800, color: '#0369A1', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                                {selectedFile.name}
-                                            </div>
-                                            <div style={{ fontSize: '0.68rem', color: '#64748B' }}>
-                                                {selectedFile.size} • {selectedFile.type === 'image' ? 'Clic para previsualizar como en WhatsApp Web' : 'Adjunto listo'}
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <button
-                                        type="button"
-                                        onClick={handleRemoveSelectedFile}
-                                        style={{
-                                            background: '#FFFFFF', border: '1px solid #CBD5E1', borderRadius: '6px',
-                                            padding: '4px', color: '#64748B', cursor: 'pointer', display: 'flex', alignItems: 'center'
-                                        }}
-                                        title="Quitar archivo adjunto"
-                                    >
-                                        <X size={15} />
-                                    </button>
-                                </div>
-                            )}
-
-                            {/* Contenedor Principal de Entrada (Texto / Grabador de Audio) */}
-                            <div 
-                                onDragOver={handleDragOver}
-                                onDragLeave={handleDragLeave}
-                                onDrop={handleDrop}
-                                style={{
-                                    display: 'flex', alignItems: 'flex-end', gap: '8px',
-                                    background: isDraggingOver ? '#E0F2FE' : (isPrivateNote ? '#FFF7ED' : '#F8FAFC'),
-                                    border: isDraggingOver ? '2px dashed #0284C7' : (isPrivateNote ? '1.5px solid #F97316' : '1px solid #CBD5E1'),
-                                    borderRadius: '12px', padding: '6px 10px',
-                                    transition: 'all 0.15s ease'
-                                }}
-                            >
-                                {isRecordingAudio ? (
-                                    /* Modo Grabador de Audio Activo */
-                                    <div style={{
-                                        flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                                        padding: '4px 8px', background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: '8px'
-                                    }}>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                            <span style={{
-                                                width: '10px', height: '10px', borderRadius: '50%', background: '#EF4444',
-                                                display: 'inline-block'
-                                            }}></span>
-                                            <span style={{ fontSize: '0.80rem', fontWeight: 800, color: '#B91C1C' }}>
-                                                Grabando nota de voz WhatsApp: {Math.floor(recordingTime / 60)}:{String(recordingTime % 60).padStart(2, '0')}
-                                            </span>
-                                        </div>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                            <button
-                                                type="button"
-                                                onClick={cancelAudioRecording}
-                                                style={{
-                                                    background: '#FFFFFF', border: '1px solid #FECACA', color: '#DC2626',
-                                                    padding: '4px 8px', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 700,
-                                                    cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px'
-                                                }}
-                                            >
-                                                <Trash2 size={13} /> Cancelar
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={stopAudioRecording}
-                                                style={{
-                                                    background: '#16A34A', border: 'none', color: '#FFFFFF',
-                                                    padding: '5px 12px', borderRadius: '6px', fontSize: '0.74rem', fontWeight: 800,
-                                                    cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px',
-                                                    boxShadow: '0 2px 4px rgba(22, 163, 74, 0.25)'
-                                                }}
-                                            >
-                                                <Send size={13} /> Enviar Audio
-                                            </button>
-                                        </div>
-                                    </div>
-                                ) : (
-                                    /* Modo Redacción Normal con Adjuntos */
-                                    <>
-                                        {/* Input File Oculto Universal */}
-                                        <input 
-                                            type="file"
-                                            ref={attachmentInputRef}
-                                            onChange={handleFileSelected}
-                                            accept="image/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv"
-                                            style={{ display: 'none' }}
-                                        />
-
-                                        {/* Botón Clip para adjuntar cualquier archivo o pegar capturas */}
-                                        <button
-                                            type="button"
-                                            onClick={() => !uploadingMedia && attachmentInputRef.current?.click()}
-                                            disabled={isLocked || uploadingMedia}
-                                            title="Adjuntar archivo o pegar capturas de pantalla con Ctrl+V (Fotos, Excel, Word, PDF)"
-                                            style={{
-                                                background: selectedFile ? '#E0F2FE' : '#FFFFFF',
-                                                border: selectedFile ? '1.5px solid #0284C7' : '1px solid #CBD5E1',
-                                                borderRadius: '8px', padding: '6px 8px',
-                                                color: selectedFile ? '#0284C7' : '#64748B',
-                                                cursor: (isLocked || uploadingMedia) ? 'not-allowed' : 'pointer',
-                                                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                                boxShadow: selectedFile ? '0 1px 3px rgba(2, 132, 199, 0.2)' : 'none',
-                                                transition: 'all 0.15s ease'
-                                            }}
-                                        >
-                                            <Paperclip size={17} />
-                                        </button>
-
-                                        {/* Input de Texto / Textarea auto-expandible hacia arriba */}
-                                        <textarea 
-                                            ref={inputRef}
-                                            rows={1}
-                                            disabled={isLocked || uploadingMedia}
-                                            placeholder={isPrivateNote 
-                                                ? `Escribe una nota interna que solo verá el equipo (Ctrl+Enter para guardar)...` 
-                                                : selectedFile
-                                                    ? (selectedFile.type === 'image' ? `Mensaje opcional para la imagen (Ctrl+Enter para enviar)...` : `Mensaje opcional para acompañar ${selectedFile.name} (Ctrl+Enter para enviar)...`)
-                                                    : `Escribe respuesta a ${selectedChat.contactName} (Ctrl+Enter para enviar o pega captura con Ctrl+V)...`}
-                                            value={messageInput}
-                                            onChange={handleInputChange}
-                                            onKeyDown={handleInputKeyDown}
-                                            onPaste={handlePasteEvent}
-                                            style={{
-                                                flex: 1,
-                                                border: 'none',
-                                                background: 'transparent',
-                                                outline: 'none',
-                                                fontSize: '0.88rem',
-                                                color: '#1E293B',
-                                                resize: 'none',
-                                                minHeight: '24px',
-                                                maxHeight: '160px',
-                                                overflowY: 'auto',
-                                                lineHeight: '1.4',
-                                                padding: '4px 0',
-                                                fontFamily: 'inherit',
-                                                boxSizing: 'border-box'
-                                            }}
-                                        />
-
-                                        {/* Botón Micrófono para Grabar Nota de Voz */}
-                                        {!messageInput.trim() && !selectedFile && !isPrivateNote && (
-                                            <button
-                                                type="button"
-                                                onClick={startAudioRecording}
-                                                disabled={isLocked || uploadingMedia}
-                                                title="Grabar y enviar nota de voz por WhatsApp"
-                                                style={{
-                                                    background: '#FFFFFF', border: '1px solid #CBD5E1',
-                                                    borderRadius: '8px', padding: '6px 8px',
-                                                    color: '#0284C7', cursor: (isLocked || uploadingMedia) ? 'not-allowed' : 'pointer',
-                                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                                    boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
-                                                }}
-                                            >
-                                                <Mic size={17} />
-                                            </button>
-                                        )}
-
-                                        {/* Botón Enviar (solo icono para ahorrar espacio) */}
-                                        <button 
-                                            type="submit"
-                                            disabled={isLocked || uploadingMedia || (!messageInput.trim() && !selectedFile)}
-                                            title={isPrivateNote ? "Guardar Nota Privada (Ctrl+Enter)" : "Enviar WhatsApp (Ctrl+Enter)"}
-                                            aria-label={isPrivateNote ? "Guardar Nota Privada (Ctrl+Enter)" : "Enviar WhatsApp (Ctrl+Enter)"}
-                                            style={{
-                                                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                                background: isPrivateNote ? '#EA580C' : '#0284C7',
-                                                color: '#FFFFFF', border: 'none',
-                                                width: '36px', height: '36px',
-                                                borderRadius: '8px',
-                                                cursor: (isLocked || uploadingMedia || (!messageInput.trim() && !selectedFile)) ? 'not-allowed' : 'pointer',
-                                                opacity: (isLocked || uploadingMedia || (!messageInput.trim() && !selectedFile)) ? 0.6 : 1,
-                                                boxShadow: !isLocked && (messageInput.trim() || selectedFile) ? '0 2px 6px rgba(2, 132, 199, 0.3)' : 'none',
-                                                flexShrink: 0,
-                                                transition: 'all 0.15s ease'
-                                            }}
-                                        >
-                                            {uploadingMedia ? (
-                                                <Loader2 size={16} className="animate-spin" />
-                                            ) : isPrivateNote ? (
-                                                <Lock size={16} />
-                                            ) : (
-                                                <Send size={16} />
-                                            )}
-                                        </button>
-                                    </>
-                                )}
-                            </div>
-                        </div>
-                        )}
-                    </form>
-                )}
-                </div>
-                </>
-                )}
-            </div>
-
-            {/* ═════════════════════════════════════════════════════════════════ */}
-            {/* SEPARADOR RESIZABLE ENTRE CHAT Y PANEL DE INFORMACIÓN             */}
-            {/* ═════════════════════════════════════════════════════════════════ */}
-            <div
-                onMouseDown={handleMouseDownRight}
-                onDoubleClick={() => {
-                    setRightPanelWidth(340);
-                    localStorage.setItem('cc_right_panel_width', '340');
-                }}
-                style={{
-                    width: '6px',
-                    height: '100%',
-                    cursor: 'col-resize',
-                    background: isDraggingRight ? '#0284C7' : '#F8FAFC',
-                    borderLeft: '1px solid #E2E8F0',
-                    borderRight: '1px solid #E2E8F0',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    userSelect: 'none',
-                    transition: 'background 0.15s ease',
-                    zIndex: 10
-                }}
-                title="Arrastrar para ajustar el ancho de la información del paciente (260px - 550px) • Doble clic para restablecer"
-            >
-                <div style={{
-                    width: '2px',
-                    height: '32px',
-                    borderRadius: '2px',
-                    background: isDraggingRight ? '#FFFFFF' : '#CBD5E1'
-                }} />
-            </div>
-
-            {/* ═════════════════════════════════════════════════════════════════ */}
-            {/* COLUMNA 3: FICHA CRM, HISTORIAL 360° Y PARÁMETROS SALUS (AJUSTABLE) */}
-            {/* ═════════════════════════════════════════════════════════════════ */}
-            <div style={{
-                width: `${rightPanelWidth}px`,
-                minWidth: '260px',
-                maxWidth: '550px',
-                display: 'flex',
-                flexDirection: 'column',
-                height: '100%',
-                minHeight: 0,
-                background: ccTheme.rightSidebarBg || '#FFFFFF',
-                color: ccTheme.rightSidebarText || '#0F172A',
-                overflowY: 'auto'
-            }}>
-                <div style={{ display: 'flex', flexShrink: 0, borderBottom: `1px solid ${ccTheme.rightSidebarBorder || '#F1F5F9'}`, background: ccTheme.leftSidebarHeaderBg || (ccTheme.isDark ? '#0F172A' : '#FAFAFA') }}>
-                    <button 
-                        onClick={() => setActiveDetailTab('info')}
-                        style={{
-                            flex: 1, padding: '12px 0', border: 'none', background: 'transparent',
-                            fontWeight: 700, fontSize: '0.76rem',
-                            color: activeDetailTab === 'info' ? (ccTheme.accentColor || '#0284C7') : themeCardSubtext,
-                            borderBottom: activeDetailTab === 'info' ? `2px solid ${ccTheme.accentColor || '#0284C7'}` : '2px solid transparent',
-                            cursor: 'pointer'
-                        }}
-                    >
-                        Ficha CRM
-                    </button>
-                    <button 
-                        onClick={() => setActiveDetailTab('historial')}
-                        style={{
-                            flex: 1, padding: '12px 0', border: 'none', background: 'transparent',
-                            fontWeight: 700, fontSize: '0.76rem',
-                            color: activeDetailTab === 'historial' ? (ccTheme.accentColor || '#0284C7') : themeCardSubtext,
-                            borderBottom: activeDetailTab === 'historial' ? `2px solid ${ccTheme.accentColor || '#0284C7'}` : '2px solid transparent',
-                            cursor: 'pointer',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px'
-                        }}
-                    >
-                        <History size={13} />
-                        Historial
-                    </button>
-                    <button 
-                        onClick={() => setActiveDetailTab('prestadores')}
-                        style={{
-                            flex: 1, padding: '12px 0', border: 'none', background: 'transparent',
-                            fontWeight: 700, fontSize: '0.76rem',
-                            color: activeDetailTab === 'prestadores' ? (ccTheme.accentColor || '#0284C7') : themeCardSubtext,
-                            borderBottom: activeDetailTab === 'prestadores' ? `2px solid ${ccTheme.accentColor || '#0284C7'}` : '2px solid transparent',
-                            cursor: 'pointer',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px'
-                        }}
-                    >
-                        <Stethoscope size={13} />
-                        Prestadores
-                    </button>
-                </div>
-
-                <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                    {!selectedChat?.id ? (
-                        <div style={{
-                            padding: '40px 16px',
-                            textAlign: 'center',
-                            color: themeCardSubtext,
+                            padding: '5px 14px',
+                            flexShrink: 0,
+                            background: ccTheme.chatHeaderBg || '#FFFFFF',
+                            borderBottom: `1px solid ${ccTheme.chatHeaderBorder || '#E2E8F0'}`,
                             display: 'flex',
-                            flexDirection: 'column',
+                            justifyContent: 'space-between',
                             alignItems: 'center',
-                            gap: '10px'
+                            flexWrap: 'wrap',
+                            gap: '6px',
+                            position: 'relative',
+                            zIndex: 30
                         }}>
-                            <div style={{
-                                width: '48px',
-                                height: '48px',
-                                borderRadius: '50%',
-                                background: ccTheme.isDark ? '#1E293B' : '#F1F5F9',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                color: themeCardSubtext
-                            }}>
-                                <UserCheck size={24} style={{ opacity: 0.5 }} />
-                            </div>
-                            <span style={{ fontSize: '0.82rem', fontWeight: 700, color: themeCardText }}>Sin paciente seleccionado</span>
-                            <span style={{ fontSize: '0.72rem', opacity: 0.8 }}>Selecciona una conversación para ver su ficha clínica y notas.</span>
-                        </div>
-                    ) : isSidebarLoading ? (
-                        <SidebarLoadingSkeleton 
-                            ccTheme={ccTheme} 
-                            rightCardBg={rightCardBg} 
-                            rightCardBorder={rightCardBorder} 
-                            themeCardText={themeCardText} 
-                            themeCardSubtext={themeCardSubtext} 
-                        />
-                    ) : (
-                        <>
-                            {/* TAB 1: FICHA CRM DEL PACIENTE */}
-                            {activeDetailTab === 'info' && (
-                        <>
-                            {/* WIDGET PRINCIPAL: RESUMEN INTELIGENTE IA (OPENAI) & PRESTADOR DETECTADO */}
-                            <div style={{
-                                background: rightCardBg,
-                                border: `1.5px solid ${rightCardBorder}`,
-                                borderRadius: '12px',
-                                padding: '14px',
-                                boxShadow: '0 2px 8px rgba(0,0,0,0.03)',
-                                display: 'flex',
-                                flexDirection: 'column',
-                                gap: '10px'
-                            }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.78rem', fontWeight: 800, color: ccTheme.accentColor || '#4F46E5' }}>
-                                        <Sparkles size={16} color={ccTheme.accentColor || '#6366F1'} />
-                                        RESUMEN IA DE LA CONSULTA
-                                    </div>
-                                    <button
-                                        type="button"
-                                        onClick={handleRunAiSummary}
-                                        disabled={isGeneratingSummary}
-                                        title="Analizar historial completo de la conversación con IA"
+                            {/* Izquierda: Nombre del paciente y datos */}
+                            <div style={{ minWidth: 0 }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <span style={{ fontSize: '0.88rem', fontWeight: 800, color: ccTheme.accentColor || '#0284C7', lineHeight: 1.2 }}>
+                                        {getCleanChatName(selectedChat)}
+                                    </span>
+
+                                    {/* CONDICIÓN PADRÓN */}
+                                    <span
+                                        title="Condición de Padrón"
                                         style={{
-                                            display: 'inline-flex', alignItems: 'center', gap: '4px',
-                                            padding: '4px 8px', borderRadius: '6px',
-                                            border: `1px solid ${rightCardBorder}`, 
-                                            background: ccTheme.isDark ? '#312E81' : '#EEF2FF',
-                                            color: ccTheme.isDark ? '#C7D2FE' : '#4338CA', 
-                                            fontSize: '0.7rem', fontWeight: 700,
-                                            cursor: isGeneratingSummary ? 'wait' : 'pointer'
+                                            fontSize: '0.62rem', fontWeight: 800,
+                                            padding: '1px 6px', borderRadius: '4px',
+                                            background: selectedChat.customFields?.esPacienteExistente ? '#ECFDF5' : '#EFF6FF',
+                                            color: selectedChat.customFields?.esPacienteExistente ? '#047857' : '#1D4ED8',
+                                            border: '1px solid', borderColor: selectedChat.customFields?.esPacienteExistente ? '#A7F3D0' : '#BFDBFE',
+                                            lineHeight: 1.2, whiteSpace: 'nowrap'
                                         }}
                                     >
-                                        <RefreshCw size={11} className={isGeneratingSummary ? 'animate-spin' : ''} />
-                                        {isGeneratingSummary ? 'Analizando...' : (aiSummaryData ? 'Actualizar IA' : 'Generar')}
-                                    </button>
-                                </div>
+                                        {selectedChat.customFields?.esPacienteExistente ? '✓ Paciente Registrado' : '+ Nuevo Paciente'}
+                                    </span>
 
-                                {aiSummaryData ? (
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                                        {/* 1. QUÉ NECESITA EL PACIENTE */}
-                                        <div style={{
-                                            background: ccTheme.leftSidebarHeaderBg || (ccTheme.isDark ? '#1E293B' : '#FFFFFF'), 
-                                            padding: '10px', borderRadius: '8px',
-                                            border: `1px solid ${rightCardBorder}`, borderLeft: `3px solid ${ccTheme.accentColor || '#6366F1'}`
-                                        }}>
-                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
-                                                <span style={{ fontSize: '0.68rem', fontWeight: 800, color: themeCardSubtext, textTransform: 'uppercase' }}>
-                                                    ¿Qué necesita el paciente?
-                                                </span>
-                                                {aiSummaryData.tipo_tramite && (
-                                                    <span style={{
-                                                        fontSize: '0.65rem', fontWeight: 700, 
-                                                        background: ccTheme.isDark ? '#312E81' : '#E0E7FF',
-                                                        color: ccTheme.isDark ? '#C7D2FE' : '#3730A3', 
-                                                        padding: '1px 6px', borderRadius: '4px'
-                                                    }}>
-                                                        {aiSummaryData.tipo_tramite}
-                                                    </span>
-                                                )}
-                                            </div>
-                                            <div style={{ fontSize: '0.8rem', color: themeCardText, lineHeight: 1.45, fontWeight: 600 }}>
-                                                {aiSummaryData.resumen_solicitud || 'El paciente no ha especificado aún su solicitud.'}
-                                            </div>
-                                        </div>
-
-                                        {/* 2. DATOS DETECTADOS POR LA IA */}
-                                        {aiSummaryData.datos_paciente && (() => {
-                                            const isDateHourArtifact = (val) => {
-                                                if (!val) return false;
-                                                const clean = String(val).replace(/\D/g, '');
-                                                return /^(?:0[1-9]|[12]\d|3[01])(?:0[1-9]|1[0-2])(?:[01]\d|2[0-3])(?:00|15|30|45)$/.test(clean);
-                                            };
-
-                                            const verifiedDni = crmForm.dni || selectedChat?.dni || selectedChat?.customFields?.dni;
-                                            const rawAiDni = aiSummaryData.datos_paciente?.dni;
-                                            const displayDni = (verifiedDni && verifiedDni !== 'A verificar')
-                                                ? verifiedDni
-                                                : (!isDateHourArtifact(rawAiDni) ? rawAiDni : null) || '—';
-
-                                            const displayObraSocial = aiSummaryData.datos_paciente.obra_social || crmForm.obraSocial || selectedChat?.customFields?.obraSocial || selectedChat?.obra_social || '—';
-                                            const displayNacimiento = aiSummaryData.datos_paciente.fecha_nacimiento || crmForm.fechaNacimiento || selectedChat?.customFields?.fechaNacimiento || selectedChat?.fecha_nacimiento || '—';
-                                            const displayDepto = aiSummaryData.datos_paciente.departamento || selectedChat?.departamento || '—';
-
-                                            return (
-                                                <div style={{
-                                                    background: ccTheme.leftSidebarHeaderBg || (ccTheme.isDark ? '#1E293B' : '#FFFFFF'), 
-                                                    padding: '10px', borderRadius: '8px',
-                                                    border: `1px solid ${rightCardBorder}`
-                                                }}>
-                                                    <div style={{ fontSize: '0.68rem', fontWeight: 800, color: themeCardSubtext, textTransform: 'uppercase', marginBottom: '6px' }}>
-                                                        Datos Aportados por el Paciente
-                                                    </div>
-                                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', fontSize: '0.74rem' }}>
-                                                        <div>
-                                                            <span style={{ color: themeCardSubtext, fontSize: '0.68rem', display: 'block' }}>DNI</span>
-                                                            <strong style={{ color: themeCardText }}>{displayDni}</strong>
-                                                        </div>
-                                                        <div>
-                                                            <span style={{ color: themeCardSubtext, fontSize: '0.68rem', display: 'block' }}>Obra Social</span>
-                                                            <strong style={{ color: themeCardText }}>
-                                                                {displayObraSocial}
-                                                                {aiSummaryData.datos_paciente.plan_obra_social && !displayObraSocial.includes(aiSummaryData.datos_paciente.plan_obra_social) ? ` (${aiSummaryData.datos_paciente.plan_obra_social})` : ''}
-                                                            </strong>
-                                                        </div>
-                                                        <div>
-                                                            <span style={{ color: themeCardSubtext, fontSize: '0.68rem', display: 'block' }}>Nacimiento</span>
-                                                            <strong style={{ color: themeCardText }}>{displayNacimiento}</strong>
-                                                        </div>
-                                                        <div>
-                                                            <span style={{ color: themeCardSubtext, fontSize: '0.68rem', display: 'block' }}>Dpto / Localidad</span>
-                                                            <strong style={{ color: themeCardText }}>{displayDepto}</strong>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            );
-                                        })()}
-
-                                        {/* 3. DOCTOR DETECTADO & PARÁMETROS DE ATENCIÓN */}
-                                        {(() => {
-                                            // Validar si el médico proviene exclusivamente del sello/orden médica (solicitante) y no del texto del paciente
-                                            const isDoctorFromOrderSolicitante = (docName) => {
-                                                if (!docName || !selectedChat?.messages) return false;
-                                                const cleanDoc = docName.replace(/\b(dr|dra|doctor|doctora)\b\.?/gi, '').trim().toLowerCase();
-                                                const docWords = cleanDoc.split(/\s+/).filter(w => w.length >= 3);
-                                                if (docWords.length === 0) return false;
-
-                                                const orderSolicitantes = [];
-                                                selectedChat.messages.forEach(m => {
-                                                    const sol = m.orderAnalysis?.solicitante || m.raw_payload?.order_analysis?.solicitante || m.order_analysis?.solicitante;
-                                                    if (sol && typeof sol === 'string') {
-                                                        orderSolicitantes.push(sol.replace(/\b(dr|dra|doctor|doctora)\b\.?/gi, '').trim().toLowerCase());
-                                                    }
-                                                });
-
-                                                if (orderSolicitantes.length === 0) return false;
-                                                const matchesSol = orderSolicitantes.some(sol => docWords.some(w => sol.includes(w)));
-                                                if (!matchesSol) return false;
-
-                                                const patientText = selectedChat.messages
-                                                    .filter(m => (m.sender === 'patient' || m.direction === 'incoming') && (m.text || m.content) && !(m.text || m.content).startsWith('['))
-                                                    .map(m => (m.text || m.content).toLowerCase())
-                                                    .join(' ');
-
-                                                const mentionedInText = docWords.some(w => patientText.includes(w));
-                                                return !mentionedInText;
-                                            };
-
-                                            const effectivePrestadorMatched = aiSummaryData.prestador_matched && !isDoctorFromOrderSolicitante(aiSummaryData.prestador_matched.profesional_nombre)
-                                                ? aiSummaryData.prestador_matched
-                                                : null;
-                                            const effectiveDoctorDetectado = aiSummaryData.doctor_detectado?.nombre_aproximado && !isDoctorFromOrderSolicitante(aiSummaryData.doctor_detectado.nombre_aproximado)
-                                                ? aiSummaryData.doctor_detectado
-                                                : null;
-
-                                            if (effectivePrestadorMatched) {
-                                                return (
-                                                    <div style={{
-                                                        background: ccTheme.isDark ? '#064E3B' : '#F0FDF4', 
-                                                        padding: '10px', borderRadius: '8px',
-                                                        border: `1.5px solid ${ccTheme.isDark ? '#047857' : '#86EFAC'}`
-                                                    }}>
-                                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                                                            <span style={{ fontSize: '0.68rem', fontWeight: 800, color: ccTheme.isDark ? '#6EE7B7' : '#15803D', textTransform: 'uppercase' }}>
-                                                                👨‍⚕️ Prestador Detectado
-                                                            </span>
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => {
-                                                                    setActiveDetailTab('prestadores');
-                                                                    setDoctorQuery(effectivePrestadorMatched.profesional_nombre);
-                                                                }}
-                                                                style={{
-                                                                    background: 'none', border: 'none', 
-                                                                    color: ccTheme.isDark ? '#6EE7B7' : '#166534',
-                                                                    fontSize: '0.68rem', fontWeight: 800, cursor: 'pointer', padding: 0,
-                                                                    textDecoration: 'underline'
-                                                                }}
-                                                            >
-                                                                Ver en Prestadores ↗
-                                                            </button>
-                                                        </div>
-
-                                                        <div style={{ fontWeight: 800, fontSize: '0.84rem', color: ccTheme.isDark ? '#F0FDF4' : '#0F172A' }}>
-                                                            {effectivePrestadorMatched.profesional_nombre}
-                                                        </div>
-                                                        <div style={{ fontSize: '0.72rem', color: ccTheme.accentColor || '#0284C7', fontWeight: 600 }}>
-                                                            {effectivePrestadorMatched.especialidad || 'Consulta Médica'}
-                                                        </div>
-                                                        {effectivePrestadorMatched.consultorio_actual && (
-                                                            <div style={{ fontSize: '0.72rem', color: ccTheme.isDark ? '#34D399' : '#059669', fontWeight: 700, marginTop: '2px' }}>
-                                                                📍 {effectivePrestadorMatched.consultorio_actual}
-                                                            </div>
-                                                        )}
-
-                                                        {effectivePrestadorMatched.condiciones_consulta && (
-                                                            <div style={{
-                                                                marginTop: '8px', padding: '8px', 
-                                                                background: ccTheme.isDark ? '#022C22' : '#FFFFFF',
-                                                                borderRadius: '6px', 
-                                                                border: `1px solid ${ccTheme.isDark ? '#065F46' : '#BBF7D0'}`,
-                                                                fontSize: '0.72rem', 
-                                                                color: ccTheme.isDark ? '#E2E8F0' : '#334155', 
-                                                                lineHeight: 1.45,
-                                                                whiteSpace: 'pre-line', maxHeight: '160px', overflowY: 'auto'
-                                                            }}>
-                                                                <div style={{ fontWeight: 800, color: ccTheme.isDark ? '#6EE7B7' : '#166534', fontSize: '0.68rem', marginBottom: '4px' }}>
-                                                                    📋 CONDICIONES Y PARÁMETROS:
-                                                                </div>
-                                                                {effectivePrestadorMatched.condiciones_consulta}
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                );
-                                            }
-
-                                            if (effectiveDoctorDetectado) {
-                                                return (
-                                                    <div style={{
-                                                        background: ccTheme.isDark ? '#451A03' : '#FFFBEB', 
-                                                        padding: '10px', borderRadius: '8px',
-                                                        border: `1px solid ${ccTheme.isDark ? '#78350F' : '#FDE68A'}`, 
-                                                        fontSize: '0.74rem'
-                                                    }}>
-                                                        <div style={{ fontWeight: 800, color: ccTheme.isDark ? '#FDE68A' : '#B45309', marginBottom: '2px' }}>
-                                                            ⚠️ Doctor mencionado: {effectiveDoctorDetectado.nombre_aproximado}
-                                                        </div>
-                                                        <div style={{ color: ccTheme.isDark ? '#FCD34D' : '#92400E', fontSize: '0.7rem' }}>
-                                                            No se encontró coincidencia exacta en SALUS. Puedes buscarlo por nombre parcial en la pestaña "Prestadores".
-                                                        </div>
-                                                    </div>
-                                                );
-                                            }
-
-                                            return (
-                                                <div style={{
-                                                    padding: '8px 10px', 
-                                                    background: ccTheme.leftSidebarHeaderBg || (ccTheme.isDark ? '#1E293B' : '#FFFFFF'), 
-                                                    borderRadius: '6px',
-                                                    border: `1px solid ${rightCardBorder}`, 
-                                                    fontSize: '0.7rem', color: themeCardSubtext
-                                                }}>
-                                                    ℹ️ La IA no detectó un médico específico en la conversación. Puedes consultar la cartilla en la pestaña "Prestadores".
-                                                </div>
-                                            );
-                                        })()}
-                                    </div>
-                                ) : (
-                                    <div style={{
-                                        padding: '12px', 
-                                        background: ccTheme.leftSidebarHeaderBg || (ccTheme.isDark ? '#1E293B' : '#FFFFFF'), 
-                                        borderRadius: '8px',
-                                        border: `1px dashed ${rightCardBorder}`, 
-                                        textAlign: 'center'
-                                    }}>
-                                        <div style={{ fontSize: '0.76rem', color: themeCardSubtext, marginBottom: '8px' }}>
-                                            Genera con IA un resumen ejecutivo de lo que necesita el paciente y detecta automáticamente los parámetros del médico consultado.
-                                        </div>
+                                    {/* ALERTA FERVIENTE DE TELÉFONO COMPARTIDO / MÚLTIPLES CONTACTOS ASOCIADOS */}
+                                    {associatedPatients.length > 1 && (
                                         <button
                                             type="button"
-                                            onClick={handleRunAiSummary}
-                                            disabled={isGeneratingSummary}
-                                            style={{
-                                                padding: '6px 14px', borderRadius: '8px',
-                                                background: 'linear-gradient(135deg, #4F46E5, #6366F1)',
-                                                color: '#FFFFFF', border: 'none', fontWeight: 700,
-                                                fontSize: '0.76rem', cursor: isGeneratingSummary ? 'wait' : 'pointer',
-                                                display: 'inline-flex', alignItems: 'center', gap: '6px',
-                                                boxShadow: '0 2px 6px rgba(99, 102, 241, 0.3)'
+                                            onClick={() => {
+                                                setRightSidebarCollapsed(false);
+                                                setActiveDetailTab('ficha');
+                                                setShowAssociatedDrawer(true);
                                             }}
-                                        >
-                                            <Sparkles size={13} />
-                                            {isGeneratingSummary ? 'Analizando con IA...' : 'Generar Resumen con IA'}
-                                        </button>
-                                    </div>
-                                )}
-                            </div>
-
-
-                            {/* BANNER DE ALERTA ALTA PRIORIDAD SI EL TELÉFONO TIENE MÚLTIPLES CONTACTOS ASOCIADOS */}
-                            {associatedPatients.length > 1 && (
-                                <div 
-                                    onClick={() => setShowAssociatedDrawer(true)}
-                                    style={{
-                                        background: ccTheme.isDark ? 'rgba(180, 83, 9, 0.25)' : 'linear-gradient(135deg, #FFFBEB 0%, #FEF3C7 100%)',
-                                        border: '2px solid #F59E0B',
-                                        borderRadius: '10px',
-                                        padding: '9px 11px',
-                                        display: 'flex',
-                                        flexDirection: 'column',
-                                        gap: '5px',
-                                        cursor: 'pointer',
-                                        boxShadow: '0 3px 10px rgba(245, 158, 11, 0.18)',
-                                        transition: 'all 0.15s ease'
-                                    }}
-                                    title="Este teléfono está registrado en múltiples historias clínicas de SALUS. Verifique siempre para quién es el turno."
-                                >
-                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                            <span style={{
-                                                width: '20px', height: '20px', borderRadius: '6px',
-                                                background: '#D97706', color: '#FFFFFF',
-                                                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                                                flexShrink: 0
-                                            }}>
-                                                <AlertTriangle size={12} />
-                                            </span>
-                                            <span style={{ fontSize: '0.72rem', fontWeight: 900, color: ccTheme.isDark ? '#FDE68A' : '#92400E', letterSpacing: '0.2px' }}>
-                                                ¡ATENCIÓN! {associatedPatients.length} CONTACTOS ASOCIADOS AL TELÉFONO
-                                            </span>
-                                        </div>
-                                        {!showAssociatedDrawer && (
-                                            <span style={{ fontSize: '0.65rem', fontWeight: 800, color: '#B45309', whiteSpace: 'nowrap' }}>
-                                                Ver todos ➔
-                                            </span>
-                                        )}
-                                    </div>
-                                    <div style={{ fontSize: '0.67rem', fontWeight: 600, color: ccTheme.isDark ? '#FCD34D' : '#78350F', lineHeight: 1.35 }}>
-                                        Teléfono compartido por grupo familiar en SALUS. <strong>Verifique en el chat para cuál de los {associatedPatients.length} pacientes solicita el turno</strong> antes de agendar:
-                                    </div>
-                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '2px' }}>
-                                        {associatedPatients.map((ap) => {
-                                            const isCurrent = (crmForm.dni && ap.dni && String(crmForm.dni) === String(ap.dni)) ||
-                                                (crmForm.pacienteNombre && ap.nombre && crmForm.pacienteNombre.trim().toLowerCase() === ap.nombre.trim().toLowerCase());
-                                            return (
-                                                <button
-                                                    key={ap.id_paciente || ap.dni || ap.nombre}
-                                                    type="button"
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        handleSelectAssociatedPatient(ap, { keepDrawerOpen: true });
-                                                    }}
-                                                    style={{
-                                                        fontSize: '0.63rem',
-                                                        fontWeight: 800,
-                                                        padding: '2px 7px',
-                                                        borderRadius: '6px',
-                                                        border: isCurrent ? '1.5px solid #16A34A' : '1px solid #F59E0B',
-                                                        background: isCurrent ? '#DCFCE7' : '#FFFFFF',
-                                                        color: isCurrent ? '#15803D' : '#92400E',
-                                                        cursor: 'pointer',
-                                                        display: 'inline-flex',
-                                                        alignItems: 'center',
-                                                        gap: '4px'
-                                                    }}
-                                                    title={`Clic para activar a ${ap.nombre} (DNI ${ap.dni || 'S/D'})`}
-                                                >
-                                                    <span>{isCurrent ? '✓ ' : '⇄ '}{ap.nombre}</span>
-                                                    {ap.dni && <span style={{ opacity: 0.8 }}>({ap.dni})</span>}
-                                                </button>
-                                            );
-                                        })}
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* CABECERA DE LA FICHA DEL PACIENTE */}
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '6px' }}>
-                                <span style={{ fontSize: '0.74rem', fontWeight: 800, color: themeCardText, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                                    Datos del Paciente
-                                </span>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                    {/* Botón Ver Contactos / Pacientes Asociados por Teléfono */}
-                                    <button
-                                        type="button"
-                                        onClick={() => setShowAssociatedDrawer(prev => !prev)}
-                                        title="Ver pacientes registrados con este mismo número de teléfono (grupo familiar)"
-                                        style={{
-                                            fontSize: '0.66rem',
-                                            fontWeight: 800,
-                                            color: associatedPatients.length > 1
-                                                ? (showAssociatedDrawer ? '#FFFFFF' : '#B45309')
-                                                : (showAssociatedDrawer ? '#FFFFFF' : (ccTheme.accentColor || '#0284C7')),
-                                            background: associatedPatients.length > 1
-                                                ? (showAssociatedDrawer ? '#D97706' : '#FEF3C7')
-                                                : (showAssociatedDrawer ? (ccTheme.accentColor || '#0284C7') : (ccTheme.isDark ? '#0F172A' : '#EFF6FF')),
-                                            border: `1.5px solid ${associatedPatients.length > 1 ? '#F59E0B' : (showAssociatedDrawer ? (ccTheme.accentColor || '#0284C7') : '#93C5FD')}`,
-                                            padding: '3px 7px',
-                                            borderRadius: '6px',
-                                            display: 'inline-flex',
-                                            alignItems: 'center',
-                                            gap: '4px',
-                                            cursor: 'pointer',
-                                            transition: 'all 0.15s ease'
-                                        }}
-                                    >
-                                        <Users size={11} />
-                                        <span>{associatedPatients.length > 1 ? '⚠️ Asociados' : 'Asociados'}</span>
-                                        {isLoadingAssociated ? (
-                                            <Loader2 size={9} className="animate-spin" />
-                                        ) : (
-                                            <span style={{
-                                                background: associatedPatients.length > 1
-                                                    ? (showAssociatedDrawer ? 'rgba(255,255,255,0.28)' : '#D97706')
-                                                    : (showAssociatedDrawer ? 'rgba(255,255,255,0.3)' : (ccTheme.accentColor || '#0284C7')),
-                                                color: '#FFFFFF',
-                                                borderRadius: '9999px',
-                                                padding: '0 4px',
-                                                fontSize: '0.60rem',
-                                                fontWeight: 800,
-                                                lineHeight: '13px',
-                                                height: '13px',
-                                                minWidth: '13px',
-                                                display: 'inline-flex',
-                                                alignItems: 'center',
-                                                justifyContent: 'center'
-                                            }}>
-                                                {associatedPatients.length}
-                                            </span>
-                                        )}
-                                    </button>
-
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            setIsSearchingThirdParty(prev => !prev);
-                                            setThirdPartyError('');
-                                        }}
-                                        title={selectedChat.customFields?.fichaDual?.esGestionTercero ? "Vincular a otro DNI diferente en SALUS" : "Vincular ficha médica por DNI si gestiona para otro paciente"}
-                                        style={{
-                                            fontSize: '0.66rem',
-                                            fontWeight: 700,
-                                            color: isSearchingThirdParty ? '#DC2626' : (ccTheme.accentColor || '#0284C7'),
-                                            background: isSearchingThirdParty ? (ccTheme.isDark ? '#450A0A' : '#FEF2F2') : themeCardBg,
-                                            border: `1px solid ${isSearchingThirdParty ? '#FCA5A5' : rightCardBorder}`,
-                                            padding: '3px 8px',
-                                            borderRadius: '6px',
-                                            display: 'inline-flex',
-                                            alignItems: 'center',
-                                            gap: '3px',
-                                            cursor: 'pointer'
-                                        }}
-                                    >
-                                        {isSearchingThirdParty ? (
-                                            <>
-                                                <X size={11} /> Cerrar
-                                            </>
-                                        ) : (
-                                            <>
-                                                <Link size={11} /> {selectedChat.customFields?.fichaDual?.esGestionTercero ? 'Cambiar DNI' : 'Vincular DNI'}
-                                            </>
-                                        )}
-                                    </button>
-
-                                    {/* Botón Desvincular en cabecera si ya tiene tercero vinculado */}
-                                    {selectedChat.customFields?.fichaDual?.esGestionTercero && (
-                                        <button
-                                            type="button"
-                                            onClick={handleUnlinkThirdParty}
-                                            title="Desvincular tercero y restablecer ficha médica al titular"
+                                            title={`¡ATENCIÓN! Este número telefónico pertenece a ${associatedPatients.length} pacientes distintos en SALUS: ${associatedPatients.map(p => p.nombre).join(' / ')}. Haz clic para verificar a quién corresponde el turno.`}
                                             style={{
-                                                fontSize: '0.66rem',
-                                                fontWeight: 700,
-                                                color: '#DC2626',
-                                                background: ccTheme.isDark ? '#450A0A' : '#FEF2F2',
-                                                border: '1px solid #FCA5A5',
-                                                padding: '3px 8px',
+                                                fontSize: '0.64rem',
+                                                fontWeight: 900,
+                                                padding: '2px 8px',
                                                 borderRadius: '6px',
+                                                background: '#FEF3C7',
+                                                color: '#B45309',
+                                                border: '1.5px solid #F59E0B',
+                                                boxShadow: '0 1px 4px rgba(245, 158, 11, 0.28)',
+                                                lineHeight: 1.2,
+                                                whiteSpace: 'nowrap',
                                                 display: 'inline-flex',
                                                 alignItems: 'center',
-                                                gap: '3px',
+                                                gap: '4px',
                                                 cursor: 'pointer'
                                             }}
                                         >
-                                            <Unlink size={11} /> Desvincular
+                                            <AlertTriangle size={11} style={{ color: '#D97706', flexShrink: 0 }} />
+                                            <span>⚠️ TELÉFONO COMPARTIDO ({associatedPatients.length} CONTACTOS ASOCIADOS)</span>
                                         </button>
+                                    )}
+
+                                    {/* ETIQUETAS BOT EN CABECERA */}
+                                    {renderBotTags(selectedChat, ccTheme)}
+                                </div>
+                                <div style={{ fontSize: '0.67rem', color: ccTheme.chatHeaderColor || '#64748B', opacity: 0.9, display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '6px', marginTop: '2px', lineHeight: 1.2 }}>
+                                    <span>Tel: {selectedChat.phone}</span>
+                                    <span>•</span>
+                                    <span>
+                                        Última respuesta: <strong style={{ color: selectedChat.lastResponderRole === 'agent' ? (ccTheme.accentColor || '#1E40AF') : (ccTheme.isDark ? '#FCA5A5' : '#E11D48') }}>
+                                            {selectedChat.lastResponder || 'Paciente'}
+                                        </strong>
+                                    </span>
+                                    <span>•</span>
+                                    {is24hWindowExpired ? (
+                                        <span
+                                            title="Pasaron más de 24hs desde el último mensaje del paciente. Solo se puede responder con una plantilla oficial aprobada por Meta."
+                                            style={{
+                                                display: 'inline-flex', alignItems: 'center', gap: '3px',
+                                                padding: '1px 6px', borderRadius: '4px',
+                                                background: '#FEF3C7', border: '1px solid #FCD34D',
+                                                color: '#B45309', fontSize: '0.64rem', fontWeight: 800,
+                                                cursor: 'help'
+                                            }}
+                                        >
+                                            <Clock size={10} color="#D97706" />
+                                            Ventana 24h: Expirada (Requiere Plantilla Meta)
+                                        </span>
+                                    ) : windowRemaining ? (
+                                        <span
+                                            title={`Ventana activa de conversación libre de WhatsApp. Vence en aprox. ${windowRemaining.hours} horas y ${windowRemaining.mins} minutos.`}
+                                            style={{
+                                                display: 'inline-flex', alignItems: 'center', gap: '3px',
+                                                padding: '1px 6px', borderRadius: '4px',
+                                                background: '#ECFDF5', border: '1px solid #A7F3D0',
+                                                color: '#047857', fontSize: '0.64rem', fontWeight: 800,
+                                                cursor: 'help'
+                                            }}
+                                        >
+                                            <CheckCircle2 size={10} color="#10B981" />
+                                            Ventana 24h activa ({windowRemaining.hours}h {windowRemaining.mins}m)
+                                        </span>
+                                    ) : null}
+                                    {/* Badge de Ojito si otro agente está leyendo este chat */}
+                                    {otherViewersForCurrentChat.length > 0 && (
+                                        <>
+                                            <span>•</span>
+                                            <span style={{
+                                                display: 'inline-flex',
+                                                alignItems: 'center',
+                                                gap: '3px',
+                                                padding: '1px 6px',
+                                                borderRadius: '9999px',
+                                                background: '#EFF6FF',
+                                                border: '1px solid #60A5FA',
+                                                color: '#1D4ED8',
+                                                fontSize: '0.64rem',
+                                                fontWeight: 800,
+                                                whiteSpace: 'nowrap'
+                                            }}>
+                                                <Eye size={10} color="#2563EB" />
+                                                <span>
+                                                    {otherViewersForCurrentChat.map(v => v.agentName).join(', ')} {otherViewersForCurrentChat.length === 1 ? 'está viendo' : 'están viendo'}
+                                                </span>
+                                            </span>
+                                        </>
+                                    )}
+                                    {!isClosedOrArchived(selectedChat) && (
+                                        <>
+                                            <span>•</span>
+                                            {selectedChat.isWaitingResponse ? (
+                                                <span style={{
+                                                    fontSize: '0.64rem', fontWeight: 800, padding: '1px 6px', borderRadius: '4px',
+                                                    background: selectedChat.waitingMinutes >= 30 ? '#FEF2F2' : (selectedChat.waitingMinutes >= 10 ? '#FFFBEB' : '#F0FDF4'),
+                                                    color: selectedChat.waitingMinutes >= 30 ? '#DC2626' : (selectedChat.waitingMinutes >= 10 ? '#D97706' : '#15803D'),
+                                                    border: `1px solid ${selectedChat.waitingMinutes >= 30 ? '#FECACA' : (selectedChat.waitingMinutes >= 10 ? '#FDE68A' : '#BBF7D0')}`,
+                                                    display: 'inline-flex', alignItems: 'center', gap: '3px', whiteSpace: 'nowrap'
+                                                }}>
+                                                    <Clock size={10} />
+                                                    {selectedChat.waitingMinutes >= 30 ? '🚨 ' : (selectedChat.waitingMinutes >= 10 ? '⚠️ ' : '⏳ ')}
+                                                    {selectedChat.waitingTimeText || 'Esperando respuesta'}
+                                                </span>
+                                            ) : (
+                                                <span style={{
+                                                    fontSize: '0.64rem', fontWeight: 700, padding: '1px 6px', borderRadius: '4px',
+                                                    background: '#F0FDF4', color: '#15803D', border: '1px solid #BBF7D0',
+                                                    display: 'inline-flex', alignItems: 'center', gap: '3px', whiteSpace: 'nowrap'
+                                                }}>
+                                                    <Check size={10} /> Respondido por agente
+                                                </span>
+                                            )}
+                                        </>
                                     )}
                                 </div>
                             </div>
 
-                            {/* PANEL DESPLEGABLE: PACIENTES / FAMILIARES ASOCIADOS POR TELÉFONO */}
-                            {showAssociatedDrawer && (
-                                <div style={{
-                                    background: rightCardBg,
-                                    border: `1.5px solid ${ccTheme.accentColor || '#0284C7'}`,
-                                    borderRadius: '10px',
-                                    padding: '10px',
-                                    display: 'flex',
-                                    flexDirection: 'column',
-                                    gap: '8px',
-                                    boxShadow: '0 4px 12px rgba(2, 132, 199, 0.12)'
-                                }}>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '0.74rem', fontWeight: 800, color: ccTheme.accentColor || '#0369A1' }}>
-                                            <Users size={14} />
-                                            <span>Contactos Asociados al Teléfono ({associatedPatients.length})</span>
+                            {/* Derecha: Bot Controls + Asignación */}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', position: 'relative' }}>
+                                {/* BOTÓN DESPLEGABLE COMPACTO DE BOT (EXCLUSIVO PARA LMARINERO) */}
+                                {isStrictLMarinero && (
+                                    <div ref={botMenuRef} style={{ position: 'relative' }}>
+                                        <button
+                                            type="button"
+                                            onClick={() => setBotMenuOpen(prev => !prev)}
+                                            title="Opciones de Bot y Contexto de IA (Exclusivo lmarinero)"
+                                            style={{
+                                                display: 'inline-flex',
+                                                alignItems: 'center',
+                                                gap: '5px',
+                                                padding: '2px 8px',
+                                                borderRadius: '6px',
+                                                border: '1px solid',
+                                                borderColor: botActive ? '#BBF7D0' : '#FDE68A',
+                                                background: botActive ? '#F0FDF4' : '#FFFBEB',
+                                                color: botActive ? '#15803D' : '#B45309',
+                                                fontSize: '0.68rem',
+                                                fontWeight: 800,
+                                                cursor: 'pointer',
+                                                height: '24px',
+                                                boxShadow: '0 1px 2px rgba(0,0,0,0.03)',
+                                                transition: 'all 0.15s ease'
+                                            }}
+                                        >
+                                            <Bot size={13} color={botActive ? '#16A34A' : '#D97706'} />
+                                            <span>Bot</span>
+                                            <span style={{
+                                                width: '6px',
+                                                height: '6px',
+                                                borderRadius: '50%',
+                                                background: botActive ? '#16A34A' : '#EF4444',
+                                                display: 'inline-block'
+                                            }} />
+                                            <ChevronDown
+                                                size={11}
+                                                color={botActive ? '#15803D' : '#B45309'}
+                                                style={{ transform: botMenuOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s ease' }}
+                                            />
+                                        </button>
+
+                                        {botMenuOpen && (
+                                            <div style={{
+                                                position: 'absolute',
+                                                top: 'calc(100% + 4px)',
+                                                left: 0,
+                                                zIndex: 150,
+                                                width: '240px',
+                                                background: '#FFFFFF',
+                                                borderRadius: '10px',
+                                                border: '1px solid #E2E8F0',
+                                                boxShadow: '0 12px 30px -4px rgba(0,0,0,0.18), 0 4px 8px -2px rgba(0,0,0,0.06)',
+                                                padding: '6px',
+                                                display: 'flex',
+                                                flexDirection: 'column',
+                                                gap: '4px'
+                                            }}>
+                                                {/* Header Estado */}
+                                                <div style={{
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'space-between',
+                                                    padding: '6px 8px',
+                                                    borderRadius: '6px',
+                                                    background: botActive ? '#F0FDF4' : '#FFFBEB',
+                                                    border: `1px solid ${botActive ? '#BBF7D0' : '#FDE68A'}`,
+                                                    marginBottom: '2px'
+                                                }}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.72rem', fontWeight: 800, color: botActive ? '#15803D' : '#B45309' }}>
+                                                        <Bot size={13} />
+                                                        <span>{botActive ? 'Bot Activo (Triage)' : 'Bot Silenciado'}</span>
+                                                    </div>
+                                                    {TEST_BOT_RESET_INDICATOR_ENABLED && (
+                                                        <span style={{ fontSize: '0.60rem', fontWeight: 800, color: '#B45309', background: '#FEF3C7', padding: '1px 4px', borderRadius: '4px' }}>
+                                                            ⏱️ 3m
+                                                        </span>
+                                                    )}
+                                                </div>
+
+                                                {/* Opción 1: Silenciar / Reanudar */}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        handleToggleBot();
+                                                        setBotMenuOpen(false);
+                                                    }}
+                                                    style={{
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '8px',
+                                                        width: '100%',
+                                                        padding: '7px 10px',
+                                                        borderRadius: '6px',
+                                                        border: 'none',
+                                                        background: 'transparent',
+                                                        color: '#1E293B',
+                                                        fontSize: '0.74rem',
+                                                        fontWeight: 600,
+                                                        cursor: 'pointer',
+                                                        textAlign: 'left'
+                                                    }}
+                                                    onMouseEnter={(e) => e.currentTarget.style.background = '#F1F5F9'}
+                                                    onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                                                >
+                                                    <div style={{
+                                                        width: '22px',
+                                                        height: '22px',
+                                                        borderRadius: '5px',
+                                                        background: botActive ? '#FEE2E2' : '#DCFCE7',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        justifyContent: 'center',
+                                                        color: botActive ? '#DC2626' : '#16A34A',
+                                                        flexShrink: 0
+                                                    }}>
+                                                        <Power size={12} />
+                                                    </div>
+                                                    <div>
+                                                        <div style={{ fontWeight: 700, color: '#0F172A' }}>{botActive ? 'Silenciar Bot' : 'Reanudar Bot'}</div>
+                                                        <div style={{ fontSize: '0.64rem', color: '#64748B' }}>
+                                                            {botActive ? 'Pausar respuestas automáticas' : 'Permitir triage automático'}
+                                                        </div>
+                                                    </div>
+                                                </button>
+
+                                                {/* Opción 2: Reiniciar flujo */}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setBotMenuOpen(false);
+                                                        handleOpenResetBotModal();
+                                                    }}
+                                                    style={{
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '8px',
+                                                        width: '100%',
+                                                        padding: '7px 10px',
+                                                        borderRadius: '6px',
+                                                        border: 'none',
+                                                        background: 'transparent',
+                                                        color: '#1E293B',
+                                                        fontSize: '0.74rem',
+                                                        fontWeight: 600,
+                                                        cursor: 'pointer',
+                                                        textAlign: 'left'
+                                                    }}
+                                                    onMouseEnter={(e) => e.currentTarget.style.background = '#F1F5F9'}
+                                                    onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                                                >
+                                                    <div style={{
+                                                        width: '22px',
+                                                        height: '22px',
+                                                        borderRadius: '5px',
+                                                        background: '#E0F2FE',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        justifyContent: 'center',
+                                                        color: '#0284C7',
+                                                        flexShrink: 0
+                                                    }}>
+                                                        <RefreshCw size={12} />
+                                                    </div>
+                                                    <div>
+                                                        <div style={{ fontWeight: 700, color: '#0F172A' }}>Reiniciar Flujo</div>
+                                                        <div style={{ fontSize: '0.64rem', color: '#64748B' }}>Volver al saludo inicial de triage</div>
+                                                    </div>
+                                                </button>
+
+                                                <div style={{ height: '1px', background: '#F1F5F9', margin: '2px 0' }} />
+
+                                                {/* Opción 3: Borrar Contexto e Historial */}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setBotMenuOpen(false);
+                                                        if (selectedChat?.phone) {
+                                                            setChatTargetToDelete(selectedChat);
+                                                            setDeleteContextModalOpen(true);
+                                                        }
+                                                    }}
+                                                    style={{
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '8px',
+                                                        width: '100%',
+                                                        padding: '7px 10px',
+                                                        borderRadius: '6px',
+                                                        border: 'none',
+                                                        background: 'transparent',
+                                                        color: '#DC2626',
+                                                        fontSize: '0.74rem',
+                                                        fontWeight: 600,
+                                                        cursor: 'pointer',
+                                                        textAlign: 'left'
+                                                    }}
+                                                    onMouseEnter={(e) => e.currentTarget.style.background = '#FEF2F2'}
+                                                    onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                                                >
+                                                    <div style={{
+                                                        width: '22px',
+                                                        height: '22px',
+                                                        borderRadius: '5px',
+                                                        background: '#FEE2E2',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        justifyContent: 'center',
+                                                        color: '#DC2626',
+                                                        flexShrink: 0
+                                                    }}>
+                                                        <Trash2 size={12} />
+                                                    </div>
+                                                    <div>
+                                                        <div style={{ fontWeight: 700, color: '#DC2626' }}>Borrar Contexto</div>
+                                                        <div style={{ fontSize: '0.64rem', color: '#991B1B' }}>Purgar historial e IA del chat</div>
+                                                    </div>
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+
+                                {/* BOTONES DE ASIGNACIÓN / BLOQUEO EXCLUSIVO */}
+                                {isClosedOrArchived(selectedChat) ? (
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                        <div style={{
+                                            display: 'flex', alignItems: 'center', gap: '4px',
+                                            padding: '2px 8px', borderRadius: '6px',
+                                            background: '#ECFDF5', border: '1px solid #A7F3D0', color: '#047857',
+                                            fontSize: '0.68rem', fontWeight: 800, height: '24px'
+                                        }}>
+                                            <CheckCircle2 size={12} color="#047857" />
+                                            Finalizada {selectedChat.resolutionReason ? `(${selectedChat.resolutionReason})` : ''}
                                         </div>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                        <button
+                                            onClick={() => handleAssignChatAndSwitchTab(selectedChat.id, activeAgent.id)}
+                                            title="Reabrir esta conversación para continuar atendiendo al paciente"
+                                            style={{
+                                                padding: '2px 8px', borderRadius: '6px', border: '1px solid #0284C7',
+                                                background: '#F0F9FF', color: '#0284C7', fontWeight: 700, fontSize: '0.68rem',
+                                                cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', height: '24px'
+                                            }}
+                                        >
+                                            <RefreshCw size={11} /> Reabrir
+                                        </button>
+                                    </div>
+                                ) : isBot ? (
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                        <button
+                                            onClick={() => handleAssignChatAndSwitchTab(selectedChat.id, activeAgent.id)}
+                                            title="Tomar el control de la conversación y pausar el bot automático"
+                                            style={{
+                                                padding: '3px 10px', borderRadius: '6px', border: 'none',
+                                                background: 'linear-gradient(135deg, #7C3AED 0%, #6D28D9 100%)',
+                                                color: '#FFFFFF', fontWeight: 700, fontSize: '0.70rem',
+                                                cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px',
+                                                height: '24px',
+                                                boxShadow: '0 1px 3px rgba(124, 58, 237, 0.25)'
+                                            }}
+                                        >
+                                            <UserCheck size={12} /> Asignarme y pausar Bot
+                                        </button>
+                                        <button
+                                            onClick={() => setCloseModalOpen(true)}
+                                            title="Finalizar esta charla y archivar conversación"
+                                            style={{
+                                                padding: '2px 8px', borderRadius: '6px', border: 'none',
+                                                background: 'linear-gradient(135deg, #059669 0%, #047857 100%)',
+                                                color: '#FFFFFF', fontWeight: 700, fontSize: '0.68rem',
+                                                cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px',
+                                                height: '24px',
+                                                boxShadow: '0 1px 3px rgba(5, 150, 105, 0.2)'
+                                            }}
+                                        >
+                                            <CheckCircle2 size={11} /> Finalizar
+                                        </button>
+                                    </div>
+                                ) : isUnassigned ? (
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                        <button
+                                            onClick={() => handleAssignChatAndSwitchTab(selectedChat.id, activeAgent.id)}
+                                            title="Asignarme este chat para responder"
+                                            style={{
+                                                padding: '3px 10px', borderRadius: '6px', border: 'none',
+                                                background: 'linear-gradient(135deg, #0284C7 0%, #0369A1 100%)',
+                                                color: '#FFFFFF', fontWeight: 700, fontSize: '0.70rem',
+                                                cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px',
+                                                height: '24px',
+                                                boxShadow: '0 1px 3px rgba(2, 132, 199, 0.25)'
+                                            }}
+                                        >
+                                            <UserCheck size={12} /> Asignarme
+                                        </button>
+                                        <button
+                                            onClick={() => setCloseModalOpen(true)}
+                                            title="Finalizar esta charla y archivar conversación"
+                                            style={{
+                                                padding: '2px 8px', borderRadius: '6px', border: 'none',
+                                                background: 'linear-gradient(135deg, #059669 0%, #047857 100%)',
+                                                color: '#FFFFFF', fontWeight: 700, fontSize: '0.68rem',
+                                                cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px',
+                                                height: '24px',
+                                                boxShadow: '0 1px 3px rgba(5, 150, 105, 0.2)'
+                                            }}
+                                        >
+                                            <CheckCircle2 size={11} /> Finalizar
+                                        </button>
+                                    </div>
+                                ) : null}
+
+                                {/* CASO 2: ASIGNADA A MÍ -> PUEDO LIBERAR O TRANSFERIR (Solo si NO está cerrado) */}
+                                {!isClosedOrArchived(selectedChat) && isAssignedToMe && (
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                        <span style={{
+                                            fontSize: '0.68rem', fontWeight: 800, padding: '2px 8px', borderRadius: '6px',
+                                            background: '#DCFCE7', color: '#15803D', border: '1px solid #86EFAC',
+                                            display: 'flex', alignItems: 'center', gap: '4px', height: '24px', whiteSpace: 'nowrap'
+                                        }}>
+                                            <CheckCircle2 size={12} /> Asignada a ti ({activeAgent.name})
+                                        </span>
+
+                                        <button
+                                            onClick={handleUnassignWithAudit}
+                                            title="Liberar chat a la cola general (registra nota de pase en auditoría)"
+                                            style={{
+                                                padding: '2px 8px', borderRadius: '6px', border: '1px solid #CBD5E1',
+                                                background: '#FFFFFF', color: '#475569', fontWeight: 600, fontSize: '0.68rem',
+                                                cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px', height: '24px'
+                                            }}
+                                        >
+                                            <Unlock size={11} /> Liberar
+                                        </button>
+
+
+                                        <button
+                                            onClick={() => setTransferMenuOpen(!transferMenuOpen)}
+                                            title="Transferir a otra agente"
+                                            style={{
+                                                padding: '2px 8px', borderRadius: '6px', border: '1px solid #0284C7',
+                                                background: '#F0F9FF', color: '#0284C7', fontWeight: 700, fontSize: '0.68rem',
+                                                cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px', height: '24px'
+                                            }}
+                                        >
+                                            <ArrowRightLeft size={11} /> Transferir <ChevronDown size={11} />
+                                        </button>
+
+                                        <button
+                                            onClick={() => setCloseModalOpen(true)}
+                                            title="Finalizar atención y archivar conversación"
+                                            style={{
+                                                padding: '2px 8px', borderRadius: '6px', border: 'none',
+                                                background: 'linear-gradient(135deg, #059669 0%, #047857 100%)',
+                                                color: '#FFFFFF', fontWeight: 700, fontSize: '0.68rem',
+                                                cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px',
+                                                height: '24px',
+                                                boxShadow: '0 1px 3px rgba(5, 150, 105, 0.2)'
+                                            }}
+                                        >
+                                            <CheckCircle2 size={11} /> Finalizar
+                                        </button>
+                                    </div>
+                                )}
+
+                                {/* CASO 3: ASIGNADA A OTRA AGENTE -> BLOQUEO CON OPCIÓN DE REASIGNACIÓN (Solo si NO está cerrado y realmente asignada) */}
+                                {!isClosedOrArchived(selectedChat) && !isUnassigned && !isBot && !isAssignedToMe && selectedChat.assignedTo && (
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                        <div style={{
+                                            display: 'flex', alignItems: 'center', gap: '4px',
+                                            padding: '2px 8px', borderRadius: '6px',
+                                            background: '#FEE2E2', border: '1px solid #FCA5A5', color: '#991B1B',
+                                            fontSize: '0.68rem', fontWeight: 800, height: '24px', whiteSpace: 'nowrap'
+                                        }}>
+                                            <Lock size={11} />
+                                            Asignada a {assignedAgentObj?.name || selectedChat.assignedTo} (Bloqueada)
+                                        </div>
+
+                                        {/* Botón para que CUALQUIER agente pueda reasignarse el chat a sí misma tras aceptar advertencia */}
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setReassignNote('');
+                                                setReassignModalOpen(true);
+                                            }}
+                                            style={{
+                                                padding: '2px 9px', borderRadius: '6px', border: 'none',
+                                                background: 'linear-gradient(135deg, #0284C7 0%, #0369A1 100%)',
+                                                color: '#FFFFFF', fontWeight: 800, fontSize: '0.68rem',
+                                                cursor: 'pointer', height: '24px',
+                                                display: 'flex', alignItems: 'center', gap: '4px',
+                                                boxShadow: '0 2px 4px rgba(2, 132, 199, 0.25)',
+                                                whiteSpace: 'nowrap'
+                                            }}
+                                            title={`Reasignar esta conversación a ${activeAgent.name}`}
+                                        >
+                                            <ArrowRightLeft size={11} />
+                                            Reasignar a mí
+                                        </button>
+
+                                        {/* Solo supervisor lmarinero puede transferir a terceros */}
+                                        {isSupervisor && (
                                             <button
-                                                type="button"
-                                                onClick={() => loadAssociatedPatients(selectedChat?.phone, true)}
-                                                title="Actualizar búsqueda de contactos asociados en SALUS"
-                                                disabled={isLoadingAssociated}
+                                                onClick={() => setTransferMenuOpen(!transferMenuOpen)}
                                                 style={{
-                                                    background: 'transparent', border: 'none', cursor: 'pointer',
-                                                    padding: '2px', color: themeCardSubtext
+                                                    padding: '2px 8px', borderRadius: '6px', border: '1px solid #DC2626',
+                                                    background: '#FFFFFF', color: '#DC2626', fontWeight: 700, fontSize: '0.68rem',
+                                                    cursor: 'pointer', height: '24px'
                                                 }}
                                             >
-                                                <RefreshCw size={12} className={isLoadingAssociated ? 'animate-spin' : ''} />
+                                                Supervisión: Reasignar
                                             </button>
+                                        )}
+                                    </div>
+                                )}
+
+
+                                {/* Menú de Transferencia entre las 4 agentes */}
+                                {transferMenuOpen && (
+                                    <div
+                                        ref={transferMenuRef}
+                                        style={{
+                                            position: 'absolute', top: '100%', right: 0, marginTop: '6px',
+                                            background: '#FFFFFF', borderRadius: '10px', border: '1px solid #CBD5E1',
+                                            boxShadow: '0 10px 25px rgba(0,0,0,0.15)', width: '250px', zIndex: 60,
+                                            padding: '8px', display: 'flex', flexDirection: 'column', gap: '4px'
+                                        }}
+                                    >
+                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 6px', borderBottom: '1px solid #F1F5F9' }}>
+                                            <div style={{ fontSize: '0.7rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase' }}>
+                                                Transferir conversación a:
+                                            </div>
                                             <button
                                                 type="button"
-                                                onClick={() => setShowAssociatedDrawer(false)}
-                                                style={{
-                                                    background: 'transparent', border: 'none', cursor: 'pointer',
-                                                    padding: '2px', color: themeCardSubtext
-                                                }}
+                                                onClick={() => setTransferMenuOpen(false)}
+                                                style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#94A3B8' }}
                                             >
                                                 <X size={13} />
                                             </button>
                                         </div>
-                                    </div>
-
-                                    <div style={{ fontSize: '0.67rem', color: themeCardSubtext, lineHeight: '1.3' }}>
-                                        Pacientes registrados en el padrón de SALUS con el número <strong>{selectedChat?.phone?.startsWith('+') ? selectedChat.phone : `+${selectedChat?.phone || ''}`}</strong>:
-                                    </div>
-
-                                    {isLoadingAssociated ? (
-                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px', gap: '8px', fontSize: '0.72rem', color: themeCardSubtext }}>
-                                            <Loader2 size={14} className="animate-spin text-blue-600" />
-                                            <span>Buscando pacientes en SALUS...</span>
-                                        </div>
-                                    ) : associatedPatients.length === 0 ? (
-                                        <div style={{ padding: '10px', textAlign: 'center', fontSize: '0.71rem', color: themeCardSubtext, background: ccTheme.isDark ? '#1E293B' : '#F8FAFC', borderRadius: '6px' }}>
-                                            No se encontraron otros pacientes con este número en el padrón.
-                                        </div>
-                                    ) : (
-                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '250px', overflowY: 'auto' }}>
-                                            {associatedPatients.map((patient) => {
-                                                const isCurrentActive = (crmForm.dni && patient.dni && String(crmForm.dni) === String(patient.dni)) ||
-                                                                        (crmForm.pacienteNombre && patient.nombre && crmForm.pacienteNombre.trim().toLowerCase() === patient.nombre.trim().toLowerCase());
-                                                const ageStr = formatPatientAge(patient.fecha_nacimiento);
-
-                                                return (
-                                                    <div 
-                                                        key={patient.id_paciente || patient.dni || patient.nombre}
-                                                        style={{
-                                                            background: isCurrentActive 
-                                                                ? (ccTheme.isDark ? 'rgba(6, 78, 59, 0.35)' : '#F0FDF4') 
-                                                                : (ccTheme.isDark ? '#1E293B' : '#FFFFFF'),
-                                                            border: `1px solid ${isCurrentActive ? '#86EFAC' : rightCardBorder}`,
-                                                            borderRadius: '8px',
-                                                            padding: '8px 10px',
-                                                            display: 'flex',
-                                                            flexDirection: 'column',
-                                                            gap: '4px',
-                                                            transition: 'all 0.15s ease'
-                                                        }}
-                                                    >
-                                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '4px' }}>
-                                                            <div style={{ fontWeight: 800, fontSize: '0.74rem', color: themeCardText, lineHeight: '1.2' }}>
-                                                                {patient.nombre}
-                                                            </div>
-                                                            {isCurrentActive && (
-                                                                <span style={{
-                                                                    background: '#16A34A', color: '#FFFFFF',
-                                                                    fontSize: '0.6rem', fontWeight: 800,
-                                                                    padding: '1px 6px', borderRadius: '9999px',
-                                                                    display: 'inline-flex', alignItems: 'center', gap: '2px',
-                                                                    flexShrink: 0
-                                                                }}>
-                                                                    <Check size={9} /> Activo
-                                                                </span>
-                                                            )}
-                                                        </div>
-
-                                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', alignItems: 'center', marginTop: '2px' }}>
-                                                            <span style={{
-                                                                fontSize: '0.65rem',
-                                                                background: ccTheme.isDark ? '#334155' : '#F1F5F9',
-                                                                color: themeCardSubtext,
-                                                                padding: '1px 5px',
-                                                                borderRadius: '4px',
-                                                                fontWeight: 600
-                                                            }}>
-                                                                DNI: <strong>{patient.dni || 'Sin DNI'}</strong>
-                                                            </span>
-
-                                                            {ageStr && (
-                                                                <span style={{
-                                                                    fontSize: '0.65rem',
-                                                                    background: ccTheme.isDark ? '#334155' : '#F1F5F9',
-                                                                    color: themeCardSubtext,
-                                                                    padding: '1px 5px',
-                                                                    borderRadius: '4px',
-                                                                    fontWeight: 600
-                                                                }}>
-                                                                    Edad: <strong>{ageStr}</strong>
-                                                                </span>
-                                                            )}
-
-                                                            {patient.coseguro && (
-                                                                <span style={{
-                                                                    fontSize: '0.63rem',
-                                                                    background: '#EFF6FF',
-                                                                    color: '#1D4ED8',
-                                                                    padding: '1px 5px',
-                                                                    borderRadius: '4px',
-                                                                    fontWeight: 700,
-                                                                    maxWidth: '160px',
-                                                                    overflow: 'hidden',
-                                                                    textOverflow: 'ellipsis',
-                                                                    whiteSpace: 'nowrap'
-                                                                }}>
-                                                                    {patient.coseguro}
-                                                                </span>
-                                                            )}
-                                                        </div>
-
-                                                        {!isCurrentActive && (
-                                                            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '4px' }}>
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() => handleSelectAssociatedPatient(patient)}
-                                                                    disabled={isSearchingSalus}
-                                                                    style={{
-                                                                        padding: '4px 10px',
-                                                                        borderRadius: '6px',
-                                                                        border: 'none',
-                                                                        background: ccTheme.accentColor || '#0284C7',
-                                                                        color: '#FFFFFF',
-                                                                        fontSize: '0.68rem',
-                                                                        fontWeight: 700,
-                                                                        cursor: isSearchingSalus ? 'wait' : 'pointer',
-                                                                        display: 'inline-flex',
-                                                                        alignItems: 'center',
-                                                                        gap: '4px'
-                                                                    }}
-                                                                >
-                                                                    <ArrowRightLeft size={11} />
-                                                                    Seleccionar como Paciente
-                                                                </button>
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                );
-                                            })}
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-
-                            {/* BUSCADOR DE TERCEROS / OTRO PACIENTE POR DNI EN SALUS */}
-                            {isSearchingThirdParty && (
-                                <div style={{
-                                    background: rightCardBg,
-                                    border: `1.5px solid ${thirdPartyError ? '#FCA5A5' : rightCardBorder}`,
-                                    borderRadius: '8px',
-                                    padding: '10px 12px',
-                                    display: 'flex',
-                                    flexDirection: 'column',
-                                    gap: '6px'
-                                }}>
-                                    <div style={{ fontSize: '0.72rem', fontWeight: 800, color: ccTheme.accentColor || '#0369A1', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                                        <span>🔍 Vincular Paciente por DNI en SALUS</span>
-                                    </div>
-                                    <div style={{ fontSize: '0.67rem', color: themeCardSubtext }}>
-                                        Ingresá el DNI del paciente que realmente se atenderá (ej: hijo/a, madre, familiar):
-                                    </div>
-
-                                    {/* Notificación en rojo justo por arriba de lo 'Vincular' */}
-                                    {thirdPartyError && (
-                                        <div style={{
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            gap: '6px',
-                                            padding: '6px 9px',
-                                            borderRadius: '6px',
-                                            background: ccTheme.isDark ? '#450A0A' : '#FEF2F2',
-                                            border: `1px solid ${ccTheme.isDark ? '#7F1D1D' : '#FECACA'}`,
-                                            color: ccTheme.isDark ? '#FCA5A5' : '#DC2626',
-                                            fontSize: '0.70rem',
-                                            fontWeight: 700,
-                                            lineHeight: 1.3
-                                        }}>
-                                            <AlertCircle size={13} style={{ flexShrink: 0, color: '#DC2626' }} />
-                                            <span>{thirdPartyError}</span>
-                                        </div>
-                                    )}
-
-                                    <div style={{ display: 'flex', gap: '6px', marginTop: '2px' }}>
-                                        <input 
-                                            type="text"
-                                            placeholder="DNI del paciente (sin puntos)..."
-                                            value={thirdPartyDniInput}
-                                            onChange={(e) => {
-                                                setThirdPartyDniInput(e.target.value.replace(/\D/g, ''));
-                                                if (thirdPartyError) setThirdPartyError('');
-                                            }}
-                                            onKeyDown={(e) => { if (e.key === 'Enter') handleLinkThirdPartyDni(); }}
-                                            style={{
-                                                flex: 1, padding: '5px 8px', fontSize: '0.76rem',
-                                                borderRadius: '6px', 
-                                                border: `1px solid ${thirdPartyError ? '#F87171' : rightCardBorder}`, 
-                                                outline: 'none',
-                                                background: ccTheme.leftSidebarHeaderBg || (ccTheme.isDark ? '#1E293B' : '#FFFFFF'),
-                                                color: themeCardText
-                                            }}
-                                        />
-                                        <button
-                                            type="button"
-                                            onClick={handleLinkThirdPartyDni}
-                                            disabled={isSearchingSalus}
-                                            style={{
-                                                padding: '5px 12px', background: ccTheme.accentColor || '#0284C7', color: '#FFFFFF',
-                                                border: 'none', borderRadius: '6px', fontSize: '0.72rem',
-                                                fontWeight: 700, cursor: isSearchingSalus ? 'wait' : 'pointer',
-                                                display: 'inline-flex', alignItems: 'center', gap: '4px'
-                                            }}
-                                        >
-                                            <Link size={11} />
-                                            {isSearchingSalus ? 'Buscando...' : 'Vincular'}
-                                        </button>
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* SELECTOR FICHA DUAL: TITULAR VS PACIENTE (PROPUESTA 1 APROBADA) */}
-                            {selectedChat.customFields?.fichaDual?.esGestionTercero && (
-                                <div style={{
-                                    display: 'flex',
-                                    gap: '4px',
-                                    background: ccTheme.isDark ? '#0F172A' : '#F1F5F9',
-                                    padding: '3px',
-                                    borderRadius: '8px',
-                                    border: `1px solid ${rightCardBorder}`
-                                }}>
-                                    <button
-                                        type="button"
-                                        onClick={() => setActiveDualTab('paciente')}
-                                        style={{
-                                            flex: 1,
-                                            padding: '6px 8px',
-                                            borderRadius: '6px',
-                                            border: 'none',
-                                            background: activeDualTab === 'paciente' ? (ccTheme.accentColor || '#0284C7') : 'transparent',
-                                            color: activeDualTab === 'paciente' ? '#FFFFFF' : themeCardSubtext,
-                                            fontWeight: 800,
-                                            fontSize: '0.68rem',
-                                            cursor: 'pointer',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            justifyContent: 'center',
-                                            gap: '4px',
-                                            transition: 'all 0.15s ease'
-                                        }}
-                                    >
-                                        <span>👤 Paciente:</span>
-                                        <span style={{ maxWidth: '95px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                            {selectedChat.customFields.fichaDual.pacienteNombre || crmForm.pacienteNombre || 'Paciente'}
-                                        </span>
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => setActiveDualTab('titular')}
-                                        style={{
-                                            flex: 1,
-                                            padding: '6px 8px',
-                                            borderRadius: '6px',
-                                            border: 'none',
-                                            background: activeDualTab === 'titular' ? (ccTheme.accentColor || '#0284C7') : 'transparent',
-                                            color: activeDualTab === 'titular' ? '#FFFFFF' : themeCardSubtext,
-                                            fontWeight: 800,
-                                            fontSize: '0.68rem',
-                                            cursor: 'pointer',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            justifyContent: 'center',
-                                            gap: '4px',
-                                            transition: 'all 0.15s ease'
-                                        }}
-                                    >
-                                        <span>📱 Titular:</span>
-                                        <span style={{ maxWidth: '95px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                            {selectedChat.customFields.fichaDual.titularNombre || selectedChat.contactName || 'Titular'}
-                                        </span>
-                                    </button>
-                                </div>
-                            )}
-
-                            {/* VISTA SI SE SELECCIONA FICHA TITULAR */}
-                            {selectedChat.customFields?.fichaDual?.esGestionTercero && activeDualTab === 'titular' ? (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                    <div style={{
-                                        background: ccTheme.isDark ? '#1E293B' : '#EFF6FF',
-                                        border: `1.5px solid ${ccTheme.isDark ? '#3B82F6' : '#93C5FD'}`,
-                                        borderRadius: '8px',
-                                        padding: '10px 12px',
-                                        display: 'flex',
-                                        flexDirection: 'column',
-                                        gap: '6px'
-                                    }}>
-                                        <div style={{ fontSize: '0.72rem', fontWeight: 800, color: ccTheme.isDark ? '#93C5FD' : '#1E40AF', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                                            <span>📱 Titular de la Línea Telefónica</span>
-                                        </div>
-                                        <div style={{ fontSize: '0.68rem', color: themeCardSubtext }}>
-                                            Esta persona es quien escribe desde WhatsApp gestionando en nombre del paciente.
-                                        </div>
-                                    </div>
-
-                                    <div style={{ background: rightCardBg, border: `1px solid ${rightCardBorder}`, borderRadius: '8px', padding: '8px 10px' }}>
-                                        <div style={{ fontSize: '0.65rem', color: themeCardSubtext, fontWeight: 600 }}>NOMBRE DEL TITULAR</div>
-                                        <div style={{ fontSize: '0.84rem', fontWeight: 700, color: themeCardText }}>
-                                            {selectedChat.customFields.fichaDual.titularNombre || selectedChat.contactName}
-                                        </div>
-                                    </div>
-
-                                    <div style={{ background: rightCardBg, border: `1px solid ${rightCardBorder}`, borderRadius: '8px', padding: '8px 10px' }}>
-                                        <div style={{ fontSize: '0.65rem', color: themeCardSubtext, fontWeight: 600 }}>NÚMERO DE WHATSAPP</div>
-                                        <div style={{ fontSize: '0.84rem', fontWeight: 800, color: ccTheme.accentColor || '#0284C7' }}>
-                                            +{selectedChat.phone}
-                                        </div>
-                                    </div>
-
-                                    <div style={{ background: rightCardBg, border: `1px solid ${rightCardBorder}`, borderRadius: '8px', padding: '8px 10px' }}>
-                                        <div style={{ fontSize: '0.65rem', color: themeCardSubtext, fontWeight: 600 }}>RELACIÓN / PARENTESCO</div>
-                                        <div style={{ fontSize: '0.82rem', fontWeight: 600, color: themeCardText }}>
-                                            {selectedChat.customFields.fichaDual.parentesco || 'Familiar'}
-                                        </div>
-                                    </div>
-
-                                    <div style={{ background: rightCardBg, border: `1px solid ${rightCardBorder}`, borderRadius: '8px', padding: '8px 10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '6px' }}>
-                                        <div>
-                                            <div style={{ fontSize: '0.65rem', color: themeCardSubtext, fontWeight: 600 }}>PACIENTE VINCULADO</div>
-                                            <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#166534' }}>
-                                                👤 {selectedChat.customFields.fichaDual.pacienteNombre || crmForm.pacienteNombre} (DNI {selectedChat.customFields.fichaDual.pacienteDni || crmForm.dni})
-                                            </div>
-                                        </div>
-                                        <button
-                                            type="button"
-                                            onClick={handleUnlinkThirdParty}
-                                            title="Desvincular a este paciente"
-                                            style={{
-                                                fontSize: '0.65rem', fontWeight: 700, color: '#DC2626', background: '#FEF2F2',
-                                                border: '1px solid #FCA5A5', borderRadius: '4px', padding: '3px 8px', cursor: 'pointer',
-                                                display: 'inline-flex', alignItems: 'center', gap: '3px', flexShrink: 0
-                                            }}
-                                        >
-                                            <Unlink size={11} /> Desvincular
-                                        </button>
-                                    </div>
-                                </div>
-                            ) : (
-                            /* VISTA INSTITUCIONAL LIMPIA Y CLÍNICA DE LA FICHA DEL PACIENTE (SOLO LECTURA SALUS) */
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                    {selectedChat.customFields?.fichaDual?.esGestionTercero && (
-                                        <div style={{
-                                            background: ccTheme.isDark ? '#064E3B22' : '#F0FDF4',
-                                            border: `1px solid ${ccTheme.isDark ? '#059669' : '#86EFAC'}`,
-                                            borderRadius: '6px',
-                                            padding: '4px 8px',
-                                            fontSize: '0.68rem',
-                                            color: ccTheme.isDark ? '#86EFAC' : '#166534',
-                                            fontWeight: 700,
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            justifyContent: 'space-between',
-                                            gap: '5px'
-                                        }}>
-                                            <span>👥 Gestión por tercero: Titular {selectedChat.customFields.fichaDual.titularNombre || selectedChat.contactName}</span>
-                                            <button
-                                                type="button"
-                                                onClick={handleUnlinkThirdParty}
-                                                title="Desvincular paciente tercero y regresar la ficha al titular de la línea"
-                                                style={{
-                                                    fontSize: '0.64rem',
-                                                    fontWeight: 700,
-                                                    color: '#DC2626',
-                                                    background: '#FFFFFF',
-                                                    border: '1px solid #FCA5A5',
-                                                    borderRadius: '4px',
-                                                    padding: '2px 6px',
-                                                    cursor: 'pointer',
-                                                    display: 'inline-flex',
-                                                    alignItems: 'center',
-                                                    gap: '3px',
-                                                    flexShrink: 0
-                                                }}
-                                            >
-                                                <Unlink size={10} /> Desvincular
-                                            </button>
-                                        </div>
-                                    )}
-
-                                    {/* ALERTA ACCESO RÁPIDO: TURNOS PRÓXIMOS & ONLINE DEL PACIENTE */}
-                                    {deduplicatedTurnosProximos && deduplicatedTurnosProximos.length > 0 && (
-                                        <div style={{
-                                            background: ccTheme.isDark ? '#064E3B22' : 'linear-gradient(135deg, #F0FDF4 0%, #ECFDF5 100%)',
-                                            border: `1.5px solid ${ccTheme.isDark ? '#059669' : '#6EE7B7'}`,
-                                            borderRadius: '8px',
-                                            padding: '8px 10px',
-                                            display: 'flex',
-                                            flexDirection: 'column',
-                                            gap: '5px',
-                                            boxShadow: '0 2px 5px rgba(5, 150, 105, 0.08)'
-                                        }}>
-                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                <div style={{ fontSize: '0.72rem', fontWeight: 800, color: ccTheme.isDark ? '#6EE7B7' : '#065F46', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                                    <span>📅 TIENE TURNOS PRÓXIMOS ({deduplicatedTurnosProximos.length})</span>
-                                                </div>
-                                                <button 
-                                                    onClick={() => setActiveDetailTab('historial')}
-                                                    style={{
-                                                        fontSize: '0.65rem', fontWeight: 700, 
-                                                        color: ccTheme.isDark ? '#A7F3D0' : '#047857', 
-                                                        background: ccTheme.isDark ? '#064E3B' : '#D1FAE5',
-                                                        border: 'none', borderRadius: '4px', padding: '2px 6px', cursor: 'pointer'
+                                        {CONTACT_CENTER_AGENTS.filter(a => {
+                                            const assignedId = (selectedChat.assignedTo || '').toLowerCase();
+                                            const myId = (activeAgent?.id || '').toLowerCase();
+                                            const myUser = (activeAgent?.username || '').toLowerCase();
+                                            const aId = a.id.toLowerCase();
+                                            const aUser = (a.username || '').toLowerCase();
+                                            return aId !== assignedId && aUser !== assignedId && aId !== myId && aUser !== myUser;
+                                        }).map(targetAgent => {
+                                            const isTargetViewing = otherViewersForCurrentChat.some(v =>
+                                                (v.agentId && v.agentId.toLowerCase() === targetAgent.id.toLowerCase()) ||
+                                                (v.agentName && targetAgent.name && v.agentName.toLowerCase().includes(targetAgent.name.toLowerCase()))
+                                            );
+                                            return (
+                                                <button
+                                                    key={targetAgent.id}
+                                                    onClick={() => {
+                                                        setConfirmTransferAgent(targetAgent);
+                                                        setTransferNote('');
+                                                        setTransferMenuOpen(false);
                                                     }}
+                                                    style={{
+                                                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                                        padding: '8px 10px', borderRadius: '6px', border: 'none',
+                                                        background: 'transparent', cursor: 'pointer', textAlign: 'left',
+                                                        width: '100%', transition: 'background 0.15s'
+                                                    }}
+                                                    onMouseEnter={(e) => e.currentTarget.style.background = '#F8FAFC'}
+                                                    onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                                                 >
-                                                    Ver en Historial →
-                                                </button>
-                                            </div>
-                                            {deduplicatedTurnosProximos.slice(0, 2).map((tp, i) => (
-                                                <div key={i} style={{ 
-                                                    background: rightCardBg, 
-                                                    border: `1px solid ${rightCardBorder}`, 
-                                                    borderRadius: '6px', padding: '6px 8px' 
-                                                }}>
-                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                        <span style={{ fontSize: '0.76rem', fontWeight: 800, color: ccTheme.isDark ? '#6EE7B7' : '#047857' }}>
-                                                            📅 {tp.fecha_visita} {tp.hora_visita ? `(${tp.hora_visita} hs)` : ''}
-                                                        </span>
-                                                        <span style={{
-                                                            fontSize: '0.62rem', fontWeight: 800, padding: '1px 5px', borderRadius: '4px',
-                                                            background: tp.origen === 'online' ? (ccTheme.isDark ? '#1E3A5F' : '#EFF6FF') : (ccTheme.isDark ? '#064E3B' : '#F1F5F9'),
-                                                            color: tp.origen === 'online' ? (ccTheme.isDark ? '#93C5FD' : '#1D4ED8') : themeCardSubtext
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                        <div style={{
+                                                            width: '24px', height: '24px', borderRadius: '50%',
+                                                            background: targetAgent.color, color: '#FFF',
+                                                            fontSize: '0.7rem', fontWeight: 800, display: 'flex',
+                                                            alignItems: 'center', justifyContent: 'center'
                                                         }}>
-                                                            {tp.origen === 'online' ? '🌐 ONLINE WEB' : '🏥 PRESENCIAL'}
+                                                            {targetAgent.avatar}
+                                                        </div>
+                                                        <div>
+                                                            <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#0F172A' }}>
+                                                                {targetAgent.fullName}
+                                                            </div>
+                                                            <div style={{ fontSize: '0.66rem', color: '#64748B' }}>
+                                                                {targetAgent.role}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    {isTargetViewing ? (
+                                                        <span style={{ fontSize: '0.62rem', fontWeight: 800, color: '#1D4ED8', display: 'flex', alignItems: 'center', gap: '2px', background: '#EFF6FF', padding: '2px 5px', borderRadius: '4px' }}>
+                                                            <Eye size={10} /> Viendo
                                                         </span>
-                                                    </div>
-                                                    <div style={{ fontSize: '0.72rem', color: themeCardText, fontWeight: 700, marginTop: '2px' }}>
-                                                        👨‍⚕️ {tp.medico || 'Profesional Asignado'}
-                                                    </div>
-                                                    <div style={{ fontSize: '0.67rem', color: themeCardSubtext }}>
-                                                        {tp.agenda || tp.tipo_visita} {tp.cliente ? `• ${tp.cliente}` : ''}
-                                                    </div>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
-
-                                    {/* TRIAGE COMPLETO / SALUS READY BADGE */}
-                                    {(selectedChat.tags?.some(t => (typeof t === 'string' ? t : t?.name || '').toLowerCase().includes('triage')) || selectedChat.aiSummary?.triage_status === 'completo') && (
-                                        <div style={{
-                                            background: ccTheme.isDark ? 'rgba(5, 150, 105, 0.18)' : '#ECFDF5',
-                                            border: `1px solid ${ccTheme.isDark ? '#059669' : '#A7F3D0'}`,
-                                            borderRadius: '8px',
-                                            padding: '8px 10px',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            gap: '8px'
-                                        }}>
-                                            <CheckCircle2 size={16} color={ccTheme.isDark ? '#34D399' : '#059669'} style={{ flexShrink: 0 }} />
-                                            <div>
-                                                <div style={{ fontSize: '0.72rem', fontWeight: 800, color: ccTheme.isDark ? '#34D399' : '#065F46', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
-                                                    Triage Completo • Salus Ready
-                                                </div>
-                                                <div style={{ fontSize: '0.66rem', color: ccTheme.isDark ? '#A7F3D0' : '#047857', marginTop: '1px' }}>
-                                                    Datos validados por el asistente. Listo para cargar en Salus.
-                                                </div>
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {/* DNI & NHC SALUS */}
-                                    <div style={{ display: 'grid', gridTemplateColumns: selectedChat.customFields?.nhc ? '1fr 1fr' : '1fr', gap: '6px' }}>
-                                        <div style={{ background: rightCardBg, border: `1px solid ${rightCardBorder}`, borderRadius: '8px', padding: '8px 10px' }}>
-                                            <div style={{ fontSize: '0.65rem', color: themeCardSubtext, fontWeight: 600 }}>DNI / IDENTIFICACIÓN</div>
-                                            <div style={{ fontSize: '0.86rem', fontWeight: 800, color: themeCardText }}>
-                                                {crmForm.dni || selectedChat.customFields?.dni || 'A verificar'}
-                                            </div>
-                                        </div>
-                                        {selectedChat.customFields?.nhc && (
-                                            <div style={{ background: ccTheme.isDark ? '#1E3A5F' : '#F0F9FF', border: `1px solid ${ccTheme.isDark ? '#0284C7' : '#BAE6FD'}`, borderRadius: '8px', padding: '8px 10px' }}>
-                                                <div style={{ fontSize: '0.65rem', color: ccTheme.isDark ? '#BAE6FD' : '#0369A1', fontWeight: 700 }}>NHC (SALUS)</div>
-                                                <div style={{ fontSize: '0.86rem', fontWeight: 800, color: ccTheme.isDark ? '#38BDF8' : '#0284C7' }}>
-                                                    #{selectedChat.customFields?.nhc}
-                                                </div>
-                                            </div>
-                                        )}
+                                                    ) : (
+                                                        <ArrowRightLeft size={13} color="#94A3B8" />
+                                                    )}
+                                                </button>
+                                            );
+                                        })}
                                     </div>
+                                )}
+                            </div>
+                        </div>
 
-                                    {/* NOMBRE COMPLETO */}
-                                    <div style={{ background: rightCardBg, border: `1px solid ${rightCardBorder}`, borderRadius: '8px', padding: '8px 10px' }}>
-                                        <div style={{ fontSize: '0.65rem', color: themeCardSubtext, fontWeight: 600 }}>NOMBRE COMPLETO</div>
-                                        <div style={{ fontSize: '0.84rem', fontWeight: 700, color: themeCardText }}>
-                                            {crmForm.pacienteNombre || selectedChat.customFields?.pacienteNombre || selectedChat.contactName || 'Paciente'}
-                                        </div>
-                                    </div>
-
-                                    {/* OBRA SOCIAL */}
-                                    <div style={{ background: rightCardBg, border: `1px solid ${rightCardBorder}`, borderRadius: '8px', padding: '8px 10px' }}>
-                                        <div style={{ fontSize: '0.65rem', color: themeCardSubtext, fontWeight: 600 }}>OBRA SOCIAL / PREPAGA</div>
-                                        <div style={{ fontSize: '0.84rem', fontWeight: 800, color: ccTheme.accentColor || '#0284C7' }}>
-                                            {crmForm.obraSocial || selectedChat.customFields?.obraSocial || 'A consultar'}
-                                        </div>
-                                    </div>
-
-                                    {/* FECHA DE NACIMIENTO */}
-                                    <div style={{ background: rightCardBg, border: `1px solid ${rightCardBorder}`, borderRadius: '8px', padding: '8px 10px' }}>
-                                        <div style={{ fontSize: '0.65rem', color: themeCardSubtext, fontWeight: 600 }}>FECHA DE NACIMIENTO</div>
-                                        <div style={{ fontSize: '0.82rem', fontWeight: 600, color: themeCardText }}>
-                                            {crmForm.fechaNacimiento || selectedChat.customFields?.fechaNacimiento || 'No informada'}
-                                        </div>
-                                    </div>
-
-                                    {/* EMAIL */}
-                                    <div style={{ background: rightCardBg, border: `1px solid ${rightCardBorder}`, borderRadius: '8px', padding: '8px 10px' }}>
-                                        <div style={{ fontSize: '0.65rem', color: themeCardSubtext, fontWeight: 600 }}>EMAIL</div>
-                                        <div style={{ fontSize: '0.82rem', fontWeight: 600, color: themeCardText, wordBreak: 'break-all' }}>
-                                            {crmForm.email || selectedChat.customFields?.email || 'No informado'}
-                                        </div>
-                                    </div>
-
-                                    {/* TELÉFONO DE CONTACTO */}
-                                    <div style={{ background: rightCardBg, border: `1px solid ${rightCardBorder}`, borderRadius: '8px', padding: '8px 10px' }}>
-                                        <div style={{ fontSize: '0.65rem', color: themeCardSubtext, fontWeight: 600 }}>TELÉFONO DE CONTACTO</div>
-                                        <div style={{ fontSize: '0.82rem', fontWeight: 700, color: themeCardText }}>
-                                            {selectedChat.customFields?.pacienteContacto || selectedChat.phone}
-                                        </div>
-                                    </div>
-
-                                    {/* DEPARTAMENTO / SEDE */}
-                                    <div style={{ background: rightCardBg, border: `1px solid ${rightCardBorder}`, borderRadius: '8px', padding: '8px 10px' }}>
-                                        <div style={{ fontSize: '0.65rem', color: themeCardSubtext, fontWeight: 600 }}>DEPARTAMENTO / SEDE HABITUAL</div>
-                                        <div style={{ fontSize: '0.82rem', fontWeight: 600, color: themeCardText, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                            <MapPin size={12} color={ccTheme.accentColor || '#0284C7'} />
-                                            {crmForm.departamento || selectedChat.customFields?.departamento || 'San Juan'}
-                                        </div>
-                                    </div>
-
-                                    {/* MOTIVO DE CONSULTA */}
-                                    <div style={{ background: rightCardBg, border: `1px solid ${rightCardBorder}`, borderRadius: '8px', padding: '8px 10px' }}>
-                                        <div style={{ fontSize: '0.65rem', color: themeCardSubtext, fontWeight: 600 }}>SOLICITUD / MOTIVO</div>
-                                        <div style={{ fontSize: '0.82rem', fontWeight: 600, color: themeCardText }}>
-                                            {crmForm.motivoConsulta || selectedChat.customFields?.motivoConsulta || 'Consulta general'}
-                                        </div>
-                                    </div>
-
-                                    {/* NOTAS CRM */}
-                                    {crmForm.notas && (
-                                        <div style={{ 
-                                            background: ccTheme.isDark ? '#451A03' : '#FFFBEB', 
-                                            border: `1px solid ${ccTheme.isDark ? '#78350F' : '#FDE68A'}`, 
-                                            borderRadius: '8px', padding: '8px 10px' 
-                                        }}>
-                                            <div style={{ fontSize: '0.65rem', color: ccTheme.isDark ? '#FDE68A' : '#B45309', fontWeight: 700 }}>NOTAS CRM</div>
-                                            <div style={{ fontSize: '0.78rem', color: ccTheme.isDark ? '#FEF3C7' : '#78350F', whiteSpace: 'pre-line', marginTop: '2px' }}>
-                                                {crmForm.notas}
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-                        </>
-                    )}
-
-                    {/* TAB 2: HISTORIAL CLÍNICO 360° */}
-                    {activeDetailTab === 'historial' && (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '6px' }}>
-                                <div style={{ fontSize: '0.74rem', fontWeight: 800, color: themeCardText, textTransform: 'uppercase' }}>
-                                    Historial {crmForm.pacienteNombre ? `— ${crmForm.pacienteNombre}` : (selectedChat.contactName ? `— ${selectedChat.contactName}` : '')}
-                                </div>
+                        {/* Banner de Presencia en Vivo ("El Ojito"): Si otro usuario está viendo esta conversación */}
+                        {otherViewersForCurrentChat.length > 0 && (
+                            <div style={{
+                                flexShrink: 0,
+                                padding: '2px 14px',
+                                background: '#EFF6FF',
+                                borderBottom: '1px solid #BFDBFE',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                fontSize: '0.68rem',
+                                color: '#1E40AF',
+                                fontWeight: 600,
+                                height: '22px'
+                            }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                    <button
-                                        type="button"
-                                        onClick={() => handleRefreshPatientHistory(true)}
-                                        disabled={loadingHistory}
-                                        title="Recargar consultas y visitas desde SALUS"
-                                        style={{
-                                            display: 'inline-flex',
-                                            alignItems: 'center',
-                                            gap: '4px',
-                                            padding: '3px 8px',
-                                            borderRadius: '6px',
-                                            fontSize: '0.68rem',
-                                            fontWeight: 700,
-                                            background: ccTheme.isDark ? '#1E293B' : '#F1F5F9',
-                                            border: `1px solid ${ccTheme.isDark ? '#334155' : '#CBD5E1'}`,
-                                            color: ccTheme.accentColor || '#0284C7',
-                                            cursor: loadingHistory ? 'wait' : 'pointer'
-                                        }}
-                                    >
-                                        <RefreshCw size={11} className={loadingHistory ? 'spin' : ''} />
-                                        Actualizar
-                                    </button>
-                                    {(patientHistory?.nhc || selectedChat.customFields?.nhc) && (
-                                        <span style={{ fontSize: '0.68rem', fontWeight: 700, color: ccTheme.accentColor || '#0284C7', background: ccTheme.isDark ? '#1E3A5F' : '#F0F9FF', padding: '2px 6px', borderRadius: '4px', border: `1px solid ${ccTheme.isDark ? '#0284C7' : '#BAE6FD'}` }}>
-                                            NHC: {patientHistory?.nhc || selectedChat.customFields?.nhc}
-                                        </span>
-                                    )}
+                                    <Eye size={12} color="#1D4ED8" />
+                                    <span>
+                                        <strong>{otherViewersForCurrentChat.map(v => v.agentName).join(', ')}</strong> {otherViewersForCurrentChat.length === 1 ? 'está leyendo esta conversación en este momento.' : 'están leyendo esta conversación en este momento.'}
+                                    </span>
+                                </div>
+                                <div style={{ fontSize: '0.62rem', color: '#2563EB', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                    <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#2563EB', display: 'inline-block' }} />
+                                    En tiempo real
                                 </div>
                             </div>
+                        )}
 
-                            {loadingHistory ? (
-                                <div style={{ fontSize: '0.76rem', color: themeCardSubtext, textAlign: 'center', padding: '20px' }}>
-                                    Consultando registros en Sanatorio Argentino...
-                                </div>
-                            ) : patientHistory ? (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                                    {/* Resumen KPI del Paciente */}
-                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                                        <div style={{ background: rightCardBg, padding: '8px', borderRadius: '8px', border: `1px solid ${rightCardBorder}` }}>
-                                            <div style={{ fontSize: '0.65rem', color: themeCardSubtext, fontWeight: 600 }}>CONSULTAS / GUARDIA</div>
-                                            <div style={{ fontSize: '1.1rem', fontWeight: 800, color: ccTheme.accentColor || '#0284C7' }}>
-                                                {patientHistory.consultas?.length || 0}
-                                            </div>
-                                        </div>
-                                        <div style={{ background: rightCardBg, padding: '8px', borderRadius: '8px', border: `1px solid ${rightCardBorder}` }}>
-                                            <div style={{ fontSize: '0.65rem', color: themeCardSubtext, fontWeight: 600 }}>CIRUGÍAS</div>
-                                            <div style={{ fontSize: '1.1rem', fontWeight: 800, color: '#059669' }}>
-                                                {patientHistory.cirugias?.length || 0}
-                                            </div>
-                                        </div>
-                                        <div style={{ background: rightCardBg, padding: '8px', borderRadius: '8px', border: `1px solid ${rightCardBorder}` }}>
-                                            <div style={{ fontSize: '0.65rem', color: themeCardSubtext, fontWeight: 600 }}>INTERNACIONES</div>
-                                            <div style={{ fontSize: '1.1rem', fontWeight: 800, color: '#7C3AED' }}>
-                                                {patientHistory.altas?.length || 0}
-                                            </div>
-                                        </div>
-                                        <div style={{ background: rightCardBg, padding: '8px', borderRadius: '8px', border: `1px solid ${rightCardBorder}` }}>
-                                            <div style={{ fontSize: '0.65rem', color: themeCardSubtext, fontWeight: 600 }}>LABORATORIOS</div>
-                                            <div style={{ fontSize: '1.1rem', fontWeight: 800, color: '#D97706' }}>
-                                                {patientHistory.laboratorios?.length || 0}
-                                            </div>
-                                        </div>
+                        {/* Banner de Cancelación de Turno */}
+                        {(
+                            selectedChat?.tags?.includes('Cancelación') &&
+                            !(selectedChat?.motivoConsulta || '').toLowerCase().includes('consulta de turno') &&
+                            !(selectedChat?.motivoConsulta || '').toLowerCase().includes('consultar turno') &&
+                            !((selectedChat?.aiSummary?.tipo_tramite || '').toLowerCase().includes('informacion') && !(selectedChat?.aiSummary?.resumen_solicitud || '').toLowerCase().includes('cancelar'))
+                        ) && (
+                                <div style={{
+                                    flexShrink: 0,
+                                    padding: '6px 14px',
+                                    background: '#FEF2F2',
+                                    borderBottom: '1px solid #FECACA',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between',
+                                    fontSize: '0.72rem',
+                                    color: '#991B1B',
+                                    fontWeight: 600
+                                }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                        <CalendarX size={14} color="#DC2626" />
+                                        <span>
+                                            <strong>Cancelación de Turno:</strong> Este paciente solicitó dar de baja un turno. Registrado en la Bolsa de Cancelaciones.
+                                        </span>
                                     </div>
-
-                                    {/* SECCIÓN 1: TURNOS PRÓXIMOS & CITAS ONLINE (ACCESO RÁPIDO) */}
-                                    {deduplicatedTurnosProximos && deduplicatedTurnosProximos.length > 0 ? (
-                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                            <div style={{ fontSize: '0.74rem', fontWeight: 800, color: ccTheme.isDark ? '#6EE7B7' : '#065F46', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                                <span>📅 TURNOS PRÓXIMOS & CITAS ONLINE ({deduplicatedTurnosProximos.length})</span>
-                                            </div>
-                                            {deduplicatedTurnosProximos.map((tp, idx) => (
-                                                <div key={idx} style={{
-                                                    background: rightCardBg,
-                                                    border: tp.origen === 'online' ? `1.5px solid ${ccTheme.isDark ? '#0284C7' : '#93C5FD'}` : `1.5px solid ${ccTheme.isDark ? '#059669' : '#6EE7B7'}`,
-                                                    borderRadius: '8px',
-                                                    padding: '8px 10px',
-                                                    boxShadow: '0 1px 3px rgba(0,0,0,0.03)'
-                                                }}>
-                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                                                        <div style={{ fontSize: '0.8rem', fontWeight: 800, color: themeCardText }}>
-                                                            📅 {tp.fecha_visita} {tp.hora_visita ? `• ${tp.hora_visita} hs` : ''}
-                                                        </div>
-                                                        <span style={{
-                                                            fontSize: '0.64rem', fontWeight: 800, padding: '2px 6px', borderRadius: '4px',
-                                                            background: tp.origen === 'online' ? (ccTheme.isDark ? '#1E3A5F' : '#EFF6FF') : (ccTheme.isDark ? '#064E3B' : '#ECFDF5'),
-                                                            color: tp.origen === 'online' ? (ccTheme.isDark ? '#93C5FD' : '#1D4ED8') : (ccTheme.isDark ? '#6EE7B7' : '#047857')
-                                                        }}>
-                                                            {tp.origen === 'online' ? '🌐 TURNO WEB ONLINE' : '🏥 PRESENCIAL'}
-                                                        </span>
-                                                    </div>
-                                                    <div style={{ fontSize: '0.76rem', fontWeight: 700, color: ccTheme.accentColor || '#0284C7', marginTop: '3px' }}>
-                                                        👨‍⚕️ {tp.medico || 'Profesional Asignado'}
-                                                    </div>
-                                                    <div style={{ fontSize: '0.7rem', color: themeCardSubtext, marginTop: '1px' }}>
-                                                        Agenda: <strong style={{ color: themeCardText }}>{tp.agenda || tp.tipo_visita}</strong>
-                                                    </div>
-                                                    {tp.cliente && (
-                                                        <div style={{ fontSize: '0.66rem', color: themeCardSubtext, marginTop: '3px', background: ccTheme.leftSidebarHeaderBg || (ccTheme.isDark ? '#1E293B' : '#F8FAFC'), padding: '2px 6px', borderRadius: '4px' }}>
-                                                            Cobertura: <strong style={{ color: themeCardText }}>{tp.cliente}</strong>
-                                                        </div>
-                                                    )}
-                                                    {tp.motivo && (
-                                                        <div style={{ fontSize: '0.68rem', color: ccTheme.isDark ? '#FDE68A' : '#78350F', background: ccTheme.isDark ? '#451A03' : '#FEF3C7', padding: '3px 6px', borderRadius: '4px', marginTop: '4px' }}>
-                                                            💬 Motivo: {tp.motivo}
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            ))}
-                                        </div>
-                                    ) : (
-                                        <div style={{
-                                            background: rightCardBg,
-                                            border: `1px solid ${rightCardBorder}`,
-                                            borderRadius: '8px',
-                                            padding: '8px 10px',
+                                    <button
+                                        type="button"
+                                        onClick={() => onNavigateTab && onNavigateTab('cancelaciones')}
+                                        style={{
+                                            background: '#DC2626',
+                                            color: '#FFFFFF',
+                                            border: 'none',
+                                            borderRadius: '5px',
+                                            padding: '3px 8px',
+                                            fontSize: '0.66rem',
+                                            fontWeight: 800,
+                                            cursor: 'pointer',
                                             display: 'flex',
                                             alignItems: 'center',
-                                            gap: '6px'
+                                            gap: '4px',
+                                            boxShadow: '0 1px 3px rgba(220,38,38,0.2)'
+                                        }}
+                                    >
+                                        <CalendarX size={11} />
+                                        Ver en Cancelaciones
+                                    </button>
+                                </div>
+                            )}
+
+                        {/* Área de Mensajes con Estilo AsisteClick + Tags de Autoría */}
+                        <div
+                            ref={messagesContainerRef}
+                            style={{
+                                flex: 1,
+                                minHeight: 0,
+                                overflowY: 'auto',
+                                overflowX: 'hidden',
+                                width: '100%',
+                                boxSizing: 'border-box',
+                                padding: '16px 20px',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                gap: '12px',
+                                background: ccTheme.chatBgColor || '#F8FAFC',
+                                backgroundImage: ccTheme.chatBgImage
+                                    ? `linear-gradient(rgba(15, 23, 42, ${ccTheme.chatOverlayOpacity ?? 0.70}), rgba(15, 23, 42, ${ccTheme.chatOverlayOpacity ?? 0.70})), url('${ccTheme.chatBgImage}')`
+                                    : 'radial-gradient(#E2E8F0 1px, transparent 1px)',
+                                backgroundSize: ccTheme.chatBgImage ? 'cover' : '20px 20px',
+                                backgroundPosition: 'center',
+                                backgroundAttachment: 'fixed'
+                            }}
+                        >
+                            {(() => {
+                                const normSelectedPhone = selectedChat?.phone ? (normalizeArgentinePhone(selectedChat.phone) || selectedChat.phone) : null;
+                                const persistedHistory = normSelectedPhone ? (loadedMessagesByPhone[normSelectedPhone] || []) : [];
+                                const rawList = persistedHistory.length > 0
+                                    ? mergeAndSortMessages(persistedHistory, selectedChat.messages || [])
+                                    : (selectedChat.messages || []);
+                                // Deduplicación visual preventiva (elimina colisiones entre mensajes optimistas y eventos Realtime)
+                                const rawMsgs = (() => {
+                                    if (rawList.length <= 1) return rawList;
+                                    const seenRealIds = new Set();
+                                    const seenMsgIds = new Set();
+                                    const seenOutboxKeys = new Set();
+                                    const deduplicated = [];
+
+                                    for (const m of rawList) {
+                                        // Descartar duplicados exactos por id
+                                        if (m.id && seenMsgIds.has(String(m.id))) continue;
+                                        if (m.id) seenMsgIds.add(String(m.id));
+
+                                        // Descartar duplicados exactos por realId de base de datos
+                                        if (m.realId) {
+                                            const rId = String(m.realId);
+                                            if (seenRealIds.has(rId)) continue;
+                                            seenRealIds.add(rId);
+                                        }
+
+                                        // Descartar mensaje optimista si ya existe el mensaje real saliente con el mismo texto
+                                        if (m.sender === 'agent' || m.sender === 'note') {
+                                            const textSnippet = (m.text || '').trim();
+                                            const approxTime = m.created_at ? Math.round(new Date(m.created_at).getTime() / 20000) : 0;
+                                            const key = `${m.sender}_${textSnippet}_${approxTime}`;
+                                            if (seenOutboxKeys.has(key)) continue;
+                                            seenOutboxKeys.add(key);
+                                        }
+
+                                        deduplicated.push(m);
+                                    }
+                                    return deduplicated;
+                                })();
+
+                                const hasMore = rawMsgs.length > visibleMessageCount;
+                                const remainingCount = rawMsgs.length - visibleMessageCount;
+
+                                if (loadingChatMessages && rawMsgs.length === 0) {
+                                    return (
+                                        <div style={{
+                                            display: 'flex',
+                                            flexDirection: 'column',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            padding: '60px 20px',
+                                            gap: '12px',
+                                            color: '#0284C7'
                                         }}>
-                                            <Calendar size={13} color={themeCardSubtext} />
-                                            <span style={{ fontSize: '0.72rem', color: themeCardSubtext, fontWeight: 600 }}>
-                                                📅 Turnos Próximos: <strong style={{ color: themeCardText }}>Sin turnos pendientes agendados</strong>
+                                            <RefreshCw size={26} style={{ animation: 'spin 1s linear infinite' }} />
+                                            <span style={{ fontSize: '0.85rem', fontWeight: 600, color: '#475569' }}>
+                                                Cargando mensajes de la conversación...
                                             </span>
                                         </div>
-                                    )}
-
-                                    {/* SECCIÓN 2: CONSULTAS MÉDICAS, GUARDIA & EVOLUCIÓN CLÍNICA */}
-                                    {patientHistory.consultas && patientHistory.consultas.length > 0 && (
-                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                            <div style={{ fontSize: '0.72rem', fontWeight: 800, color: themeCardText, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                                <span>🩺 CONSULTAS MÉDICAS & GUARDIA ({patientHistory.consultas.length})</span>
-                                            </div>
-                                            {patientHistory.consultas.slice(0, 10).map((con, idx) => (
-                                                <div key={idx} style={{ background: rightCardBg, border: `1px solid ${rightCardBorder}`, borderRadius: '8px', padding: '8px 10px' }}>
-                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                                                        <div style={{ fontSize: '0.78rem', fontWeight: 800, color: themeCardText }}>
-                                                            {con.visita_especialidad || con.agenda || 'Consulta Médica'}
-                                                        </div>
-                                                        <span style={{
-                                                            fontSize: '0.65rem', fontWeight: 700, padding: '1px 6px', borderRadius: '4px',
-                                                            background: con.asistencia === 'Presente' ? (ccTheme.isDark ? '#064E3B' : '#ECFDF5') : (ccTheme.isDark ? '#1E293B' : '#F1F5F9'),
-                                                            color: con.asistencia === 'Presente' ? (ccTheme.isDark ? '#6EE7B7' : '#047857') : themeCardSubtext
-                                                        }}>
-                                                            {con.asistencia || 'Atendido'}
-                                                        </span>
-                                                    </div>
-                                                    {con.medico && (
-                                                        <div style={{ fontSize: '0.74rem', color: ccTheme.accentColor || '#0369A1', fontWeight: 700, marginTop: '2px' }}>
-                                                            👨‍⚕️ {con.medico}
-                                                        </div>
-                                                    )}
-                                                    <div style={{ fontSize: '0.7rem', color: themeCardSubtext, fontWeight: 600, marginTop: '1px' }}>
-                                                        {con.agenda ? `${con.agenda} • ` : ''}{con.tipo_visita || 'Visita'} {con.centro ? `• ${con.centro}` : ''}
-                                                    </div>
-                                                    <div style={{ fontSize: '0.68rem', color: themeCardSubtext, marginTop: '3px' }}>
-                                                        📅 Fecha: <strong style={{ color: themeCardText }}>{con.fecha_visita || 'S/F'}</strong> {con.hora_visita ? `(${con.hora_visita.slice(0, 5)} hs)` : ''}
-                                                    </div>
-                                                    {con.diagnostico && (
-                                                        <div style={{
-                                                            fontSize: '0.68rem', fontWeight: 700, 
-                                                            color: ccTheme.isDark ? '#93C5FD' : '#1E40AF', 
-                                                            background: ccTheme.isDark ? '#1E3A5F' : '#EFF6FF',
-                                                            border: `1px solid ${ccTheme.isDark ? '#1D4ED8' : '#BFDBFE'}`, 
-                                                            padding: '3px 6px', borderRadius: '4px', marginTop: '4px'
-                                                        }}>
-                                                            🏷️ Diagnóstico: {con.diagnostico}
-                                                        </div>
-                                                    )}
-                                                    {con.motivo && (
-                                                        <div style={{
-                                                            marginTop: '6px', 
-                                                            background: ccTheme.leftSidebarHeaderBg || (ccTheme.isDark ? '#1E293B' : '#F8FAFC'), 
-                                                            border: `1px solid ${rightCardBorder}`,
-                                                            borderRadius: '6px', padding: '6px 8px'
-                                                        }}>
-                                                            <div style={{ fontSize: '0.64rem', fontWeight: 800, color: themeCardSubtext, textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                                                <span>📋 Síntomas / Formulario Médico</span>
-                                                                {con.formulario && <span style={{ color: ccTheme.accentColor || '#0284C7', fontWeight: 600 }}>({con.formulario})</span>}
-                                                            </div>
-                                                            <div style={{ fontSize: '0.72rem', color: themeCardText, whiteSpace: 'pre-line', marginTop: '3px', lineHeight: 1.35 }}>
-                                                                {con.motivo}
-                                                            </div>
-                                                        </div>
-                                                    )}
-                                                    {con.cliente && (
-                                                        <div style={{ fontSize: '0.66rem', color: themeCardSubtext, marginTop: '4px', background: ccTheme.leftSidebarHeaderBg || (ccTheme.isDark ? '#1E293B' : '#F8FAFC'), padding: '2px 6px', borderRadius: '4px' }}>
-                                                            🏥 Cobertura: <strong style={{ color: themeCardText }}>{con.cliente}</strong>
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
-
-                                    {/* Listado de Cirugías Recientes */}
-                                    {patientHistory.cirugias && patientHistory.cirugias.length > 0 && (
-                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                            <div style={{ fontSize: '0.72rem', fontWeight: 800, color: themeCardText }}>
-                                                🔪 CIRUGÍAS REGISTRADAS ({patientHistory.cirugias.length})
-                                            </div>
-                                            {patientHistory.cirugias.slice(0, 3).map((cir, idx) => (
-                                                <div key={idx} style={{ background: rightCardBg, border: `1px solid ${rightCardBorder}`, borderRadius: '8px', padding: '8px 10px' }}>
-                                                    <div style={{ fontSize: '0.78rem', fontWeight: 700, color: themeCardText }}>
-                                                        {cir.modulo || 'Procedimiento Quirúrgico'}
-                                                    </div>
-                                                    <div style={{ fontSize: '0.7rem', color: ccTheme.accentColor || '#0284C7', marginTop: '2px' }}>
-                                                        Dr/a. {cir.medico || 'No especificado'} • {cir.fecha_cirugia || 'Fecha pendiente'}
-                                                    </div>
-                                                    <div style={{ fontSize: '0.68rem', color: themeCardSubtext, marginTop: '2px' }}>
-                                                        Estado: <strong style={{ color: themeCardText }}>{cir.status || 'Programada'}</strong>
-                                                    </div>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
-
-                                    {/* Listado de Admisiones */}
-                                    {patientHistory.altas && patientHistory.altas.length > 0 && (
-                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                            <div style={{ fontSize: '0.72rem', fontWeight: 800, color: themeCardText }}>
-                                                🛏️ ESTANCIAS / INTERNACIONES ({patientHistory.altas.length})
-                                            </div>
-                                            {patientHistory.altas.slice(0, 3).map((adm, idx) => (
-                                                <div key={idx} style={{ background: rightCardBg, border: `1px solid ${rightCardBorder}`, borderRadius: '8px', padding: '8px 10px' }}>
-                                                    <div style={{ fontSize: '0.78rem', fontWeight: 700, color: themeCardText }}>
-                                                        {adm.especialidad || adm.servicio || 'Internación'}
-                                                    </div>
-                                                    <div style={{ fontSize: '0.7rem', color: themeCardSubtext, marginTop: '2px' }}>
-                                                        Ingreso: {adm.fecha_ingreso ? new Date(adm.fecha_ingreso).toLocaleDateString('es-AR') : 'S/D'} 
-                                                        {adm.fecha_alta ? ` • Alta: ${new Date(adm.fecha_alta).toLocaleDateString('es-AR')}` : ' (Activo)'}
-                                                    </div>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
-                                </div>
-                            ) : (
-                                <div style={{ fontSize: '0.74rem', color: themeCardSubtext, background: rightCardBg, padding: '14px', borderRadius: '8px', border: `1px solid ${rightCardBorder}`, lineHeight: 1.4 }}>
-                                    💡 No se encontraron antecedentes para esta persona. Asegúrate de verificar y guardar el DNI del paciente en la pestaña <strong style={{ color: themeCardText }}>Ficha CRM</strong> para consultar su historial completo en el Sanatorio.
-                                </div>
-                            )}
-                        </div>
-                    )}
-
-                    {/* TAB 3: PARÁMETROS Y HONORARIOS DE MÉDICOS SALUS */}
-                    {activeDetailTab === 'prestadores' && (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                            <div style={{ fontSize: '0.74rem', fontWeight: 800, color: themeCardText, textTransform: 'uppercase' }}>
-                                Consultar Parámetros de Prestador
-                            </div>
-
-                            <div style={{ position: 'relative' }}>
-                                <input
-                                    type="text"
-                                    placeholder="Buscar por médico o especialidad..."
-                                    value={doctorQuery}
-                                    onChange={(e) => setDoctorQuery(e.target.value)}
-                                    style={{
-                                        width: '100%', padding: '8px 12px 8px 30px',
-                                        borderRadius: '8px', border: `1px solid ${rightCardBorder}`,
-                                        fontSize: '0.8rem', outline: 'none',
-                                        background: rightCardBg, color: themeCardText
-                                    }}
-                                />
-                                <Search size={14} color={themeCardSubtext} style={{ position: 'absolute', left: '10px', top: '10px' }} />
-                            </div>
-
-                            {isSearchingDoctor && (
-                                <div style={{ fontSize: '0.72rem', color: themeCardSubtext, textAlign: 'center', padding: '10px' }}>
-                                    Buscando en SALUS...
-                                </div>
-                            )}
-
-                            {doctorResults.length > 0 ? (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '420px', overflowY: 'auto' }}>
-                                    {doctorResults.map((doc) => (
-                                        <div key={doc.id} style={{
-                                            background: rightCardBg, border: `1px solid ${rightCardBorder}`, borderRadius: '8px', padding: '10px'
-                                        }}>
-                                            <div style={{ fontWeight: 800, fontSize: '0.82rem', color: themeCardText }}>
-                                                {doc.profesional_nombre}
-                                            </div>
-                                            <div style={{ fontSize: '0.72rem', color: ccTheme.accentColor || '#0284C7', fontWeight: 600 }}>
-                                                {doc.especialidad || 'Consulta Médica'}
-                                            </div>
-
-                                            {doc.consultorio_actual && (
-                                                <div style={{ marginTop: '4px', fontSize: '0.72rem', fontWeight: 700, color: ccTheme.isDark ? '#34D399' : '#059669' }}>
-                                                    📍 {doc.consultorio_actual}
-                                                </div>
-                                            )}
-
-                                            {doc.condiciones_consulta && (
-                                                <div style={{
-                                                    marginTop: '6px', fontSize: '0.7rem', color: themeCardSubtext,
-                                                    background: ccTheme.leftSidebarHeaderBg || (ccTheme.isDark ? '#1E293B' : '#FFFFFF'), 
-                                                    padding: '6px 8px', borderRadius: '6px',
-                                                    border: `1px solid ${rightCardBorder}`, whiteSpace: 'pre-line'
-                                                }}>
-                                                    {doc.condiciones_consulta}
-                                                </div>
-                                            )}
-                                        </div>
-                                    ))}
-                                </div>
-                            ) : doctorQuery.length >= 2 && !isSearchingDoctor ? (
-                                <div style={{ fontSize: '0.72rem', color: themeCardSubtext, textAlign: 'center', padding: '14px' }}>
-                                    No se encontraron prestadores con ese criterio.
-                                </div>
-                            ) : (
-                                <div style={{ fontSize: '0.72rem', color: themeCardSubtext, background: rightCardBg, padding: '10px', borderRadius: '8px', border: `1px solid ${rightCardBorder}` }}>
-                                    💡 Escribe el apellido del médico (ej: <em>Marquez</em>, <em>Gomez</em>, <em>Borrego</em>) para ver sus honorarios particulares, plus de coseguro, alias de Mercado Pago y consultorio activo.
-                                </div>
-                            )}
-                        </div>
-                    )}
-                        </>
-                    )}
-                </div>
-            </div>
-
-            {/* MODAL PARA FINALIZAR ATENCIÓN / CERRAR CONVERSACIÓN */}
-            {closeModalOpen && (
-                <div style={{
-                    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-                    background: 'rgba(15, 23, 42, 0.55)', backdropFilter: 'blur(3px)',
-                    zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px'
-                }}>
-                    <div style={{
-                        background: '#FFFFFF', borderRadius: '16px', maxWidth: '440px', width: '100%',
-                        padding: '24px', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.2)', border: '1px solid #E2E8F0'
-                    }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 800, fontSize: '1.05rem', color: '#0F172A' }}>
-                                <CheckCircle2 size={20} color="#059669" />
-                                Finalizar Atención
-                            </div>
-                            <button 
-                                onClick={() => setCloseModalOpen(false)}
-                                style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#94A3B8' }}
-                            >
-                                <X size={18} />
-                            </button>
-                        </div>
-
-                        <p style={{ fontSize: '0.82rem', color: '#64748B', margin: '0 0 14px 0', lineHeight: 1.45 }}>
-                            Estás a punto de finalizar la conversación con <strong>{selectedChat?.contactName || 'el contacto'}</strong>. 
-                            La conversación pasará a <strong>Archivadas</strong> y se reactivará el bot automático para futuros mensajes.
-                        </p>
-
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '14px' }}>
-                            <label style={{ fontSize: '0.72rem', fontWeight: 700, color: '#334155' }}>MOTIVO DE RESOLUCIÓN</label>
-                            <select
-                                value={resolutionReason}
-                                onChange={(e) => setResolutionReason(e.target.value)}
-                                style={{
-                                    padding: '9px 12px', borderRadius: '8px', border: '1px solid #CBD5E1',
-                                    fontSize: '0.84rem', outline: 'none', background: '#FFFFFF', color: '#0F172A'
-                                }}
-                            >
-                                <option value="Turno Coordinado">✅ Turno Coordinado / Otorgado</option>
-                                <option value="Turno Online Reprogramado">🔄 Turno Online Reprogramado</option>
-                                <option value="Estudio / Autorización Tramitada">📋 Autorización / Estudio Tramitado</option>
-                                <option value="Auto-gestión Bot Completa">🤖 Auto-gestión Bot Completa / Resuelta</option>
-                                <option value="Consulta Informativa Resuelta">ℹ️ Consulta Informativa Resuelta</option>
-                                <option value="Consulta Fuera de Alcance">🚫 Consulta Fuera de Alcance / No Aplica</option>
-                                <option value="Derivado a Guardia / Sector">🏥 Derivado a Guardia / Sector Específico</option>
-                                <option value="Cancelación / Reprogramación Confirmada">🗓️ Cancelación / Reprogramación Confirmada</option>
-                                <option value="Paciente No Responde">⏳ Paciente No Responde</option>
-                                <option value="Otro / Aclaración en Nota">📝 Otro / Ver Notas Internas</option>
-                            </select>
-                        </div>
-
-                        {/* TOGGLE ENVIAR MENSAJE DE DESPEDIDA / CIERRE SILENCIOSO */}
-                        <label style={{
-                            display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer',
-                            fontSize: '0.80rem', fontWeight: 600, color: '#334155', margin: '4px 0 14px 0',
-                            userSelect: 'none'
-                        }}>
-                            <input
-                                type="checkbox"
-                                checked={sendFarewellMessage}
-                                onChange={(e) => setSendFarewellMessage(e.target.checked)}
-                                style={{ width: '16px', height: '16px', accentColor: '#059669', cursor: 'pointer' }}
-                            />
-                            <span>Enviar mensaje de despedida y encuesta 5⭐ vía WhatsApp</span>
-                        </label>
-
-                        {/* PREVIEW DEL MENSAJE DE CIERRE OFICIAL O AVISO DE CIERRE SILENCIOSO */}
-                        {sendFarewellMessage ? (
-                            <div style={{
-                                background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: '10px',
-                                padding: '10px 12px', marginBottom: '18px', textAlign: 'left'
-                            }}>
-                                <div style={{ fontSize: '0.7rem', fontWeight: 800, color: '#15803D', textTransform: 'uppercase', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                                    <span>⭐ Mensaje que recibirá el paciente vía WhatsApp:</span>
-                                </div>
-                                <div style={{ fontSize: '0.75rem', color: '#166534', whiteSpace: 'pre-line', lineHeight: 1.35, fontStyle: 'italic' }}>
-                                    {FINAL_ATTENTION_MESSAGE}
-                                </div>
-                            </div>
-                        ) : (
-                            <div style={{
-                                background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: '10px',
-                                padding: '10px 12px', marginBottom: '18px', textAlign: 'left',
-                                display: 'flex', alignItems: 'center', gap: '8px', color: '#64748B', fontSize: '0.75rem'
-                            }}>
-                                <AlertCircle size={16} color="#94A3B8" />
-                                <span><strong>Cierre directo / silencioso:</strong> Se archivará la charla y reactivará el bot sin enviar ningún mensaje de WhatsApp al paciente.</span>
-                            </div>
-                        )}
-
-                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-                            <button
-                                type="button"
-                                onClick={() => setCloseModalOpen(false)}
-                                style={{
-                                    padding: '8px 16px', borderRadius: '8px', border: '1px solid #CBD5E1',
-                                    background: '#FFFFFF', color: '#64748B', fontSize: '0.82rem', fontWeight: 600,
-                                    cursor: 'pointer'
-                                }}
-                            >
-                                Volver
-                            </button>
-                            <button
-                                type="button"
-                                onClick={handleConfirmClose}
-                                disabled={isClosingChat}
-                                style={{
-                                    padding: '8px 18px', borderRadius: '8px', border: 'none',
-                                    background: '#059669', color: '#FFFFFF', fontSize: '0.82rem', fontWeight: 700,
-                                    cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px'
-                                }}
-                            >
-                                <CheckCircle2 size={15} /> {isClosingChat ? 'Finalizando y enviando...' : 'Finalizar y Enviar Cierre'}
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* MODAL PARA FINALIZACIÓN MASIVA SILENCIOSA (SIN MENSAJES DE WHATSAPP) */}
-            {bulkCloseModalOpen && (
-                <div style={{
-                    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-                    background: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(3px)',
-                    zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px'
-                }}>
-                    <div style={{
-                        background: '#FFFFFF', borderRadius: '16px', maxWidth: '480px', width: '100%',
-                        padding: '24px', boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.25)', border: '1px solid #E2E8F0'
-                    }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 800, fontSize: '1.05rem', color: '#0F172A' }}>
-                                <CheckCircle2 size={20} color="#DC2626" />
-                                Finalizar {selectedChatIds.size} {selectedChatIds.size === 1 ? 'Conversación' : 'Conversaciones'}
-                            </div>
-                            <button 
-                                onClick={() => setBulkCloseModalOpen(false)}
-                                style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#94A3B8' }}
-                            >
-                                <X size={18} />
-                            </button>
-                        </div>
-
-                        {/* AVISO IMPORTANTE: REGLA DE NO ENVÍO DE MENSAJES */}
-                        <div style={{
-                            background: '#FEF2F2',
-                            border: '1.5px solid #FCA5A5',
-                            borderRadius: '10px',
-                            padding: '12px 14px',
-                            marginBottom: '16px',
-                            display: 'flex',
-                            gap: '10px',
-                            alignItems: 'flex-start'
-                        }}>
-                            <AlertTriangle size={20} color="#DC2626" style={{ flexShrink: 0, marginTop: '2px' }} />
-                            <div>
-                                <div style={{ fontSize: '0.78rem', fontWeight: 800, color: '#991B1B', marginBottom: '3px' }}>
-                                    FINALIZACIÓN SILENCIOSA (SIN MENSAJES)
-                                </div>
-                                <div style={{ fontSize: '0.74rem', color: '#7F1D1D', lineHeight: 1.45 }}>
-                                    Al finalizar de a muchos, <strong>NO se enviará ningún mensaje de WhatsApp a los pacientes</strong>. Las conversaciones pasarán directamente a <strong>Finalizados</strong> y el bot automático quedará reactivado para futuras consultas.
-                                </div>
-                            </div>
-                        </div>
-
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '14px' }}>
-                            <label style={{ fontSize: '0.72rem', fontWeight: 700, color: '#334155' }}>MOTIVO DE RESOLUCIÓN</label>
-                            <select
-                                value={bulkResolutionReason}
-                                onChange={(e) => setBulkResolutionReason(e.target.value)}
-                                style={{
-                                    padding: '9px 12px', borderRadius: '8px', border: '1px solid #CBD5E1',
-                                    fontSize: '0.84rem', outline: 'none', background: '#FFFFFF', color: '#0F172A'
-                                }}
-                            >
-                                <option value="Cierre masivo de cola">🧹 Cierre masivo de cola general</option>
-                                <option value="Consulta Informativa Resuelta">ℹ️ Consulta Informativa Resuelta</option>
-                                <option value="Paciente No Responde">⏳ Paciente No Responde</option>
-                                <option value="Turno Coordinado">✅ Turno Coordinado / Otorgado</option>
-                                <option value="Turno Online Reprogramado">🔄 Turno Online Reprogramado</option>
-                                <option value="Estudio / Autorización Tramitada">📋 Autorización / Estudio Tramitado</option>
-                                <option value="Derivado a Guardia / Sector">🏥 Derivado a Guardia / Sector Específico</option>
-                                <option value="Cancelación / Reprogramación Confirmada">🗓️ Cancelación / Reprogramación Confirmada</option>
-                                <option value="Otro / Trámite Administrativo">📝 Otro / Ver Notas Internas</option>
-                            </select>
-                        </div>
-
-                        {/* LISTADO DE CHATS SELECCIONADOS */}
-                        <div style={{ marginBottom: '18px' }}>
-                            <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#64748B', marginBottom: '6px' }}>
-                                PACIENTES A FINALIZAR ({selectedChatIds.size}):
-                            </div>
-                            <div style={{
-                                maxHeight: '130px',
-                                overflowY: 'auto',
-                                border: '1px solid #E2E8F0',
-                                borderRadius: '8px',
-                                padding: '6px 10px',
-                                background: '#F8FAFC',
-                                display: 'flex',
-                                flexDirection: 'column',
-                                gap: '6px'
-                            }}>
-                                {Array.from(selectedChatIds).map(id => {
-                                    const c = chats.find(item => item.id === id);
-                                    if (!c) return null;
-                                    return (
-                                        <div key={id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.74rem' }}>
-                                            <span style={{ fontWeight: 700, color: '#1E293B' }}>{getCleanChatName(c)}</span>
-                                            <span style={{ color: '#64748B', fontSize: '0.7rem' }}>+{c.phone}</span>
-                                        </div>
                                     );
-                                })}
-                            </div>
-                        </div>
+                                }
 
-                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-                            <button
-                                type="button"
-                                onClick={() => setBulkCloseModalOpen(false)}
-                                disabled={isBulkClosing}
-                                style={{
-                                    padding: '8px 16px', borderRadius: '8px', border: '1px solid #CBD5E1',
-                                    background: '#FFFFFF', color: '#64748B', fontSize: '0.82rem', fontWeight: 600,
-                                    cursor: 'pointer'
-                                }}
-                            >
-                                Cancelar
-                            </button>
-                            <button
-                                type="button"
-                                onClick={handleConfirmBulkClose}
-                                disabled={isBulkClosing}
-                                style={{
-                                    padding: '8px 18px', borderRadius: '8px', border: 'none',
-                                    background: '#DC2626', color: '#FFFFFF', fontSize: '0.82rem', fontWeight: 700,
-                                    cursor: isBulkClosing ? 'wait' : 'pointer', display: 'flex', alignItems: 'center', gap: '6px'
-                                }}
-                            >
-                                <CheckCircle2 size={15} />
-                                {isBulkClosing ? 'Finalizando silenciosamente...' : `Confirmar y Finalizar (${selectedChatIds.size})`}
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* ═════════════════════════════════════════════════════════════════ */}
-            {/* MODAL RESPUESTAS RÁPIDAS (EXCLUSIVO CONTACT CENTER)               */}
-            {/* ═════════════════════════════════════════════════════════════════ */}
-            {quickRepliesModalOpen && (
-                <div style={{
-                    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 10000,
-                    background: 'rgba(15, 23, 42, 0.45)', backdropFilter: 'blur(3px)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px'
-                }} onClick={() => setQuickRepliesModalOpen(false)}>
-                    <div 
-                        onClick={(e) => e.stopPropagation()}
-                        style={{
-                            background: '#FFFFFF', width: '100%', maxWidth: '640px', maxHeight: '86vh',
-                            borderRadius: '16px', boxShadow: '0 20px 45px rgba(0,0,0,0.2)',
-                            display: 'flex', flexDirection: 'column', overflow: 'hidden', border: '1px solid #E2E8F0'
-                        }}
-                    >
-                        {/* Cabecera institucional con información de operadora y botón de nuevo atajo */}
-                        <div style={{
-                            padding: '18px 24px 14px 24px', borderBottom: '1px solid #F1F5F9',
-                            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                            background: '#F8FAFC'
-                        }}>
-                            <div>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                    <h2 style={{ fontSize: '1.2rem', fontWeight: 800, color: '#1E293B', margin: 0 }}>
-                                        Respuestas rápidas y Atajos
-                                    </h2>
-                                    <span style={{
-                                        fontSize: '0.68rem', fontWeight: 700, padding: '2px 8px',
-                                        borderRadius: '12px', background: '#E0F2FE', color: '#0369A1'
-                                    }}>
-                                        Contact Center
-                                    </span>
-                                </div>
-                                <p style={{ margin: '4px 0 0 0', fontSize: '0.74rem', color: '#64748B' }}>
-                                    Operadora activa: <strong style={{ color: '#0284C7' }}>{activeAgent?.name || currentAgentId}</strong> • Las ediciones pueden ser personales o institucionales
-                                </p>
-                            </div>
-
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <button
-                                    type="button"
-                                    onClick={handleOpenNewQuickReply}
-                                    style={{
-                                        display: 'flex', alignItems: 'center', gap: '6px',
-                                        padding: '7px 12px', borderRadius: '8px', border: 'none',
-                                        background: '#0284C7', color: '#FFFFFF', fontSize: '0.76rem', fontWeight: 700,
-                                        cursor: 'pointer', boxShadow: '0 1px 3px rgba(2, 132, 199, 0.3)'
-                                    }}
-                                >
-                                    <Plus size={14} /> Nuevo atajo
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => setQuickRepliesModalOpen(false)}
-                                    style={{
-                                        border: 'none', background: 'transparent', color: '#94A3B8',
-                                        cursor: 'pointer', padding: '6px', borderRadius: '6px'
-                                    }}
-                                >
-                                    <X size={20} />
-                                </button>
-                            </div>
-                        </div>
-
-                        {/* Barra de pestañas por ámbito (Todas / Solo para mí / Institucionales) */}
-                        <div style={{
-                            display: 'flex', gap: '6px', padding: '12px 24px 8px 24px',
-                            borderBottom: '1px solid #F1F5F9', background: '#FFFFFF'
-                        }}>
-                            <button
-                                type="button"
-                                onClick={() => setQuickReplyScopeFilter('all')}
-                                style={{
-                                    padding: '6px 12px', borderRadius: '6px', fontSize: '0.74rem', fontWeight: 700,
-                                    border: quickReplyScopeFilter === 'all' ? '1px solid #0284C7' : '1px solid #E2E8F0',
-                                    background: quickReplyScopeFilter === 'all' ? '#F0F9FF' : '#FFFFFF',
-                                    color: quickReplyScopeFilter === 'all' ? '#0284C7' : '#64748B',
-                                    cursor: 'pointer'
-                                }}
-                            >
-                                Todas ({filterQuickReplies('', currentAgentId, 'all').length})
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => setQuickReplyScopeFilter('me')}
-                                style={{
-                                    display: 'flex', alignItems: 'center', gap: '4px',
-                                    padding: '6px 12px', borderRadius: '6px', fontSize: '0.74rem', fontWeight: 700,
-                                    border: quickReplyScopeFilter === 'me' ? '1px solid #7C3AED' : '1px solid #E2E8F0',
-                                    background: quickReplyScopeFilter === 'me' ? '#FAF5FF' : '#FFFFFF',
-                                    color: quickReplyScopeFilter === 'me' ? '#7C3AED' : '#64748B',
-                                    cursor: 'pointer'
-                                }}
-                            >
-                                <User size={12} /> Solo para mí ({filterQuickReplies('', currentAgentId, 'me').length})
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => setQuickReplyScopeFilter('institutional')}
-                                style={{
-                                    display: 'flex', alignItems: 'center', gap: '4px',
-                                    padding: '6px 12px', borderRadius: '6px', fontSize: '0.74rem', fontWeight: 700,
-                                    border: quickReplyScopeFilter === 'institutional' ? '1px solid #0D9488' : '1px solid #E2E8F0',
-                                    background: quickReplyScopeFilter === 'institutional' ? '#F0FDFA' : '#FFFFFF',
-                                    color: quickReplyScopeFilter === 'institutional' ? '#0D9488' : '#64748B',
-                                    cursor: 'pointer'
-                                }}
-                            >
-                                <Globe size={12} /> Institucionales ({filterQuickReplies('', currentAgentId, 'institutional').length})
-                            </button>
-                        </div>
-
-                        {/* Campo de búsqueda con icono */}
-                        <div style={{ padding: '12px 24px 10px 24px' }}>
-                            <div style={{
-                                display: 'flex', alignItems: 'center', gap: '8px',
-                                border: '1.5px solid #CBD5E1', borderRadius: '8px',
-                                padding: '8px 12px', background: '#FFFFFF'
-                            }}>
-                                <Search size={16} color="#64748B" />
-                                <input 
-                                    type="text"
-                                    autoFocus
-                                    placeholder="Filtrar por atajo (/rx, /dan, /bosi), título o contenido..."
-                                    value={quickReplyFilter}
-                                    onChange={(e) => setQuickReplyFilter(e.target.value)}
-                                    style={{
-                                        flex: 1, border: 'none', outline: 'none', fontSize: '0.84rem', color: '#1E293B'
-                                    }}
-                                />
-                                {quickReplyFilter && (
-                                    <button 
-                                        type="button" 
-                                        onClick={() => setQuickReplyFilter('')}
-                                        style={{ border: 'none', background: 'transparent', color: '#94A3B8', cursor: 'pointer', padding: '2px' }}
-                                    >
-                                        <X size={14} />
-                                    </button>
-                                )}
-                            </div>
-                        </div>
-
-                        {/* Lista scrolleable de respuestas rápidas */}
-                        <div style={{ flex: 1, overflowY: 'auto', padding: '0 24px 20px 24px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                            {filterQuickReplies(quickReplyFilter, currentAgentId, quickReplyScopeFilter).length === 0 ? (
-                                <div style={{ padding: '36px 20px', textAlign: 'center', color: '#94A3B8', fontSize: '0.84rem' }}>
-                                    No se encontraron atajos para este criterio de búsqueda o filtro.
-                                </div>
-                            ) : (
-                                filterQuickReplies(quickReplyFilter, currentAgentId, quickReplyScopeFilter).map((qr) => (
-                                    <div 
-                                        key={qr.id || qr.shortcut} 
-                                        style={{
-                                            display: 'flex', flexDirection: 'column', gap: '6px',
-                                            padding: '12px 14px', borderRadius: '10px',
-                                            border: qr.isPersonal ? '1.5px solid #DDD6FE' : '1px solid #E2E8F0',
-                                            background: qr.isPersonal ? '#FAF5FF' : '#FFFFFF',
-                                            transition: 'all 0.15s ease'
-                                        }}
-                                    >
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
-                                            <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '6px' }}>
-                                                <span style={{ fontSize: '0.8rem', color: '#0284C7', fontWeight: 800, background: '#E0F2FE', padding: '2px 8px', borderRadius: '6px' }}>
-                                                    /{qr.shortcut}
-                                                </span>
-                                                <span style={{ fontWeight: 800, fontSize: '0.86rem', color: '#1E293B' }}>
-                                                    {qr.title}
-                                                </span>
-
-                                                {/* Badge de ámbito */}
-                                                {qr.isPersonal ? (
-                                                    <span style={{
-                                                        display: 'inline-flex', alignItems: 'center', gap: '3px',
-                                                        fontSize: '0.64rem', fontWeight: 700, padding: '2px 6px',
-                                                        borderRadius: '6px', background: '#EDE9FE', color: '#6D28D9'
-                                                    }}>
-                                                        <User size={10} /> Solo para mí
-                                                    </span>
-                                                ) : (
-                                                    <span style={{
-                                                        display: 'inline-flex', alignItems: 'center', gap: '3px',
-                                                        fontSize: '0.64rem', fontWeight: 700, padding: '2px 6px',
-                                                        borderRadius: '6px', background: '#F1F5F9', color: '#475569'
-                                                    }}>
-                                                        <Globe size={10} /> Institucional
-                                                    </span>
-                                                )}
-
-                                                {qr.isPersonal && qr.hasGlobalFallback && (
-                                                    <span style={{ fontSize: '0.64rem', color: '#7C3AED', fontWeight: 600 }}>
-                                                        (Sobrescribe oficial)
-                                                    </span>
-                                                )}
-                                            </div>
-
-                                            {/* Botones de configuración del atajo */}
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => handleOpenEditQuickReply(qr)}
-                                                    title="Editar este atajo (puedes guardarlo solo para ti o para todas)"
-                                                    style={{
-                                                        display: 'flex', alignItems: 'center', gap: '3px',
-                                                        padding: '3px 8px', borderRadius: '5px', border: '1px solid #CBD5E1',
-                                                        background: '#FFFFFF', color: '#334155', fontSize: '0.68rem', fontWeight: 600,
-                                                        cursor: 'pointer'
-                                                    }}
-                                                >
-                                                    <Edit3 size={11} /> Editar
-                                                </button>
-
-                                                {qr.isPersonal && qr.hasGlobalFallback && (
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => handleResetQuickReplyAction(qr)}
-                                                        title="Restablecer a la versión institucional oficial"
-                                                        style={{
-                                                            display: 'flex', alignItems: 'center', gap: '3px',
-                                                            padding: '3px 8px', borderRadius: '5px', border: '1px solid #E2E8F0',
-                                                            background: '#FFFFFF', color: '#7C3AED', fontSize: '0.68rem', fontWeight: 600,
-                                                            cursor: 'pointer'
-                                                        }}
-                                                    >
-                                                        <RotateCw size={11} /> Restablecer
-                                                    </button>
-                                                )}
-
-                                                {qr.isPersonal && !qr.hasGlobalFallback && (
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => handleDeleteQuickReplyAction(qr)}
-                                                        title="Eliminar este atajo personal"
-                                                        style={{
-                                                            display: 'flex', alignItems: 'center', gap: '3px',
-                                                            padding: '3px 8px', borderRadius: '5px', border: '1px solid #FCA5A5',
-                                                            background: '#FEF2F2', color: '#DC2626', fontSize: '0.68rem', fontWeight: 600,
-                                                            cursor: 'pointer'
-                                                        }}
-                                                    >
-                                                        <Trash2 size={11} /> Eliminar
-                                                    </button>
-                                                )}
-                                            </div>
-                                        </div>
-
-                                        <p style={{
-                                            margin: '4px 0 0 0', fontSize: '0.78rem', color: '#475569',
-                                            lineHeight: 1.45, whiteSpace: 'pre-line'
-                                        }}>
-                                            {qr.content}
-                                        </p>
-
-                                        {/* Acciones para enviar al chat activo */}
-                                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '6px', marginTop: '6px' }}>
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    setMessageInput(resolveQuickReplyText(qr.content));
-                                                    setQuickRepliesModalOpen(false);
-                                                    inputRef.current?.focus();
-                                                }}
-                                                style={{
-                                                    padding: '5px 12px', borderRadius: '6px', border: '1px solid #CBD5E1',
-                                                    background: '#FFFFFF', color: '#334155', fontSize: '0.72rem', fontWeight: 600,
-                                                    cursor: 'pointer'
-                                                }}
-                                            >
-                                                Insertar en chat
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    sendDirectMessage(resolveQuickReplyText(qr.content), isPrivateNote);
-                                                    setQuickRepliesModalOpen(false);
-                                                }}
-                                                style={{
-                                                    padding: '5px 12px', borderRadius: '6px', border: 'none',
-                                                    background: '#0284C7', color: '#FFFFFF', fontSize: '0.72rem', fontWeight: 700,
-                                                    cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px'
-                                                }}
-                                            >
-                                                <Send size={11} /> Enviar directo
-                                            </button>
-                                        </div>
-                                    </div>
-                                ))
-                            )}
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* ═════════════════════════════════════════════════════════════════ */}
-            {/* SUBMODAL EDITOR: CAMBIAR SOLO PARA MÍ vs CAMBIAR PARA TODOS       */}
-            {/* ═════════════════════════════════════════════════════════════════ */}
-            {editingQuickReply && (
-                <div 
-                    style={{
-                        position: 'fixed', inset: 0, zIndex: 10050,
-                        background: 'rgba(15, 23, 42, 0.6)', backdropFilter: 'blur(4px)',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px'
-                    }} 
-                    onClick={() => !isSavingQuickReply && setEditingQuickReply(null)}
-                >
-                    <div 
-                        onClick={(e) => e.stopPropagation()}
-                        style={{
-                            background: '#FFFFFF', width: '100%', maxWidth: '580px',
-                            borderRadius: '16px', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
-                            display: 'flex', flexDirection: 'column', overflow: 'hidden', border: '1px solid #E2E8F0'
-                        }}
-                    >
-                        {/* Cabecera del Editor */}
-                        <div style={{
-                            padding: '16px 20px', borderBottom: '1px solid #E2E8F0',
-                            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                            background: '#F8FAFC'
-                        }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                <div style={{
-                                    width: '34px', height: '34px', borderRadius: '8px',
-                                    background: '#E0F2FE', color: '#0284C7',
-                                    display: 'flex', alignItems: 'center', justifyContent: 'center'
-                                }}>
-                                    <Zap size={18} />
-                                </div>
-                                <div>
-                                    <h3 style={{ margin: 0, fontSize: '0.98rem', fontWeight: 800, color: '#0F172A' }}>
-                                        {editingQuickReply.isNew ? 'Crear Nuevo Atajo Rápido' : `Editar Atajo /${editingQuickReply.shortcut}`}
-                                    </h3>
-                                    <p style={{ margin: 0, fontSize: '0.72rem', color: '#64748B' }}>
-                                        Operadora activa: <strong style={{ color: '#0284C7' }}>{activeAgent?.name || currentAgentId}</strong>
-                                    </p>
-                                </div>
-                            </div>
-                            <button
-                                type="button"
-                                onClick={() => !isSavingQuickReply && setEditingQuickReply(null)}
-                                style={{ border: 'none', background: 'transparent', color: '#94A3B8', cursor: 'pointer', padding: '4px' }}
-                            >
-                                <X size={20} />
-                            </button>
-                        </div>
-
-                        {/* Formulario */}
-                        <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px', maxHeight: '68vh', overflowY: 'auto' }}>
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                                <div>
-                                    <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 700, color: '#334155', marginBottom: '4px' }}>
-                                        Comando / Atajo (sin espacios) *
-                                    </label>
-                                    <div style={{ display: 'flex', alignItems: 'center', border: '1.5px solid #CBD5E1', borderRadius: '8px', overflow: 'hidden', background: '#F8FAFC' }}>
-                                        <span style={{ padding: '0 8px', color: '#0284C7', fontWeight: 800, fontSize: '0.86rem' }}>/</span>
-                                        <input 
-                                            type="text"
-                                            placeholder="ej: rx, saludo, lab"
-                                            value={editingQuickReply.shortcut}
-                                            onChange={(e) => setEditingQuickReply(prev => ({ ...prev, shortcut: e.target.value.replace(/^\//, '').toLowerCase().replace(/\s+/g, '') }))}
-                                            style={{ flex: 1, border: 'none', background: '#FFFFFF', padding: '8px 10px', fontSize: '0.84rem', outline: 'none' }}
-                                        />
-                                    </div>
-                                </div>
-
-                                <div>
-                                    <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 700, color: '#334155', marginBottom: '4px' }}>
-                                        Título identificador *
-                                    </label>
-                                    <input 
-                                        type="text"
-                                        placeholder="ej: Rayos X / Guardia Pasiva"
-                                        value={editingQuickReply.title}
-                                        onChange={(e) => setEditingQuickReply(prev => ({ ...prev, title: e.target.value }))}
-                                        style={{ width: '100%', border: '1.5px solid #CBD5E1', borderRadius: '8px', padding: '8px 10px', fontSize: '0.84rem', outline: 'none', boxSizing: 'border-box' }}
-                                    />
-                                </div>
-                            </div>
-
-                            <div>
-                                <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 700, color: '#334155', marginBottom: '4px' }}>
-                                    Categoría
-                                </label>
-                                <select
-                                    value={editingQuickReply.category || 'general'}
-                                    onChange={(e) => setEditingQuickReply(prev => ({ ...prev, category: e.target.value }))}
-                                    style={{ width: '100%', border: '1.5px solid #CBD5E1', borderRadius: '8px', padding: '8px 10px', fontSize: '0.84rem', outline: 'none', background: '#FFFFFF' }}
-                                >
-                                    <option value="general">General</option>
-                                    <option value="saludo">Saludos de Agente</option>
-                                    <option value="medicos">Médicos / Especialistas</option>
-                                    <option value="estudios">Estudios y Radiología</option>
-                                    <option value="laboratorio">Laboratorio / Extracciones</option>
-                                    <option value="chequeo">Chequeo Preventivo</option>
-                                    <option value="cierre">Cierre y Despedida</option>
-                                </select>
-                            </div>
-
-                            <div>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                                    <label style={{ fontSize: '0.74rem', fontWeight: 700, color: '#334155' }}>
-                                        Texto del mensaje *
-                                    </label>
-                                    <span style={{ fontSize: '0.68rem', color: '#64748B' }}>
-                                        Variables automáticas (haz clic para insertar):
-                                    </span>
-                                </div>
-
-                                {/* Chips de variables dinámicas */}
-                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '8px' }}>
-                                    {[
-                                        { code: '{{name}}', label: '👤 Paciente' },
-                                        { code: '{{agent_name}}', label: '👩‍💼 Mi Nombre' },
-                                        { code: '{{tipo_consulta}}', label: '📋 Consulta' },
-                                        { code: '{{medico}}', label: '🩺 Médico' },
-                                        { code: '{{sede}}', label: '🏥 Sede 1' }
-                                    ].map(variable => (
-                                        <button
-                                            key={variable.code}
-                                            type="button"
-                                            onClick={() => {
-                                                setEditingQuickReply(prev => ({
-                                                    ...prev,
-                                                    content: (prev.content ? prev.content + ' ' : '') + variable.code
-                                                }));
-                                            }}
-                                            style={{
-                                                border: '1px dashed #93C5FD', background: '#EFF6FF', color: '#1E40AF',
-                                                borderRadius: '6px', padding: '3px 8px', fontSize: '0.7rem', fontWeight: 600,
-                                                cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px'
-                                            }}
-                                        >
-                                            <Plus size={10} /> {variable.label}
-                                        </button>
-                                    ))}
-                                </div>
-
-                                <textarea
-                                    rows={5}
-                                    placeholder="Escribe el texto de la respuesta rápida..."
-                                    value={editingQuickReply.content}
-                                    onChange={(e) => setEditingQuickReply(prev => ({ ...prev, content: e.target.value }))}
-                                    style={{
-                                        width: '100%', border: '1.5px solid #CBD5E1', borderRadius: '8px',
-                                        padding: '10px', fontSize: '0.84rem', lineHeight: 1.45, outline: 'none',
-                                        fontFamily: 'inherit', resize: 'vertical', boxSizing: 'border-box'
-                                    }}
-                                />
-                            </div>
-
-                            {/* Banner explicativo del mapeo por usuario */}
-                            <div style={{
-                                padding: '10px 14px', borderRadius: '10px', background: '#F8FAFC', border: '1px solid #E2E8F0',
-                                fontSize: '0.73rem', color: '#475569', lineHeight: 1.4
-                            }}>
-                                <strong style={{ color: '#0F172A' }}>💡 ¿Cómo deseas guardar este atajo?</strong>
-                                <ul style={{ margin: '4px 0 0 0', paddingLeft: '18px' }}>
-                                    <li><strong>"Cambiar solo para mí":</strong> Quedará registrado únicamente en tu sesión ({activeAgent?.name || currentAgentId}). Las otras operadoras no verán tu cambio.</li>
-                                    <li><strong>"Cambiar para todos":</strong> Se actualizará como respuesta oficial compartida para todo el equipo.</li>
-                                </ul>
-                            </div>
-                        </div>
-
-                        {/* Botones de acción principales solicitados por el usuario */}
-                        <div style={{
-                            padding: '14px 20px', borderTop: '1px solid #E2E8F0', background: '#F8FAFC',
-                            display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: '10px'
-                        }}>
-                            <button
-                                type="button"
-                                disabled={isSavingQuickReply}
-                                onClick={() => setEditingQuickReply(null)}
-                                style={{
-                                    padding: '8px 16px', borderRadius: '8px', border: '1px solid #CBD5E1',
-                                    background: '#FFFFFF', color: '#475569', fontSize: '0.78rem', fontWeight: 600,
-                                    cursor: 'pointer'
-                                }}
-                            >
-                                Cancelar
-                            </button>
-
-                            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                                {/* Botón: Cambiar solo para mí */}
-                                <button
-                                    type="button"
-                                    disabled={isSavingQuickReply}
-                                    onClick={() => handleSaveQuickReplyAction('me')}
-                                    title="Guarda esta versión únicamente para tu usuario. No altera a las demás operadoras."
-                                    style={{
-                                        padding: '8px 16px', borderRadius: '8px', border: 'none',
-                                        background: '#7C3AED', color: '#FFFFFF', fontSize: '0.8rem', fontWeight: 700,
-                                        cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px',
-                                        boxShadow: '0 2px 6px rgba(124, 58, 237, 0.25)'
-                                    }}
-                                >
-                                    {isSavingQuickReply ? <Loader2 size={14} className="animate-spin" /> : <User size={14} />}
-                                    Cambiar solo para mí
-                                </button>
-
-                                {/* Botón: Cambiar para todos */}
-                                <button
-                                    type="button"
-                                    disabled={isSavingQuickReply}
-                                    onClick={() => handleSaveQuickReplyAction('all')}
-                                    title="Actualiza la plantilla oficial para todas las operadoras del Contact Center."
-                                    style={{
-                                        padding: '8px 16px', borderRadius: '8px', border: 'none',
-                                        background: '#0284C7', color: '#FFFFFF', fontSize: '0.8rem', fontWeight: 700,
-                                        cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px',
-                                        boxShadow: '0 2px 6px rgba(2, 132, 199, 0.25)'
-                                    }}
-                                >
-                                    {isSavingQuickReply ? <Loader2 size={14} className="animate-spin" /> : <Globe size={14} />}
-                                    Cambiar para todos
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* MODAL INSTITUCIONAL: REINICIAR FLUJO DEL CHATBOT (SISTEMA SANATORIO ARGENTINO) */}
-            {resetBotModalOpen && selectedChat && (
-                <div 
-                    onClick={() => !isResettingBot && setResetBotModalOpen(false)}
-                    style={{
-                        position: 'fixed',
-                        inset: 0,
-                        backgroundColor: 'rgba(15, 23, 42, 0.55)',
-                        backdropFilter: 'blur(4px)',
-                        zIndex: 9999,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        padding: '16px'
-                    }}
-                >
-                    <div 
-                        onClick={(e) => e.stopPropagation()}
-                        style={{
-                            background: '#FFFFFF',
-                            borderRadius: '14px',
-                            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.15), 0 10px 10px -5px rgba(0, 0, 0, 0.05)',
-                            border: '1px solid #E2E8F0',
-                            width: '100%',
-                            maxWidth: '460px',
-                            overflow: 'hidden',
-                            display: 'flex',
-                            flexDirection: 'column'
-                        }}
-                    >
-                        {/* Header */}
-                        <div style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                            padding: '16px 20px',
-                            borderBottom: '1px solid #F1F5F9',
-                            background: '#F8FAFC'
-                        }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                <div style={{
-                                    width: '36px',
-                                    height: '36px',
-                                    borderRadius: '10px',
-                                    background: '#EFF6FF',
-                                    border: '1px solid #BFDBFE',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    color: '#0284C7'
-                                }}>
-                                    <RefreshCw size={18} />
-                                </div>
-                                <div>
-                                    <div style={{ fontSize: '0.92rem', fontWeight: 800, color: '#0F172A' }}>
-                                        Reiniciar Flujo del Chatbot
-                                    </div>
-                                    <div style={{ fontSize: '0.72rem', color: '#64748B' }}>
-                                        Sanatorio Argentino • Contact Center
-                                    </div>
-                                </div>
-                            </div>
-                            <button
-                                type="button"
-                                disabled={isResettingBot}
-                                onClick={() => setResetBotModalOpen(false)}
-                                style={{
-                                    border: 'none',
-                                    background: 'transparent',
-                                    color: '#94A3B8',
-                                    cursor: isResettingBot ? 'not-allowed' : 'pointer',
-                                    padding: '4px',
-                                    borderRadius: '6px'
-                                }}
-                            >
-                                <X size={18} />
-                            </button>
-                        </div>
-
-                        {/* Body */}
-                        <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                            {/* Tarjeta de Paciente */}
-                            <div style={{
-                                background: '#F8FAFC',
-                                border: '1px solid #E2E8F0',
-                                borderRadius: '8px',
-                                padding: '10px 14px',
-                                display: 'flex',
-                                flexDirection: 'column',
-                                gap: '2px'
-                            }}>
-                                <span style={{ fontSize: '0.66rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>
-                                    Paciente Seleccionado
-                                </span>
-                                <span style={{ fontSize: '0.92rem', fontWeight: 800, color: '#0F172A' }}>
-                                    {selectedChat.contactName}
-                                </span>
-                                <span style={{ fontSize: '0.74rem', color: '#0284C7', fontWeight: 600 }}>
-                                    📞 {selectedChat.phone}
-                                </span>
-                            </div>
-
-                            <p style={{ margin: 0, fontSize: '0.84rem', color: '#334155', lineHeight: 1.5 }}>
-                                ¿Confirmas reiniciar el flujo automatizado? El bot volverá a responder desde el saludo inicial cuando el paciente escriba un nuevo mensaje.
-                            </p>
-
-                            {/* Callout informativo */}
-                            <div style={{
-                                background: '#F0F9FF',
-                                border: '1px solid #BAE6FD',
-                                borderRadius: '8px',
-                                padding: '10px 12px',
-                                display: 'flex',
-                                alignItems: 'flex-start',
-                                gap: '8px'
-                            }}>
-                                <Bot size={16} color="#0284C7" style={{ marginTop: '2px', flexShrink: 0 }} />
-                                <div style={{ fontSize: '0.74rem', color: '#0369A1', lineHeight: 1.4 }}>
-                                    La conversación pasará a atención automática por IA y se liberará de la bandeja del operador para atender intenciones desde cero.
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Footer */}
-                        <div style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'flex-end',
-                            gap: '10px',
-                            padding: '14px 20px',
-                            borderTop: '1px solid #F1F5F9',
-                            background: '#F8FAFC'
-                        }}>
-                            <button
-                                type="button"
-                                disabled={isResettingBot}
-                                onClick={() => setResetBotModalOpen(false)}
-                                style={{
-                                    padding: '8px 16px',
-                                    borderRadius: '8px',
-                                    border: '1px solid #CBD5E1',
-                                    background: '#FFFFFF',
-                                    color: '#475569',
-                                    fontSize: '0.82rem',
-                                    fontWeight: 600,
-                                    cursor: isResettingBot ? 'not-allowed' : 'pointer'
-                                }}
-                            >
-                                Cancelar
-                            </button>
-                            <button
-                                type="button"
-                                disabled={isResettingBot}
-                                onClick={handleConfirmResetBot}
-                                style={{
-                                    padding: '8px 18px',
-                                    borderRadius: '8px',
-                                    border: 'none',
-                                    background: '#0284C7',
-                                    color: '#FFFFFF',
-                                    fontSize: '0.82rem',
-                                    fontWeight: 700,
-                                    cursor: isResettingBot ? 'not-allowed' : 'pointer',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '6px',
-                                    boxShadow: '0 2px 6px rgba(2, 132, 199, 0.3)'
-                                }}
-                            >
-                                {isResettingBot ? (
-                                    <>
-                                        <RefreshCw size={14} className="animate-spin" />
-                                        Reiniciando...
-                                    </>
-                                ) : (
-                                    <>
-                                        <RefreshCw size={14} />
-                                        Reiniciar Bot
-                                    </>
-                                )}
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* NOTIFICACIÓN TOAST DEL SISTEMA */}
-            {systemToast && (
-                <div style={{
-                    position: 'fixed',
-                    bottom: '24px',
-                    right: '24px',
-                    zIndex: 10000,
-                    background: '#FFFFFF',
-                    border: systemToast.type === 'error' ? '1.5px solid #FCA5A5' : '1.5px solid #6EE7B7',
-                    borderRadius: '10px',
-                    padding: '12px 16px',
-                    boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.12), 0 8px 10px -6px rgba(0, 0, 0, 0.08)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '10px',
-                    maxWidth: '420px'
-                }}>
-                    {systemToast.type === 'error' ? (
-                        <AlertCircle size={20} color="#DC2626" style={{ flexShrink: 0 }} />
-                    ) : (
-                        <CheckCircle2 size={20} color="#059669" style={{ flexShrink: 0 }} />
-                    )}
-                    <div style={{ fontSize: '0.8rem', fontWeight: 600, color: '#0F172A', lineHeight: 1.4 }}>
-                        {systemToast.message}
-                    </div>
-                    <button
-                        type="button"
-                        onClick={() => setSystemToast(null)}
-                        style={{
-                            border: 'none', background: 'transparent', color: '#94A3B8', cursor: 'pointer',
-                            padding: '2px', marginLeft: 'auto'
-                        }}
-                    >
-                        <X size={14} />
-                    </button>
-                </div>
-            )}
-
-            {/* VISOR PROFESIONAL INTEGRADO DE DOCUMENTOS Y ÓRDENES MÉDICAS */}
-            {viewerImage && (
-                <div 
-                    style={{
-                        position: 'fixed',
-                        inset: 0,
-                        zIndex: 99999,
-                        backgroundColor: 'rgba(10, 15, 29, 0.95)',
-                        backdropFilter: 'blur(14px)',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        userSelect: 'none'
-                    }}
-                    onClick={(e) => {
-                        if (e.target === e.currentTarget) {
-                            setViewerImage(null);
-                        }
-                    }}
-                >
-                    {/* BARRA SUPERIOR DE HERRAMIENTAS */}
-                    <div style={{
-                        height: '64px',
-                        backgroundColor: 'rgba(15, 23, 42, 0.9)',
-                        borderBottom: '1px solid rgba(255, 255, 255, 0.12)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        padding: '0 24px',
-                        color: '#FFFFFF',
-                        zIndex: 10
-                    }}>
-                        {/* Título e Información del Paciente */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                            <div style={{
-                                width: '38px', height: '38px', borderRadius: '8px',
-                                backgroundColor: viewerImage.fileType === 'pdf' ? 'rgba(239, 68, 68, 0.25)' :
-                                    viewerImage.fileType === 'word' ? 'rgba(37, 99, 235, 0.25)' :
-                                    viewerImage.fileType === 'excel' ? 'rgba(22, 163, 74, 0.25)' :
-                                    'rgba(2, 132, 199, 0.25)',
-                                border: `1px solid ${
-                                    viewerImage.fileType === 'pdf' ? 'rgba(248, 113, 113, 0.4)' :
-                                    viewerImage.fileType === 'word' ? 'rgba(96, 165, 250, 0.4)' :
-                                    viewerImage.fileType === 'excel' ? 'rgba(74, 222, 128, 0.4)' :
-                                    'rgba(56, 189, 248, 0.4)'
-                                }`,
-                                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                color: viewerImage.fileType === 'pdf' ? '#F87171' :
-                                    viewerImage.fileType === 'word' ? '#60A5FA' :
-                                    viewerImage.fileType === 'excel' ? '#4ADE80' :
-                                    '#38BDF8'
-                            }}>
-                                {viewerImage.fileType === 'pdf' ? <FileText size={22} /> :
-                                 viewerImage.fileType === 'word' ? <FileText size={22} /> :
-                                 viewerImage.fileType === 'excel' ? <FileSpreadsheet size={22} /> :
-                                 <FileCheck size={22} />}
-                            </div>
-                            <div>
-                                <div style={{ fontSize: '0.9rem', fontWeight: 800, color: '#FFFFFF', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                    <span>{viewerImage.filename || viewerImage.senderName || 'Documento'}</span>
-                                    <span style={{
-                                        fontSize: '0.68rem',
-                                        fontWeight: 700,
-                                        backgroundColor: viewerImage.fileType === 'pdf' ? '#DC2626' :
-                                            viewerImage.fileType === 'word' ? '#2563EB' :
-                                            viewerImage.fileType === 'excel' ? '#16A34A' : '#0284C7',
-                                        color: '#FFFFFF',
-                                        padding: '2px 8px',
-                                        borderRadius: '4px',
-                                        letterSpacing: '0.5px'
-                                    }}>
-                                        {viewerImage.ext || 'DOC'}
-                                    </span>
-                                    {viewerImage.dni && (
-                                        <span style={{ fontSize: '0.72rem', backgroundColor: 'rgba(255,255,255,0.14)', padding: '2px 8px', borderRadius: '4px', color: '#93C5FD' }}>
-                                            DNI: {viewerImage.dni}
-                                        </span>
-                                    )}
-                                </div>
-                                <div style={{ fontSize: '0.72rem', color: '#94A3B8' }}>
-                                    {viewerImage.senderName ? `Paciente: ${viewerImage.senderName}` : ''} {viewerImage.caption && viewerImage.caption !== viewerImage.filename ? `• Nota: ${viewerImage.caption}` : '• Visor Profesional Integrado — Sanatorio Argentino'}
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Controles de Vista: Zoom para imágenes o Enlaces directos para documentos */}
-                        {viewerImage.fileType === 'image' ? (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: 'rgba(30, 41, 59, 0.75)', padding: '4px 12px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.12)' }}>
-                                <button
-                                    type="button"
-                                    onClick={() => setViewerZoom(z => Math.max(0.5, +(z - 0.25).toFixed(2)))}
-                                    title="Alejar imagen (-)"
-                                    style={{
-                                        background: 'transparent', border: 'none', color: '#E2E8F0', cursor: 'pointer',
-                                        padding: '6px', borderRadius: '6px', display: 'flex', alignItems: 'center'
-                                    }}
-                                >
-                                    <ZoomOut size={18} />
-                                </button>
-                                <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#38BDF8', minWidth: '48px', textAlign: 'center' }}>
-                                    {Math.round(viewerZoom * 100)}%
-                                </span>
-                                <button
-                                    type="button"
-                                    onClick={() => setViewerZoom(z => Math.min(4, +(z + 0.25).toFixed(2)))}
-                                    title="Acercar imagen (+)"
-                                    style={{
-                                        background: 'transparent', border: 'none', color: '#E2E8F0', cursor: 'pointer',
-                                        padding: '6px', borderRadius: '6px', display: 'flex', alignItems: 'center'
-                                    }}
-                                >
-                                    <ZoomIn size={18} />
-                                </button>
-                                <div style={{ width: '1px', height: '18px', backgroundColor: 'rgba(255,255,255,0.2)', margin: '0 4px' }} />
-                                <button
-                                    type="button"
-                                    onClick={() => setViewerRotation(r => (r + 90) % 360)}
-                                    title="Rotar 90° (R)"
-                                    style={{
-                                        background: 'transparent', border: 'none', color: '#E2E8F0', cursor: 'pointer',
-                                        padding: '6px 8px', borderRadius: '6px', display: 'flex', alignItems: 'center', gap: '5px',
-                                        fontSize: '0.74rem'
-                                    }}
-                                >
-                                    <RotateCw size={16} />
-                                    <span style={{ fontSize: '0.74rem', color: '#CBD5E1', fontWeight: 600 }}>Rotar</span>
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => { setViewerZoom(1); setViewerRotation(0); }}
-                                    title="Restablecer vista original"
-                                    style={{
-                                        background: 'transparent', border: 'none', color: '#94A3B8', cursor: 'pointer',
-                                        padding: '6px', borderRadius: '6px', display: 'flex', alignItems: 'center'
-                                    }}
-                                >
-                                    <RefreshCw size={15} />
-                                </button>
-                            </div>
-                        ) : (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                <a
-                                    href={viewerImage.url}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    style={{
-                                        display: 'flex', alignItems: 'center', gap: '6px',
-                                        backgroundColor: 'rgba(30, 41, 59, 0.85)',
-                                        color: '#38BDF8',
-                                        border: '1px solid rgba(56, 189, 248, 0.3)',
-                                        padding: '6px 14px', borderRadius: '8px',
-                                        fontSize: '0.76rem', fontWeight: 700, textDecoration: 'none',
-                                        boxShadow: '0 2px 6px rgba(0,0,0,0.2)'
-                                    }}
-                                    title="Abrir archivo en pestaña nueva del navegador"
-                                >
-                                    <ExternalLink size={14} /> Abrir en pestaña nueva
-                                </a>
-                            </div>
-                        )}
-
-                        {/* Acciones: Descargar y Cerrar */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                            <button
-                                type="button"
-                                onClick={handleDownloadViewerImage}
-                                disabled={isDownloadingImage}
-                                style={{
-                                    display: 'flex', alignItems: 'center', gap: '8px',
-                                    backgroundColor: '#059669',
-                                    color: '#FFFFFF',
-                                    border: 'none',
-                                    borderRadius: '8px',
-                                    padding: '9px 18px',
-                                    fontSize: '0.82rem',
-                                    fontWeight: 700,
-                                    cursor: isDownloadingImage ? 'wait' : 'pointer',
-                                    transition: 'all 0.15s',
-                                    boxShadow: '0 4px 14px rgba(5, 150, 105, 0.4)'
-                                }}
-                                title="Descargar archivo directamente a tu equipo"
-                            >
-                                <Download size={17} />
-                                <span>{isDownloadingImage ? 'Descargando...' : 'Descargar Archivo'}</span>
-                            </button>
-
-                            <button
-                                type="button"
-                                onClick={() => setViewerImage(null)}
-                                style={{
-                                    width: '40px', height: '40px', borderRadius: '8px',
-                                    backgroundColor: 'rgba(239, 68, 68, 0.15)',
-                                    border: '1px solid rgba(239, 68, 68, 0.35)',
-                                    color: '#F87171',
-                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                    cursor: 'pointer', transition: 'all 0.15s'
-                                }}
-                                title="Cerrar visor (Esc)"
-                            >
-                                <X size={22} />
-                            </button>
-                        </div>
-                    </div>
-
-                    {/* ÁREA CENTRAL: DOCUMENTO O IMAGEN + PANEL LATERAL IA */}
-                    <div style={{
-                        flex: 1,
-                        display: 'flex',
-                        overflow: 'hidden',
-                        position: 'relative'
-                    }}>
-                        {/* LIENZO DEL DOCUMENTO / IMAGEN */}
-                        {viewerImage.fileType === 'pdf' ? (
-                            <div style={{
-                                flex: 1,
-                                width: '100%',
-                                height: '100%',
-                                padding: '16px 24px',
-                                display: 'flex',
-                                flexDirection: 'column',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                boxSizing: 'border-box'
-                            }}>
-                                <iframe
-                                    src={`${viewerImage.url}#toolbar=1&navpanes=1`}
-                                    title={viewerImage.filename || 'Visor PDF'}
-                                    style={{
-                                        width: '100%',
-                                        height: '100%',
-                                        maxWidth: '1280px',
-                                        border: '1px solid rgba(255, 255, 255, 0.15)',
-                                        borderRadius: '8px',
-                                        backgroundColor: '#FFFFFF',
-                                        boxShadow: '0 25px 60px -15px rgba(0,0,0,0.85)'
-                                    }}
-                                />
-                            </div>
-                        ) : (viewerImage.fileType === 'word' || viewerImage.fileType === 'excel') ? (
-                            <div style={{
-                                flex: 1,
-                                width: '100%',
-                                height: '100%',
-                                padding: '16px 24px',
-                                display: 'flex',
-                                flexDirection: 'column',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                boxSizing: 'border-box'
-                            }}>
-                                <iframe
-                                    src={`https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(viewerImage.url)}`}
-                                    title={viewerImage.filename || 'Visor Office Online'}
-                                    style={{
-                                        width: '100%',
-                                        height: '100%',
-                                        maxWidth: '1280px',
-                                        border: '1px solid rgba(255, 255, 255, 0.15)',
-                                        borderRadius: '8px',
-                                        backgroundColor: '#FFFFFF',
-                                        boxShadow: '0 25px 60px -15px rgba(0,0,0,0.85)'
-                                    }}
-                                />
-                            </div>
-                        ) : (
-                            <div 
-                                style={{
-                                    flex: 1,
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    overflow: 'auto',
-                                    padding: '32px',
-                                    cursor: viewerZoom > 1 ? 'grab' : 'default'
-                                }}
-                                onWheel={(e) => {
-                                    e.preventDefault();
-                                    setViewerZoom(z => Math.max(0.5, Math.min(4, +(z - e.deltaY * 0.0015).toFixed(2))));
-                                }}
-                                onClick={(e) => {
-                                    if (e.target === e.currentTarget) setViewerImage(null);
-                                }}
-                            >
-                                <img
-                                    src={viewerImage.url}
-                                    alt={viewerImage.caption || 'Orden médica'}
-                                    style={{
-                                        maxWidth: '88%',
-                                        maxHeight: '88%',
-                                        objectFit: 'contain',
-                                        borderRadius: '6px',
-                                        boxShadow: '0 25px 60px -15px rgba(0,0,0,0.7)',
-                                        transform: `scale(${viewerZoom}) rotate(${viewerRotation}deg)`,
-                                        transformOrigin: 'center center',
-                                        transition: 'transform 0.15s ease-out'
-                                    }}
-                                />
-                            </div>
-                        )}
-
-                        {/* PANEL LATERAL: DATOS DE LA ORDEN IA (SI EXISTE ANÁLISIS) */}
-                        {viewerImage.orderAnalysis && (
-                            <div style={{
-                                width: '360px',
-                                backgroundColor: 'rgba(15, 23, 42, 0.94)',
-                                borderLeft: '1px solid rgba(255, 255, 255, 0.12)',
-                                padding: '24px',
-                                display: 'flex',
-                                flexDirection: 'column',
-                                gap: '18px',
-                                overflowY: 'auto'
-                            }}>
-                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#4ADE80', fontWeight: 800, fontSize: '0.86rem' }}>
-                                        <Stethoscope size={20} />
-                                        DATOS DE LA ORDEN (IA)
-                                    </div>
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            const textToCopy = viewerImage.orderAnalysis.raw_summary || 
-`Estudio a autorizar: ${viewerImage.orderAnalysis.estudio || 'No especificado'}
-Solicitante: ${viewerImage.orderAnalysis.solicitante || 'No especificado'}
-Matricula: ${viewerImage.orderAnalysis.matricula || 'No especificada'}
-Diagnostico: ${viewerImage.orderAnalysis.diagnostico || 'No especificado'}
-Fecha de solicitud: ${viewerImage.orderAnalysis.fecha_solicitud || 'No especificada'}`;
-                                            navigator.clipboard.writeText(textToCopy);
-                                            setCopiedViewerData(true);
-                                            setTimeout(() => setCopiedViewerData(false), 2000);
-                                        }}
-                                        style={{
-                                            display: 'flex', alignItems: 'center', gap: '5px',
-                                            background: copiedViewerData ? '#15803D' : 'rgba(255, 255, 255, 0.12)',
-                                            border: '1px solid rgba(255, 255, 255, 0.2)',
-                                            color: '#FFFFFF',
-                                            padding: '5px 10px', borderRadius: '6px',
-                                            fontSize: '0.74rem', fontWeight: 700, cursor: 'pointer',
-                                            transition: 'background 0.15s'
-                                        }}
-                                        title="Copiar datos al portapapeles"
-                                    >
-                                        <Copy size={13} />
-                                        <span>{copiedViewerData ? '¡Copiado!' : 'Copiar'}</span>
-                                    </button>
-                                </div>
-
-                                <div style={{
-                                    backgroundColor: 'rgba(30, 41, 59, 0.65)',
-                                    border: '1px solid rgba(255, 255, 255, 0.08)',
-                                    borderRadius: '10px',
-                                    padding: '16px',
-                                    display: 'grid',
-                                    gap: '14px',
-                                    fontSize: '0.82rem',
-                                    lineHeight: 1.45
-                                }}>
-                                    <div>
-                                        <div style={{ fontSize: '0.68rem', color: '#94A3B8', textTransform: 'uppercase', fontWeight: 700 }}>Estudio a autorizar</div>
-                                        <div style={{ color: '#FFFFFF', fontWeight: 700, marginTop: '2px', fontSize: '0.9rem' }}>{viewerImage.orderAnalysis.estudio || 'No especificado'}</div>
-                                    </div>
-                                    <div>
-                                        <div style={{ fontSize: '0.68rem', color: '#94A3B8', textTransform: 'uppercase', fontWeight: 700 }}>Médico Solicitante</div>
-                                        <div style={{ color: '#FFFFFF', fontWeight: 600, marginTop: '2px' }}>{viewerImage.orderAnalysis.solicitante || 'No especificado'}</div>
-                                    </div>
-                                    <div>
-                                        <div style={{ fontSize: '0.68rem', color: '#94A3B8', textTransform: 'uppercase', fontWeight: 700 }}>Matrícula Profesional</div>
-                                        <div style={{ color: '#FFFFFF', fontWeight: 600, marginTop: '2px' }}>{viewerImage.orderAnalysis.matricula || 'No especificada'}</div>
-                                    </div>
-                                    <div>
-                                        <div style={{ fontSize: '0.68rem', color: '#94A3B8', textTransform: 'uppercase', fontWeight: 700 }}>Diagnóstico / Motivo</div>
-                                        <div style={{ color: '#FFFFFF', fontWeight: 600, marginTop: '2px' }}>{viewerImage.orderAnalysis.diagnostico || 'No especificado'}</div>
-                                    </div>
-                                    <div>
-                                        <div style={{ fontSize: '0.68rem', color: '#94A3B8', textTransform: 'uppercase', fontWeight: 700 }}>Fecha de la Orden</div>
-                                        <div style={{ color: '#FFFFFF', fontWeight: 600, marginTop: '2px' }}>{viewerImage.orderAnalysis.fecha_solicitud || 'No especificada'}</div>
-                                    </div>
-                                    {viewerImage.orderAnalysis.vigencia_estado && (
+                                if (!loadingChatMessages && rawMsgs.length === 0) {
+                                    return (
                                         <div style={{
-                                            padding: '8px 10px',
-                                            borderRadius: '6px',
-                                            background: viewerImage.orderAnalysis.vigencia_estado === 'vencida' ? 'rgba(239, 68, 68, 0.2)' : 'rgba(34, 197, 94, 0.2)',
-                                            border: `1px solid ${viewerImage.orderAnalysis.vigencia_estado === 'vencida' ? '#EF4444' : '#22C55E'}`,
-                                            color: viewerImage.orderAnalysis.vigencia_estado === 'vencida' ? '#FCA5A5' : '#86EFAC',
-                                            fontSize: '0.72rem',
                                             display: 'flex',
                                             flexDirection: 'column',
-                                            gap: '6px'
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            padding: '60px 20px',
+                                            textAlign: 'center',
+                                            color: '#64748B'
                                         }}>
-                                            <div style={{ fontWeight: 800 }}>{viewerImage.orderAnalysis.alerta_vigencia}</div>
-                                            {viewerImage.orderAnalysis.vigencia_estado === 'vencida' && (
+                                            <div style={{
+                                                width: '48px',
+                                                height: '48px',
+                                                borderRadius: '50%',
+                                                background: '#E0F2FE',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                marginBottom: '12px',
+                                                color: '#0284C7'
+                                            }}>
+                                                <MessageSquare size={24} />
+                                            </div>
+                                            <div style={{ fontSize: '0.88rem', fontWeight: 700, color: '#1E293B', marginBottom: '4px' }}>
+                                                No hay mensajes previos en esta conversación
+                                            </div>
+                                            <div style={{ fontSize: '0.78rem', color: '#64748B', maxWidth: '320px' }}>
+                                                Escribe un mensaje abajo para iniciar la atención con el paciente.
+                                            </div>
+                                        </div>
+                                    );
+                                }
+
+                                // Orden cronológico estándar (abajo los más recientes)
+                                const ordered = rawMsgs;
+                                const visibleMsgs = ordered.slice(Math.max(0, ordered.length - visibleMessageCount));
+
+                                return (
+                                    <>
+                                        {hasMore && (
+                                            <div style={{ display: 'flex', justifyContent: 'center', margin: '8px 0 14px' }}>
                                                 <button
                                                     type="button"
                                                     onClick={() => {
-                                                        const aviso = `Estimado/a paciente, verificamos su orden médica para "${viewerImage.orderAnalysis.estudio || 'la práctica solicitada'}" pero observamos que fue emitida el ${viewerImage.orderAnalysis.fecha_solicitud} (hace ${viewerImage.orderAnalysis.dias_transcurridos || '>30'} días). Por normativa de las obras sociales, las órdenes médicas poseen una vigencia máxima de 30 días corridos para su autorización. Por favor solicite a su médico tratante la renovación o revalidación de la orden. ¡Muchas gracias!`;
-                                                        navigator.clipboard.writeText(aviso);
-                                                        alert('Aviso de orden vencida copiado al portapapeles. Podés pegarlo directamente en el chat.');
+                                                        const containerEl = messagesContainerRef.current;
+                                                        const prevScrollHeight = containerEl ? containerEl.scrollHeight : 0;
+                                                        const prevScrollTop = containerEl ? containerEl.scrollTop : 0;
+                                                        setVisibleMessageCount(c => c + 100);
+                                                        setTimeout(() => {
+                                                            const el = messagesContainerRef.current;
+                                                            if (el && prevScrollHeight > 0) {
+                                                                el.scrollTop = Math.max(0, el.scrollHeight - prevScrollHeight + prevScrollTop);
+                                                            }
+                                                        }, 20);
                                                     }}
                                                     style={{
-                                                        background: '#EF4444', color: '#FFFFFF', border: 'none',
-                                                        borderRadius: '4px', padding: '4px 8px', fontSize: '0.68rem',
-                                                        fontWeight: 800, cursor: 'pointer', alignSelf: 'flex-start'
+                                                        background: '#F8FAFC',
+                                                        border: '1px solid #CBD5E1',
+                                                        color: '#334155',
+                                                        borderRadius: '20px',
+                                                        padding: '6px 16px',
+                                                        fontSize: '0.72rem',
+                                                        fontWeight: 700,
+                                                        cursor: 'pointer',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '6px',
+                                                        boxShadow: '0 1px 2px rgba(0,0,0,0.04)'
                                                     }}
                                                 >
-                                                    📋 Copiar aviso para el paciente
+                                                    <Clock size={12} color="#64748B" />
+                                                    Cargar mensajes anteriores ({remainingCount} más en memoria)
                                                 </button>
-                                            )}
-                                        </div>
-                                    )}
-                                </div>
+                                            </div>
+                                        )}
+                                        {!hasMore && !noMoreOlder && rawMsgs.length > 0 && (
+                                            <div style={{ display: 'flex', justifyContent: 'center', margin: '8px 0 14px' }}>
+                                                <button
+                                                    type="button"
+                                                    onClick={handleLoadOlderMessages}
+                                                    disabled={loadingOlder}
+                                                    style={{
+                                                        background: '#F0F9FF',
+                                                        border: '1px solid #BAE6FD',
+                                                        color: '#0284C7',
+                                                        borderRadius: '20px',
+                                                        padding: '6px 16px',
+                                                        fontSize: '0.72rem',
+                                                        fontWeight: 700,
+                                                        cursor: loadingOlder ? 'wait' : 'pointer',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '6px',
+                                                        boxShadow: '0 1px 2px rgba(2,132,199,0.06)'
+                                                    }}
+                                                >
+                                                    <RefreshCw size={12} className={loadingOlder ? 'spin' : ''} />
+                                                    {loadingOlder ? 'Cargando mensajes anteriores...' : 'Cargar mensajes más antiguos del historial'}
+                                                </button>
+                                            </div>
+                                        )}
+                                        {visibleMsgs.map((msg, idx) => {
+                                            const currDateStr = msg.created_at ? new Date(msg.created_at).toDateString() : null;
+                                            const prevMsg = idx > 0 ? visibleMsgs[idx - 1] : null;
+                                            const prevDateStr = prevMsg?.created_at ? new Date(prevMsg.created_at).toDateString() : null;
+                                            const showDateDivider = currDateStr && currDateStr !== prevDateStr;
+                                            const dateDividerLabel = showDateDivider ? formatChatDateDivider(msg.created_at) : null;
 
-                                <div style={{ marginTop: 'auto', padding: '12px', borderRadius: '8px', backgroundColor: 'rgba(2, 132, 199, 0.1)', border: '1px solid rgba(2, 132, 199, 0.2)', fontSize: '0.72rem', color: '#94A3B8', lineHeight: 1.5 }}>
-                                    💡 <strong style={{ color: '#38BDF8' }}>Atajos:</strong> Usá <strong style={{ color: '#FFFFFF' }}>+</strong> / <strong style={{ color: '#FFFFFF' }}>-</strong> o la rueda del ratón para hacer zoom, <strong style={{ color: '#FFFFFF' }}>R</strong> para rotar 90°, y <strong style={{ color: '#FFFFFF' }}>Esc</strong> para cerrar.
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                </div>
-            )}
+                                            if (msg.sender === 'system') {
+                                                return (
+                                                    <React.Fragment key={msg.id || `sys_${idx}`}>
+                                                        {showDateDivider && dateDividerLabel && (
+                                                            <div style={{ display: 'flex', justifyContent: 'center', margin: '14px 0 8px', width: '100%' }}>
+                                                                <span style={{
+                                                                    background: ccTheme.isDark ? '#1E293B' : 'rgba(241, 245, 249, 0.95)',
+                                                                    backdropFilter: 'blur(4px)',
+                                                                    border: `1px solid ${ccTheme.isDark ? '#334155' : '#CBD5E1'}`,
+                                                                    color: ccTheme.isDark ? '#94A3B8' : '#334155',
+                                                                    fontSize: '0.72rem',
+                                                                    fontWeight: 700,
+                                                                    padding: '4px 16px',
+                                                                    borderRadius: '16px',
+                                                                    boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+                                                                    display: 'inline-flex',
+                                                                    alignItems: 'center',
+                                                                    gap: '6px',
+                                                                    textTransform: 'capitalize'
+                                                                }}>
+                                                                    <Calendar size={13} color="#0284C7" />
+                                                                    {dateDividerLabel}
+                                                                </span>
+                                                            </div>
+                                                        )}
+                                                        <div style={{ display: 'flex', justifyContent: 'center', margin: '4px 0' }}>
+                                                            <span style={{
+                                                                background: '#FFFFFF', border: '1px solid #E2E8F0',
+                                                                color: '#475569', fontSize: '0.72rem', fontWeight: 600, padding: '4px 14px',
+                                                                borderRadius: '20px', boxShadow: '0 1px 2px rgba(0,0,0,0.03)',
+                                                                display: 'flex', alignItems: 'center', gap: '6px'
+                                                            }}>
+                                                                <Clock size={12} color="#94A3B8" />
+                                                                {msg.text}
+                                                            </span>
+                                                        </div>
+                                                    </React.Fragment>
+                                                );
+                                            }
 
-            {/* Modal de Pase Clínico / Transferencia Segura con Nota */}
-            {confirmTransferAgent && (
-                <div style={{
-                    position: 'fixed', inset: 0, zIndex: 100,
-                    backgroundColor: 'rgba(15, 23, 42, 0.65)',
-                    backdropFilter: 'blur(4px)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    padding: '16px'
-                }}>
-                    <div style={{
-                        backgroundColor: '#FFFFFF',
-                        borderRadius: '14px',
-                        maxWidth: '460px',
-                        width: '100%',
-                        boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.2)',
-                        border: '1px solid #E2E8F0',
-                        overflow: 'hidden'
-                    }}>
-                        <div style={{
-                            padding: '16px 20px',
-                            background: 'linear-gradient(135deg, #0284C7 0%, #0369A1 100%)',
-                            color: '#FFFFFF',
-                            display: 'flex', alignItems: 'center', justifyContent: 'space-between'
-                        }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 800, fontSize: '0.95rem' }}>
-                                <ArrowRightLeft size={18} />
-                                <span>Pase Clínico y Transferencia</span>
-                            </div>
-                            <button
-                                type="button"
-                                onClick={() => setConfirmTransferAgent(null)}
-                                style={{ border: 'none', background: 'transparent', color: '#FFFFFF', cursor: 'pointer' }}
-                            >
-                                <X size={18} />
-                            </button>
-                        </div>
-                        <div style={{ padding: '20px' }}>
-                            <p style={{ margin: '0 0 12px', fontSize: '0.84rem', color: '#334155' }}>
-                                Vas a transferir la atención del paciente <strong style={{ color: '#0284C7' }}>{getCleanChatName(selectedChat)}</strong> a la agente <strong style={{ color: confirmTransferAgent.color || '#0F2942' }}>{confirmTransferAgent.fullName || confirmTransferAgent.name}</strong>.
-                            </p>
-                            <label style={{ display: 'block', fontSize: '0.76rem', fontWeight: 700, color: '#475569', marginBottom: '6px' }}>
-                                📋 Nota de Pase Interno (Opcional - se registra en la auditoría del chat):
-                            </label>
-                            <textarea
-                                value={transferNote}
-                                onChange={(e) => setTransferNote(e.target.value)}
-                                placeholder="Ej: Paciente solicita sobreturno con Dra. Gómez por cólico renal. Ya tiene orden adjunta."
-                                rows={3}
-                                style={{
-                                    width: '100%',
-                                    borderRadius: '8px',
-                                    border: '1px solid #CBD5E1',
-                                    padding: '8px 12px',
-                                    fontSize: '0.8rem',
-                                    outline: 'none',
-                                    boxSizing: 'border-box',
-                                    fontFamily: 'inherit',
-                                    resize: 'vertical'
-                                }}
-                            />
-                            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '16px' }}>
-                                <button
-                                    type="button"
-                                    onClick={() => setConfirmTransferAgent(null)}
-                                    style={{
-                                        padding: '8px 16px', borderRadius: '8px', border: '1px solid #CBD5E1',
-                                        background: '#FFFFFF', color: '#475569', fontSize: '0.8rem', fontWeight: 700,
-                                        cursor: 'pointer'
-                                    }}
-                                >
-                                    Cancelar
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={handleConfirmTransfer}
-                                    disabled={isTransferring}
-                                    style={{
-                                        padding: '8px 18px', borderRadius: '8px', border: 'none',
-                                        background: '#0284C7', color: '#FFFFFF', fontSize: '0.8rem', fontWeight: 700,
-                                        cursor: isTransferring ? 'wait' : 'pointer',
-                                        display: 'flex', alignItems: 'center', gap: '6px'
-                                    }}
-                                >
-                                    <ArrowRightLeft size={14} />
-                                    {isTransferring ? 'Transfiriendo...' : 'Confirmar Pase'}
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
+                                            const isPatient = msg.sender === 'patient';
+                                            const isNote = Boolean(msg.isNote || msg.direction === 'note' || msg.sender === 'note' || msg.is_note);
+                                            const agentObj = !isPatient ? getAgentById(msg.senderAgentId || msg.senderName) : null;
 
-            {/* Modal de Reasignación con Advertencia Obligatoria (Disponible para todas las agentes) */}
-            {reassignModalOpen && selectedChat && (
-                <div style={{
-                    position: 'fixed', inset: 0, zIndex: 110,
-                    backgroundColor: 'rgba(15, 23, 42, 0.70)',
-                    backdropFilter: 'blur(4px)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    padding: '16px'
-                }}>
-                    <div style={{
-                        backgroundColor: '#FFFFFF',
-                        borderRadius: '16px',
-                        maxWidth: '470px',
-                        width: '100%',
-                        boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
-                        border: '1px solid #E2E8F0',
-                        overflow: 'hidden'
-                    }}>
-                        {/* Cabecera */}
-                        <div style={{
-                            padding: '16px 20px',
-                            background: 'linear-gradient(135deg, #0284C7 0%, #0369A1 100%)',
-                            color: '#FFFFFF',
-                            display: 'flex', alignItems: 'center', justifyContent: 'space-between'
-                        }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 800, fontSize: '0.95rem' }}>
-                                <ArrowRightLeft size={18} />
-                                <span>Reasignar Conversación a mí</span>
-                            </div>
-                            <button
-                                type="button"
-                                onClick={() => setReassignModalOpen(false)}
-                                style={{ border: 'none', background: 'transparent', color: '#FFFFFF', cursor: 'pointer' }}
-                            >
-                                <X size={18} />
-                            </button>
-                        </div>
+                                            return (
+                                                <React.Fragment key={msg.id || idx}>
+                                                    {showDateDivider && dateDividerLabel && (
+                                                        <div style={{ display: 'flex', justifyContent: 'center', margin: '14px 0 8px', width: '100%' }}>
+                                                            <span style={{
+                                                                background: ccTheme.isDark ? '#1E293B' : 'rgba(241, 245, 249, 0.95)',
+                                                                backdropFilter: 'blur(4px)',
+                                                                border: `1px solid ${ccTheme.isDark ? '#334155' : '#CBD5E1'}`,
+                                                                color: ccTheme.isDark ? '#94A3B8' : '#334155',
+                                                                fontSize: '0.72rem',
+                                                                fontWeight: 700,
+                                                                padding: '4px 16px',
+                                                                borderRadius: '16px',
+                                                                boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+                                                                display: 'inline-flex',
+                                                                alignItems: 'center',
+                                                                gap: '6px',
+                                                                textTransform: 'capitalize'
+                                                            }}>
+                                                                <Calendar size={13} color="#0284C7" />
+                                                                {dateDividerLabel}
+                                                            </span>
+                                                        </div>
+                                                    )}
+                                                    <div
+                                                        style={{
+                                                            display: 'flex',
+                                                            flexDirection: 'column',
+                                                            alignItems: isPatient ? 'flex-start' : 'flex-end',
+                                                            maxWidth: '96%',
+                                                            width: 'fit-content',
+                                                            alignSelf: isPatient ? 'flex-start' : 'flex-end',
+                                                            minWidth: 0,
+                                                            boxSizing: 'border-box'
+                                                        }}
+                                                    >
+                                                        <div
+                                                            onMouseEnter={() => setHoveredMsgId(msg.id)}
+                                                            onMouseLeave={() => setHoveredMsgId(null)}
+                                                            style={{
+                                                                display: 'flex',
+                                                                alignItems: 'center',
+                                                                gap: '8px',
+                                                                flexDirection: isPatient ? 'row' : 'row-reverse',
+                                                                maxWidth: '100%',
+                                                                minWidth: 0,
+                                                                boxSizing: 'border-box'
+                                                            }}>
+                                                            {/* Avatar circular con color de la agente o del paciente */}
+                                                            <div style={{
+                                                                width: '28px', height: '28px', borderRadius: '50%',
+                                                                background: isPatient
+                                                                    ? (selectedChat.avatarColor || '#E11D48')
+                                                                    : (isNote ? '#EA580C' : (agentObj?.color || '#0284C7')),
+                                                                color: '#FFFFFF', fontSize: '0.72rem', fontWeight: 800,
+                                                                display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
+                                                            }}>
+                                                                {isPatient ? selectedChat.contactName.charAt(0) : (isNote ? '🔒' : (agentObj?.avatar || 'A'))}
+                                                            </div>
 
-                        {/* Cuerpo con Advertencia Destacada */}
-                        <div style={{ padding: '20px' }}>
-                            <div style={{
-                                background: '#FEF3C7',
-                                border: '1px solid #FCD34D',
-                                borderRadius: '10px',
-                                padding: '12px 14px',
-                                marginBottom: '16px',
-                                display: 'flex',
-                                alignItems: 'flex-start',
-                                gap: '10px'
-                            }}>
-                                <AlertTriangle size={24} color="#D97706" style={{ flexShrink: 0, marginTop: '2px' }} />
-                                <div style={{ fontSize: '0.8rem', color: '#92400E', lineHeight: 1.45 }}>
-                                    <strong style={{ fontSize: '0.85rem' }}>¡Atención! Este chat ya tiene una agente asignada.</strong>
-                                    <div style={{ marginTop: '5px' }}>
-                                        Actualmente está en la bandeja de <strong style={{ color: '#B45309' }}>{assignedAgentObj?.name || selectedChat.assignedTo}</strong>.
-                                        Si te asignás este chat, <strong>se le quitará inmediatamente a ella</strong> y pasará a tu nombre para que puedas responderle al paciente.
-                                    </div>
-                                </div>
-                            </div>
+                                                            {/* Burbuja de Mensaje con Tag de Autoría */}
+                                                            <div
+                                                                style={{
+                                                                    position: 'relative',
+                                                                    background: isNote ? '#FFF7ED' : (isPatient ? '#DCFCE7' : '#FFFFFF'),
+                                                                    border: isNote ? '1px solid #FED7AA' : '1px solid #E2E8F0',
+                                                                    padding: '10px 14px',
+                                                                    borderRadius: isPatient ? '4px 16px 16px 16px' : '16px 4px 16px 16px',
+                                                                    boxShadow: '0 2px 4px rgba(0,0,0,0.03)',
+                                                                    color: '#1E293B',
+                                                                    fontSize: '0.86rem',
+                                                                    lineHeight: 1.45,
+                                                                    maxWidth: '680px',
+                                                                    minWidth: 0,
+                                                                    boxSizing: 'border-box',
+                                                                    wordBreak: 'break-word',
+                                                                    overflowWrap: 'anywhere',
+                                                                    userSelect: 'text'
+                                                                }}>
 
-                            <div style={{
-                                background: '#F8FAFC',
-                                border: '1px solid #E2E8F0',
-                                borderRadius: '10px',
-                                padding: '10px 14px',
-                                marginBottom: '14px',
-                                fontSize: '0.78rem',
-                                color: '#475569'
-                            }}>
-                                <div><strong>Paciente:</strong> {getCleanChatName(selectedChat)}</div>
-                                <div style={{ marginTop: '3px' }}><strong>Nueva agente responsable:</strong> <span style={{ color: activeAgent.color || '#0284C7', fontWeight: 700 }}>{activeAgent.name} (Vos)</span></div>
-                                <div style={{ marginTop: '3px', fontSize: '0.72rem', color: '#64748B' }}>
-                                    🔒 <em>Quedará registrada automáticamente una nota privada de auditoría en el chat.</em>
-                                </div>
-                            </div>
+                                                                {/* AVISO DE AUDITORÍA: MENSAJE ELIMINADO POR EL REMITENTE EN WHATSAPP */}
+                                                                {(msg.isDeleted || msg.rawPayload?.is_deleted || msg.rawPayload?.revoked || msg.text === '[Mensaje eliminado]') && (
+                                                                    <div style={{
+                                                                        display: 'flex',
+                                                                        alignItems: 'center',
+                                                                        gap: '6px',
+                                                                        padding: '4px 8px',
+                                                                        borderRadius: '6px',
+                                                                        background: '#FEF2F2',
+                                                                        border: '1px solid #FECACA',
+                                                                        color: '#DC2626',
+                                                                        fontSize: '0.70rem',
+                                                                        fontWeight: 700,
+                                                                        marginBottom: '6px'
+                                                                    }}>
+                                                                        <AlertTriangle size={12} color="#DC2626" />
+                                                                        <span>Mensaje eliminado por el remitente en WhatsApp • Conservado para auditoría médica</span>
+                                                                    </div>
+                                                                )}
 
-                            <label style={{ display: 'block', fontSize: '0.76rem', fontWeight: 700, color: '#475569', marginBottom: '6px' }}>
-                                📝 Motivo o comentario adicional (Opcional):
-                            </label>
-                            <textarea
-                                value={reassignNote}
-                                onChange={(e) => setReassignNote(e.target.value)}
-                                placeholder="Ej: Tomo el chat por solicitud de la compañera / atención de guardia..."
-                                rows={2}
-                                style={{
-                                    width: '100%',
-                                    borderRadius: '8px',
-                                    border: '1px solid #CBD5E1',
-                                    padding: '8px 12px',
-                                    fontSize: '0.8rem',
-                                    outline: 'none',
-                                    boxSizing: 'border-box',
-                                    fontFamily: 'inherit',
-                                    resize: 'vertical'
-                                }}
-                            />
+                                                                {/* PREVIEW DE MENSAJE CITADO (ESTILO WHATSAPP) */}
+                                                                {(() => {
+                                                                    const q = msg.quotedMessage || msg.rawPayload?.quoted_message;
+                                                                    if (!q) return null;
+                                                                    return (
+                                                                        <div style={{
+                                                                            background: isPatient ? 'rgba(0, 0, 0, 0.04)' : 'rgba(2, 132, 199, 0.08)',
+                                                                            borderLeft: `3.5px solid ${isPatient ? '#0284C7' : '#0369A1'}`,
+                                                                            borderRadius: '6px',
+                                                                            padding: '5px 9px',
+                                                                            marginBottom: '8px',
+                                                                            maxWidth: '460px',
+                                                                            width: '100%',
+                                                                            minWidth: 0,
+                                                                            boxSizing: 'border-box',
+                                                                            overflow: 'hidden'
+                                                                        }}>
+                                                                            <div style={{
+                                                                                fontWeight: 800,
+                                                                                color: isPatient ? '#0284C7' : '#0369A1',
+                                                                                fontSize: '0.68rem',
+                                                                                marginBottom: '2px',
+                                                                                display: 'flex',
+                                                                                alignItems: 'center',
+                                                                                gap: '4px',
+                                                                                whiteSpace: 'nowrap',
+                                                                                overflow: 'hidden',
+                                                                                textOverflow: 'ellipsis'
+                                                                            }}>
+                                                                                <Reply size={11} />
+                                                                                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                                                    {q.senderName || 'Mensaje citado'}
+                                                                                </span>
+                                                                            </div>
+                                                                            <div style={{
+                                                                                color: '#475569',
+                                                                                fontSize: '0.74rem',
+                                                                                lineHeight: 1.35,
+                                                                                display: '-webkit-box',
+                                                                                WebkitLineClamp: 2,
+                                                                                WebkitBoxOrient: 'vertical',
+                                                                                overflow: 'hidden',
+                                                                                textOverflow: 'ellipsis',
+                                                                                wordBreak: 'break-word',
+                                                                                overflowWrap: 'anywhere'
+                                                                            }}>
+                                                                                {q.text || (q.type === 'image' ? '📷 Foto' : q.type === 'audio' ? '🎤 Audio' : q.type === 'sticker' ? '🏷️ Sticker' : '📎 Archivo')}
+                                                                            </div>
+                                                                        </div>
+                                                                    );
+                                                                })()}
 
-                            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '18px' }}>
-                                <button
-                                    type="button"
-                                    onClick={() => setReassignModalOpen(false)}
-                                    disabled={isReassigning}
-                                    style={{
-                                        padding: '8px 16px', borderRadius: '8px', border: '1px solid #CBD5E1',
-                                        background: '#FFFFFF', color: '#475569', fontSize: '0.8rem', fontWeight: 700,
-                                        cursor: 'pointer'
-                                    }}
-                                >
-                                    Cancelar
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={handleConfirmReassignToMe}
-                                    disabled={isReassigning}
-                                    style={{
-                                        padding: '8px 18px', borderRadius: '8px', border: 'none',
-                                        background: '#0284C7', color: '#FFFFFF', fontSize: '0.8rem', fontWeight: 800,
-                                        cursor: isReassigning ? 'wait' : 'pointer',
-                                        display: 'flex', alignItems: 'center', gap: '6px',
-                                        boxShadow: '0 4px 6px -1px rgba(2, 132, 199, 0.3)'
-                                    }}
-                                >
-                                    {isReassigning ? (
-                                        <>
-                                            <Loader2 size={14} className="animate-spin" />
-                                            <span>Reasignando...</span>
-                                        </>
-                                    ) : (
-                                        <>
-                                            <CheckCircle2 size={14} />
-                                            <span>Aceptar y Reasignar a mí</span>
-                                        </>
-                                    )}
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
+                                                                {/* TAG DE AUTORÍA CLARO */}
+                                                                {!isPatient && (
+                                                                    <div style={{
+                                                                        display: 'flex', alignItems: 'center', gap: '6px',
+                                                                        marginBottom: '6px', paddingBottom: '4px',
+                                                                        borderBottom: isNote ? '1px dashed #FDBA74' : '1px solid #F1F5F9'
+                                                                    }}>
+                                                                        <span style={{
+                                                                            fontSize: '0.68rem', fontWeight: 800,
+                                                                            color: isNote ? '#C2410C' : (agentObj?.color || '#0284C7'),
+                                                                            background: isNote ? '#FFEDD5' : '#F8FAFC',
+                                                                            padding: '1px 6px', borderRadius: '4px', border: '1px solid #E2E8F0'
+                                                                        }}>
+                                                                            {isNote ? `🔒 NOTA INTERNA • ${msg.senderName}` : `👤 ${msg.senderName} (${agentObj?.role || 'Agente'})`}
+                                                                        </span>
+                                                                    </div>
+                                                                )}
 
-            {/* Modal de Pase de Guardia / Fin de Turno */}
-            {handoverModalOpen && (
-                <div style={{
-                    position: 'fixed', inset: 0, zIndex: 110,
-                    backgroundColor: 'rgba(15, 23, 42, 0.65)',
-                    backdropFilter: 'blur(4px)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    padding: '16px'
-                }}>
-                    <div style={{
-                        backgroundColor: '#FFFFFF',
-                        borderRadius: '16px',
-                        maxWidth: '520px',
-                        width: '100%',
-                        boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
-                        border: '1px solid #E2E8F0',
-                        overflow: 'hidden'
-                    }}>
-                        {/* Cabecera */}
-                        <div style={{
-                            padding: '16px 20px',
-                            background: 'linear-gradient(135deg, #0284C7 0%, #0369A1 100%)',
-                            color: '#FFFFFF',
-                            display: 'flex', alignItems: 'center', justifyContent: 'space-between'
-                        }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                <ArrowRightLeft size={20} />
-                                <div>
-                                    <div style={{ fontWeight: 800, fontSize: '1rem' }}>Pase de Guardia / Fin de Turno</div>
-                                    <div style={{ fontSize: '0.72rem', opacity: 0.9 }}>Traspaso institucional de conversaciones activas</div>
-                                </div>
-                            </div>
-                            <button
-                                type="button"
-                                onClick={() => setHandoverModalOpen(false)}
-                                disabled={isExecutingHandover}
-                                style={{ background: 'transparent', border: 'none', color: '#FFFFFF', cursor: 'pointer', padding: '4px' }}
-                            >
-                                <X size={20} />
-                            </button>
-                        </div>
+                                                                {(() => {
+                                                                    const docMeta = getDocumentMeta(msg.mediaUrl, msg.type, msg.caption, msg.text);
+                                                                    return (
+                                                                        <>
+                                                                            {/* TARJETA DE AUDIO / NOTA DE VOZ CON TRANSCRIPCIÓN IA WHISPER */}
+                                                                            {(msg.type === 'audio' || msg.type === 'voice' || (docMeta && docMeta.fileType === 'audio') || msg.audioTranscription) && (
+                                                                                <div style={{
+                                                                                    marginBottom: '10px',
+                                                                                    maxWidth: '420px',
+                                                                                    borderRadius: '12px',
+                                                                                    border: '1.5px solid #DDD6FE',
+                                                                                    backgroundColor: '#FAF5FF',
+                                                                                    padding: '12px 14px',
+                                                                                    boxShadow: '0 2px 8px rgba(124, 58, 237, 0.08)',
+                                                                                    textAlign: 'left'
+                                                                                }}>
+                                                                                    {/* Cabecera del Audio */}
+                                                                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                                                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                                                            <div style={{
+                                                                                                width: '32px',
+                                                                                                height: '32px',
+                                                                                                borderRadius: '50%',
+                                                                                                backgroundColor: '#7C3AED',
+                                                                                                display: 'flex',
+                                                                                                alignItems: 'center',
+                                                                                                justifyContent: 'center',
+                                                                                                color: '#FFFFFF',
+                                                                                                flexShrink: 0,
+                                                                                                boxShadow: '0 2px 4px rgba(124, 58, 237, 0.25)'
+                                                                                            }}>
+                                                                                                <Volume2 size={17} />
+                                                                                            </div>
+                                                                                            <div>
+                                                                                                <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#4C1D95', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                                                                    Mensaje de Voz
+                                                                                                </span>
+                                                                                                <span style={{ fontSize: '0.68rem', color: '#6B21A8' }}>
+                                                                                                    Audio WhatsApp {msg.timestamp ? `• ${msg.timestamp}` : ''}
+                                                                                                </span>
+                                                                                            </div>
+                                                                                        </div>
 
-                        {/* Cuerpo */}
-                        <div style={{ padding: '20px' }}>
-                            <div style={{
-                                background: '#F0F9FF',
-                                border: '1px solid #BAE6FD',
-                                borderRadius: '10px',
-                                padding: '12px 14px',
-                                marginBottom: '16px',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '10px'
-                            }}>
-                                <Clock size={22} color="#0284C7" style={{ flexShrink: 0 }} />
-                                <div style={{ fontSize: '0.8rem', color: '#0369A1', lineHeight: 1.45 }}>
-                                    Vas a realizar el traspaso de <strong>{myAssignedChats.length} conversaciones activas</strong> que tenés asignadas actualmente a nombre de <strong>{activeAgent.name}</strong>.
-                                </div>
-                            </div>
+                                                                                        {/* Descarga de audio */}
+                                                                                        {msg.mediaUrl && (
+                                                                                            <button
+                                                                                                type="button"
+                                                                                                onClick={(e) => {
+                                                                                                    e.preventDefault();
+                                                                                                    e.stopPropagation();
+                                                                                                    downloadAudioMedia(msg.mediaUrl, docMeta?.filename || 'audio_whatsapp.ogg');
+                                                                                                }}
+                                                                                                style={{
+                                                                                                    padding: '4px 8px',
+                                                                                                    borderRadius: '6px',
+                                                                                                    backgroundColor: '#FFFFFF',
+                                                                                                    border: '1px solid #DDD6FE',
+                                                                                                    color: '#6D28D9',
+                                                                                                    fontSize: '0.72rem',
+                                                                                                    fontWeight: 600,
+                                                                                                    display: 'flex',
+                                                                                                    alignItems: 'center',
+                                                                                                    gap: '4px',
+                                                                                                    cursor: 'pointer'
+                                                                                                }}
+                                                                                                title="Descargar audio original (.ogg)"
+                                                                                            >
+                                                                                                <Download size={13} />
+                                                                                            </button>
+                                                                                        )}
+                                                                                    </div>
 
-                            {/* Selector de Destino */}
-                            <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
-                                🎯 Destino del Pase de Guardia:
-                            </label>
-                            <select
-                                value={handoverTargetAgent}
-                                onChange={(e) => setHandoverTargetAgent(e.target.value)}
-                                style={{
-                                    width: '100%',
-                                    padding: '9px 12px',
-                                    borderRadius: '8px',
-                                    border: '1px solid #CBD5E1',
-                                    fontSize: '0.82rem',
-                                    fontWeight: 600,
-                                    outline: 'none',
-                                    marginBottom: '16px',
-                                    background: '#FFFFFF',
-                                    color: '#1E293B'
-                                }}
-                            >
-                                <option value="unassign">🔓 Liberar a la Cola General (Sin Asignar - Cualquier compañera)</option>
-                                <optgroup label="Asignar directamente a una compañera de guardia:">
-                                    {CONTACT_CENTER_AGENTS.filter(a => a.id !== activeAgent.id).map(a => (
-                                        <option key={a.id} value={a.id}>
-                                            👤 {a.name} ({a.role})
-                                        </option>
-                                    ))}
-                                </optgroup>
-                            </select>
+                                                                                    {/* Reproductor de Audio HTML5 Robusto */}
+                                                                                    {msg.mediaUrl && (
+                                                                                        <WhatsAppAudioPlayer mediaUrl={msg.mediaUrl} />
+                                                                                    )}
 
-                            {/* Nota de Auditoría */}
-                            <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
-                                📝 Nota de Pase (se registrará automáticamente como nota interna de auditoría en cada chat):
-                            </label>
-                            <textarea
-                                value={handoverNote}
-                                onChange={(e) => setHandoverNote(e.target.value)}
-                                placeholder="Ej: Fin de jornada 14:00 hs. Quedan 2 pacientes esperando confirmación de turnos..."
-                                rows={3}
-                                style={{
-                                    width: '100%',
-                                    padding: '10px 12px',
-                                    borderRadius: '8px',
-                                    border: '1px solid #CBD5E1',
-                                    fontSize: '0.8rem',
-                                    outline: 'none',
-                                    boxSizing: 'border-box',
-                                    fontFamily: 'inherit',
-                                    resize: 'vertical',
-                                    marginBottom: '8px'
-                                }}
-                            />
-                            <div style={{ fontSize: '0.7rem', color: '#64748B', marginBottom: '16px' }}>
-                                🔒 <em>Esta nota es de uso interno exclusivo del Sanatorio; no se le envía al paciente por WhatsApp.</em>
-                            </div>
+                                                                                    {/* SECCIÓN DE TRANSCRIPCIÓN IA */}
+                                                                                    {msg.audioTranscription ? (
+                                                                                        <div style={{
+                                                                                            backgroundColor: '#FFFFFF',
+                                                                                            borderRadius: '8px',
+                                                                                            border: '1px solid #E9D5FF',
+                                                                                            padding: '10px 12px',
+                                                                                            marginTop: '6px'
+                                                                                        }}>
+                                                                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px', borderBottom: '1px solid #F3E8FF', paddingBottom: '5px' }}>
+                                                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '0.74rem', fontWeight: 800, color: '#6D28D9' }}>
+                                                                                                    <Sparkles size={14} color="#7C3AED" />
+                                                                                                    <span>TRANSCRIPCIÓN ASISTIDA (IA)</span>
+                                                                                                </div>
+                                                                                                <button
+                                                                                                    type="button"
+                                                                                                    onClick={(e) => {
+                                                                                                        e.stopPropagation();
+                                                                                                        navigator.clipboard.writeText(msg.audioTranscription);
+                                                                                                        setCopiedAudioMsgId(msg.id);
+                                                                                                        setTimeout(() => setCopiedAudioMsgId(null), 2000);
+                                                                                                    }}
+                                                                                                    style={{
+                                                                                                        display: 'inline-flex',
+                                                                                                        alignItems: 'center',
+                                                                                                        gap: '4px',
+                                                                                                        background: copiedAudioMsgId === msg.id ? '#DCFCE7' : '#F5F3FF',
+                                                                                                        border: `1px solid ${copiedAudioMsgId === msg.id ? '#86EFAC' : '#DDD6FE'}`,
+                                                                                                        borderRadius: '4px',
+                                                                                                        padding: '2px 8px',
+                                                                                                        fontSize: '0.68rem',
+                                                                                                        fontWeight: 700,
+                                                                                                        color: copiedAudioMsgId === msg.id ? '#15803D' : '#6D28D9',
+                                                                                                        cursor: 'pointer'
+                                                                                                    }}
+                                                                                                >
+                                                                                                    {copiedAudioMsgId === msg.id ? <Check size={12} /> : <Copy size={12} />}
+                                                                                                    {copiedAudioMsgId === msg.id ? 'Copiado' : 'Copiar'}
+                                                                                                </button>
+                                                                                            </div>
 
-                            {/* Resumen de Chats Involucrados */}
-                            <div style={{
-                                maxHeight: '110px',
-                                overflowY: 'auto',
-                                background: '#F8FAFC',
-                                border: '1px solid #E2E8F0',
-                                borderRadius: '8px',
-                                padding: '8px 12px',
-                                fontSize: '0.74rem',
-                                color: '#475569'
-                            }}>
-                                <div style={{ fontWeight: 700, marginBottom: '4px', color: '#1E293B' }}>Conversaciones que se traspasarán:</div>
-                                {myAssignedChats.map(c => (
-                                    <div key={c.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0', borderBottom: '1px dashed #E2E8F0' }}>
-                                        <span>• {getCleanChatName(c)}</span>
-                                        <span style={{ color: '#94A3B8' }}>{c.phone || ''}</span>
-                                    </div>
-                                ))}
-                            </div>
+                                                                                            {/* Texto de la transcripción */}
+                                                                                            <p style={{
+                                                                                                fontSize: '0.85rem',
+                                                                                                color: '#1E1B4B',
+                                                                                                lineHeight: '1.45',
+                                                                                                margin: '0 0 6px 0',
+                                                                                                fontStyle: 'normal',
+                                                                                                fontWeight: 500
+                                                                                            }}>
+                                                                                                "{msg.audioTranscription}"
+                                                                                            </p>
 
-                            {/* Botones de Acción */}
-                            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '20px' }}>
-                                <button
-                                    type="button"
-                                    onClick={() => setHandoverModalOpen(false)}
-                                    disabled={isExecutingHandover}
-                                    style={{
-                                        padding: '8px 16px', borderRadius: '8px', border: '1px solid #CBD5E1',
-                                        background: '#FFFFFF', color: '#475569', fontSize: '0.8rem', fontWeight: 700,
-                                        cursor: 'pointer'
-                                    }}
-                                >
-                                    Cancelar
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={handleConfirmHandover}
-                                    disabled={isExecutingHandover || myAssignedChats.length === 0}
-                                    style={{
-                                        padding: '8px 18px', borderRadius: '8px', border: 'none',
-                                        background: 'linear-gradient(135deg, #0284C7 0%, #0369A1 100%)',
-                                        color: '#FFFFFF', fontSize: '0.8rem', fontWeight: 800,
-                                        cursor: isExecutingHandover ? 'not-allowed' : 'pointer',
-                                        display: 'flex', alignItems: 'center', gap: '6px',
-                                        boxShadow: '0 2px 4px rgba(2, 132, 199, 0.3)'
-                                    }}
-                                >
-                                    {isExecutingHandover ? (
-                                        <>
-                                            <RefreshCw size={14} className="animate-spin" />
-                                            <span>Traspasando...</span>
-                                        </>
-                                    ) : (
-                                        <>
-                                            <CheckCircle2 size={14} />
-                                            <span>Confirmar Pase de Guardia</span>
-                                        </>
-                                    )}
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
+                                                                                            {/* Comprensión Clínica Extraída */}
+                                                                                            {msg.audioUnderstanding && (
+                                                                                                <div style={{
+                                                                                                    marginTop: '8px',
+                                                                                                    paddingTop: '6px',
+                                                                                                    borderTop: '1px dashed #E9D5FF',
+                                                                                                    display: 'flex',
+                                                                                                    flexWrap: 'wrap',
+                                                                                                    gap: '6px',
+                                                                                                    alignItems: 'center'
+                                                                                                }}>
+                                                                                                    {msg.audioUnderstanding.intent && (
+                                                                                                        <span style={{
+                                                                                                            fontSize: '0.68rem',
+                                                                                                            fontWeight: 700,
+                                                                                                            backgroundColor: '#EDE9FE',
+                                                                                                            color: '#5B21B6',
+                                                                                                            padding: '2px 7px',
+                                                                                                            borderRadius: '4px'
+                                                                                                        }}>
+                                                                                                            🎯 {msg.audioUnderstanding.intent}
+                                                                                                        </span>
+                                                                                                    )}
+                                                                                                    {msg.audioUnderstanding.doctor && (
+                                                                                                        <span style={{
+                                                                                                            fontSize: '0.68rem',
+                                                                                                            fontWeight: 700,
+                                                                                                            backgroundColor: '#E0E7FF',
+                                                                                                            color: '#3730A3',
+                                                                                                            padding: '2px 7px',
+                                                                                                            borderRadius: '4px'
+                                                                                                        }}>
+                                                                                                            👨‍⚕️ Dr/a: {msg.audioUnderstanding.doctor}
+                                                                                                        </span>
+                                                                                                    )}
+                                                                                                    {msg.audioUnderstanding.healthInsurance && (
+                                                                                                        <span style={{
+                                                                                                            fontSize: '0.68rem',
+                                                                                                            fontWeight: 700,
+                                                                                                            backgroundColor: '#FEF3C7',
+                                                                                                            color: '#92400E',
+                                                                                                            padding: '2px 7px',
+                                                                                                            borderRadius: '4px'
+                                                                                                        }}>
+                                                                                                            🏥 O.S: {msg.audioUnderstanding.healthInsurance}
+                                                                                                        </span>
+                                                                                                    )}
+                                                                                                    {msg.audioUnderstanding.urgency && msg.audioUnderstanding.urgency !== 'baja' && msg.audioUnderstanding.urgency !== 'normal' && (
+                                                                                                        <span style={{
+                                                                                                            fontSize: '0.68rem',
+                                                                                                            fontWeight: 700,
+                                                                                                            backgroundColor: '#FEE2E2',
+                                                                                                            color: '#991B1B',
+                                                                                                            padding: '2px 7px',
+                                                                                                            borderRadius: '4px'
+                                                                                                        }}>
+                                                                                                            ⚠️ Urgencia {msg.audioUnderstanding.urgency.toUpperCase()}
+                                                                                                        </span>
+                                                                                                    )}
+                                                                                                </div>
+                                                                                            )}
+                                                                                        </div>
+                                                                                    ) : (
+                                                                                        /* Botón para solicitar Transcripción con IA a demanda */
+                                                                                        <div style={{ marginTop: '8px' }}>
+                                                                                            <button
+                                                                                                type="button"
+                                                                                                disabled={transcribingMsgId === msg.id || !msg.mediaUrl}
+                                                                                                onClick={async (e) => {
+                                                                                                    e.stopPropagation();
+                                                                                                    try {
+                                                                                                        setTranscribingMsgId(msg.id);
+                                                                                                        const result = await transcribeAudioMessage(msg.mediaUrl, msg.realId || msg.id, selectedChat?.phone);
+                                                                                                        if (result && result.transcription) {
+                                                                                                            msg.audioTranscription = result.transcription;
+                                                                                                            msg.audioUnderstanding = result.understanding;
+                                                                                                            setForceUpdate(k => k + 1);
+                                                                                                        }
+                                                                                                    } catch (err) {
+                                                                                                        alert('No se pudo transcribir el audio: ' + (err.message || 'Error'));
+                                                                                                    } finally {
+                                                                                                        setTranscribingMsgId(null);
+                                                                                                    }
+                                                                                                }}
+                                                                                                style={{
+                                                                                                    width: '100%',
+                                                                                                    display: 'flex',
+                                                                                                    alignItems: 'center',
+                                                                                                    justifyContent: 'center',
+                                                                                                    gap: '6px',
+                                                                                                    padding: '6px 12px',
+                                                                                                    borderRadius: '6px',
+                                                                                                    backgroundColor: '#7C3AED',
+                                                                                                    color: '#FFFFFF',
+                                                                                                    border: 'none',
+                                                                                                    fontSize: '0.74rem',
+                                                                                                    fontWeight: 700,
+                                                                                                    cursor: transcribingMsgId === msg.id ? 'wait' : 'pointer',
+                                                                                                    boxShadow: '0 1px 3px rgba(124,58,237,0.2)'
+                                                                                                }}
+                                                                                            >
+                                                                                                {transcribingMsgId === msg.id ? (
+                                                                                                    <>
+                                                                                                        <RefreshCw size={13} className="animate-spin" />
+                                                                                                        <span>Transcribiendo audio con IA...</span>
+                                                                                                    </>
+                                                                                                ) : (
+                                                                                                    <>
+                                                                                                        <Sparkles size={13} />
+                                                                                                        <span>Transcribir y entender audio con IA</span>
+                                                                                                    </>
+                                                                                                )}
+                                                                                            </button>
+                                                                                        </div>
+                                                                                    )}
+                                                                                </div>
+                                                                            )}
 
+                                                                            {/* TARJETA DE DOCUMENTO ADJUNTO (PDF, WORD, EXCEL, ETC.) - EXCLUIR ESTRICTAMENTE AUDIOS */}
+                                                                            {docMeta && docMeta.fileType !== 'image' && docMeta.fileType !== 'audio' && msg.type !== 'audio' && msg.type !== 'voice' && !msg.text?.startsWith('_event_voice_note_') && msg.mediaUrl && (
+                                                                                <div style={{
+                                                                                    marginBottom: '10px',
+                                                                                    maxWidth: '380px',
+                                                                                    borderRadius: '10px',
+                                                                                    border: `1.5px solid ${docMeta.borderColor}`,
+                                                                                    backgroundColor: docMeta.bgColor,
+                                                                                    padding: '12px 14px',
+                                                                                    boxShadow: '0 2px 6px rgba(0,0,0,0.05)',
+                                                                                    textAlign: 'left'
+                                                                                }}>
+                                                                                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
+                                                                                        <div style={{
+                                                                                            width: '40px',
+                                                                                            height: '40px',
+                                                                                            borderRadius: '8px',
+                                                                                            backgroundColor: '#FFFFFF',
+                                                                                            border: `1px solid ${docMeta.borderColor}`,
+                                                                                            display: 'flex',
+                                                                                            alignItems: 'center',
+                                                                                            justifyContent: 'center',
+                                                                                            color: docMeta.color,
+                                                                                            flexShrink: 0,
+                                                                                            boxShadow: '0 1px 3px rgba(0,0,0,0.08)'
+                                                                                        }}>
+                                                                                            {docMeta.fileType === 'pdf' && <FileText size={22} />}
+                                                                                            {docMeta.fileType === 'word' && <FileText size={22} />}
+                                                                                            {docMeta.fileType === 'excel' && <FileSpreadsheet size={22} />}
+                                                                                            {docMeta.fileType === 'document' && <File size={22} />}
+                                                                                        </div>
+                                                                                        <div style={{ flex: 1, minWidth: 0 }}>
+                                                                                            <div style={{
+                                                                                                fontSize: '0.82rem',
+                                                                                                fontWeight: 700,
+                                                                                                color: '#0F172A',
+                                                                                                whiteSpace: 'nowrap',
+                                                                                                overflow: 'hidden',
+                                                                                                textOverflow: 'ellipsis'
+                                                                                            }} title={docMeta.filename}>
+                                                                                                {docMeta.filename}
+                                                                                            </div>
+                                                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '3px' }}>
+                                                                                                <span style={{
+                                                                                                    fontSize: '0.68rem',
+                                                                                                    fontWeight: 700,
+                                                                                                    backgroundColor: docMeta.color,
+                                                                                                    color: '#FFFFFF',
+                                                                                                    padding: '1px 6px',
+                                                                                                    borderRadius: '4px',
+                                                                                                    letterSpacing: '0.5px'
+                                                                                                }}>
+                                                                                                    {docMeta.ext}
+                                                                                                </span>
+                                                                                                <span style={{ fontSize: '0.72rem', color: '#64748B' }}>
+                                                                                                    {docMeta.label}
+                                                                                                </span>
+                                                                                            </div>
+                                                                                        </div>
+                                                                                    </div>
 
-            {/* Modal Exclusivo para lmarinero: Borrado de Historial y Eliminación de Contexto de IA */}
-            {deleteContextModalOpen && chatTargetToDelete && isStrictLMarinero && (
+                                                                                    {/* BOTONES DE ACCIÓN */}
+                                                                                    <div style={{
+                                                                                        display: 'flex',
+                                                                                        alignItems: 'center',
+                                                                                        gap: '8px',
+                                                                                        marginTop: '10px',
+                                                                                        paddingTop: '8px',
+                                                                                        borderTop: `1px solid ${docMeta.borderColor}`
+                                                                                    }}>
+                                                                                        <button
+                                                                                            type="button"
+                                                                                            onClick={() => {
+                                                                                                setViewerZoom(1);
+                                                                                                setViewerRotation(0);
+                                                                                                setCopiedViewerData(false);
+                                                                                                setViewerImage({
+                                                                                                    url: msg.mediaUrl,
+                                                                                                    caption: msg.caption || docMeta.filename,
+                                                                                                    filename: docMeta.filename,
+                                                                                                    fileType: docMeta.fileType,
+                                                                                                    ext: docMeta.ext,
+                                                                                                    orderAnalysis: msg.orderAnalysis,
+                                                                                                    senderName: selectedChat?.contactName || msg.senderName || 'Paciente',
+                                                                                                    dni: selectedChat?.dni,
+                                                                                                    timestamp: msg.timestamp
+                                                                                                });
+                                                                                            }}
+                                                                                            style={{
+                                                                                                flex: 1,
+                                                                                                display: 'flex',
+                                                                                                alignItems: 'center',
+                                                                                                justifyContent: 'center',
+                                                                                                gap: '6px',
+                                                                                                padding: '6px 12px',
+                                                                                                borderRadius: '6px',
+                                                                                                backgroundColor: docMeta.color,
+                                                                                                color: '#FFFFFF',
+                                                                                                border: 'none',
+                                                                                                fontSize: '0.74rem',
+                                                                                                fontWeight: 700,
+                                                                                                cursor: 'pointer',
+                                                                                                boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
+                                                                                            }}
+                                                                                        >
+                                                                                            <Eye size={14} /> Abrir en Visor Profesional
+                                                                                        </button>
+                                                                                        <a
+                                                                                            href={msg.mediaUrl}
+                                                                                            target="_blank"
+                                                                                            rel="noopener noreferrer"
+                                                                                            download={docMeta.filename}
+                                                                                            style={{
+                                                                                                display: 'flex',
+                                                                                                alignItems: 'center',
+                                                                                                justifyContent: 'center',
+                                                                                                padding: '6px 10px',
+                                                                                                borderRadius: '6px',
+                                                                                                backgroundColor: '#FFFFFF',
+                                                                                                color: '#475569',
+                                                                                                border: `1px solid ${docMeta.borderColor}`,
+                                                                                                fontSize: '0.74rem',
+                                                                                                fontWeight: 600,
+                                                                                                textDecoration: 'none',
+                                                                                                cursor: 'pointer'
+                                                                                            }}
+                                                                                            title="Descargar o abrir en pestaña nueva"
+                                                                                        >
+                                                                                            <Download size={14} />
+                                                                                        </a>
+                                                                                    </div>
+                                                                                </div>
+                                                                            )}
 
-                <div style={{
-                    position: 'fixed', inset: 0, zIndex: 120,
-                    backgroundColor: 'rgba(15, 23, 42, 0.75)',
-                    backdropFilter: 'blur(5px)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    padding: '16px'
-                }}>
-                    <div style={{
-                        backgroundColor: '#FFFFFF',
-                        borderRadius: '16px',
-                        maxWidth: '480px',
-                        width: '100%',
-                        boxShadow: '0 25px 50px -12px rgba(220, 38, 38, 0.25)',
-                        border: '1px solid #FECACA',
-                        overflow: 'hidden'
-                    }}>
-                        {/* Cabecera Peligro */}
-                        <div style={{
-                            padding: '16px 20px',
-                            background: 'linear-gradient(135deg, #DC2626 0%, #991B1B 100%)',
-                            color: '#FFFFFF',
-                            display: 'flex', alignItems: 'center', justifyContent: 'space-between'
-                        }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontWeight: 800, fontSize: '0.95rem' }}>
-                                <Trash2 size={20} />
-                                <div>
-                                    <div>Borrar Chat y Eliminar Contexto</div>
-                                    <div style={{ fontSize: '0.68rem', fontWeight: 500, opacity: 0.9 }}>Acceso Exclusivo: @lmarinero</div>
-                                </div>
-                            </div>
-                            <button
-                                type="button"
-                                onClick={() => setDeleteContextModalOpen(false)}
-                                style={{ border: 'none', background: 'transparent', color: '#FFFFFF', cursor: 'pointer' }}
-                            >
-                                <X size={18} />
-                            </button>
-                        </div>
+                                                                            {/* TARJETA DE STICKER NATIVO WHATSAPP */}
+                                                                            {(msg.type === 'sticker' || msg.mediaType === 'sticker' || (docMeta && docMeta.fileType === 'sticker') || (msg.mediaUrl && (msg.text === '[sticker]' || msg.mediaUrl.endsWith('.webp')))) && (
+                                                                                <div style={{ margin: '4px 0', display: 'flex', flexDirection: 'column', alignItems: isPatient ? 'flex-start' : 'flex-end' }}>
+                                                                                    {msg.mediaUrl ? (
+                                                                                        <img
+                                                                                            src={msg.mediaUrl}
+                                                                                            alt="Sticker WhatsApp"
+                                                                                            style={{
+                                                                                                maxWidth: '135px',
+                                                                                                maxHeight: '135px',
+                                                                                                objectFit: 'contain',
+                                                                                                background: 'transparent',
+                                                                                                filter: 'drop-shadow(0 2px 5px rgba(0,0,0,0.15))'
+                                                                                            }}
+                                                                                        />
+                                                                                    ) : (
+                                                                                        <div style={{
+                                                                                            display: 'inline-flex', alignItems: 'center', gap: '6px',
+                                                                                            padding: '6px 12px', background: '#F1F5F9', borderRadius: '8px',
+                                                                                            fontSize: '0.78rem', color: '#475569'
+                                                                                        }}>
+                                                                                            <span style={{ fontSize: '1.2rem' }}>🏷️</span> Sticker WhatsApp
+                                                                                        </div>
+                                                                                    )}
+                                                                                </div>
+                                                                            )}
 
-                        {/* Cuerpo */}
-                        <div style={{ padding: '20px' }}>
-                            <div style={{
-                                background: '#FEF2F2',
-                                border: '1px solid #FCA5A5',
-                                borderRadius: '10px',
-                                padding: '12px 14px',
-                                marginBottom: '14px',
-                                display: 'flex',
-                                alignItems: 'flex-start',
-                                gap: '10px'
-                            }}>
-                                <AlertTriangle size={20} color="#DC2626" style={{ flexShrink: 0, marginTop: '2px' }} />
-                                <div style={{ fontSize: '0.78rem', color: '#991B1B', lineHeight: 1.4 }}>
-                                    <strong>¡Acción destructiva e irreversible!</strong>
-                                    <div style={{ marginTop: '4px' }}>
-                                        Se eliminarán <strong>todos los mensajes de WhatsApp</strong> y se reseteará por completo el <strong>contexto acumulado de la IA</strong> (resumen clínico, variables de triage, memoria previa y asignación).
-                                    </div>
-                                </div>
-                            </div>
+                                                                            {/* TARJETA DE IMAGEN MÉDICA / ORDEN */}
+                                                                            {(msg.type === 'image' || (docMeta && docMeta.fileType === 'image' && msg.mediaUrl)) && (
+                                                                                <div style={{ marginBottom: '8px', maxWidth: '340px' }}>
+                                                                                    <div
+                                                                                        style={{
+                                                                                            borderRadius: '8px',
+                                                                                            overflow: 'hidden',
+                                                                                            border: '1px solid #CBD5E1',
+                                                                                            cursor: 'pointer',
+                                                                                            position: 'relative',
+                                                                                            boxShadow: '0 2px 6px rgba(0,0,0,0.06)'
+                                                                                        }}
+                                                                                        onClick={() => {
+                                                                                            if (!msg.mediaUrl) return;
+                                                                                            setViewerZoom(1);
+                                                                                            setViewerRotation(0);
+                                                                                            setCopiedViewerData(false);
+                                                                                            setViewerImage({
+                                                                                                url: msg.mediaUrl,
+                                                                                                caption: msg.caption,
+                                                                                                filename: docMeta?.filename || 'orden_medica.jpg',
+                                                                                                fileType: 'image',
+                                                                                                ext: 'IMG',
+                                                                                                orderAnalysis: msg.orderAnalysis,
+                                                                                                senderName: selectedChat?.contactName || msg.senderName || 'Paciente',
+                                                                                                dni: selectedChat?.dni,
+                                                                                                timestamp: msg.timestamp
+                                                                                            });
+                                                                                        }}
+                                                                                        title="Click para abrir en el visor profesional integrado"
+                                                                                    >
+                                                                                        <img src={msg.mediaUrl} alt={msg.caption || 'Foto de Orden'} style={{ width: '100%', maxHeight: '220px', objectFit: 'contain', background: '#0F172A', display: 'block' }} />
+                                                                                        <div style={{
+                                                                                            position: 'absolute', bottom: msg.caption ? '36px' : '8px', right: '8px',
+                                                                                            background: 'rgba(15, 23, 42, 0.8)', backdropFilter: 'blur(4px)',
+                                                                                            color: '#FFFFFF', padding: '3px 8px', borderRadius: '4px',
+                                                                                            fontSize: '0.68rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px',
+                                                                                            boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+                                                                                        }}>
+                                                                                            <Eye size={12} /> Abrir Visor
+                                                                                        </div>
+                                                                                        {msg.caption && (
+                                                                                            <div style={{ padding: '6px 10px', background: '#F8FAFC', fontSize: '0.75rem', color: '#64748B' }}>
+                                                                                                📄 {msg.caption}
+                                                                                            </div>
+                                                                                        )}
+                                                                                    </div>
 
-                            <div style={{
-                                background: '#F8FAFC',
-                                border: '1px solid #E2E8F0',
-                                borderRadius: '10px',
-                                padding: '12px 14px',
-                                marginBottom: '16px'
-                            }}>
-                                <div style={{ fontSize: '0.72rem', color: '#64748B', fontWeight: 700, textTransform: 'uppercase', marginBottom: '4px' }}>
-                                    Detalle de la Conversación:
-                                </div>
-                                <div style={{ fontSize: '0.86rem', fontWeight: 800, color: '#0F172A' }}>
-                                    {getCleanChatName(chatTargetToDelete)}
-                                </div>
-                                <div style={{ fontSize: '0.78rem', color: '#0284C7', fontWeight: 700, marginTop: '2px' }}>
-                                    Teléfono: +{chatTargetToDelete.phone}
-                                </div>
-                                {chatTargetToDelete.customFields?.dni && chatTargetToDelete.customFields?.dni !== 'A verificar' && (
-                                    <div style={{ fontSize: '0.74rem', color: '#475569', marginTop: '2px' }}>
-                                        DNI: {chatTargetToDelete.customFields.dni}
-                                    </div>
-                                )}
-                            </div>
+                                                                                    {/* Tarjeta de Análisis Clínico IA de la Orden Médica (Exclusivo para el Operador) */}
+                                                                                    {msg.orderAnalysis ? (
+                                                                                        <div style={{
+                                                                                            marginTop: '6px',
+                                                                                            padding: '10px 12px',
+                                                                                            background: '#F0FDF4',
+                                                                                            border: '1.5px solid #86EFAC',
+                                                                                            borderRadius: '8px',
+                                                                                            fontSize: '0.78rem',
+                                                                                            color: '#0F172A',
+                                                                                            lineHeight: 1.5,
+                                                                                            boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+                                                                                            textAlign: 'left'
+                                                                                        }}>
+                                                                                            <div style={{
+                                                                                                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                                                                                marginBottom: '6px', paddingBottom: '4px', borderBottom: '1px solid #BBF7D0'
+                                                                                            }}>
+                                                                                                <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#166534', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                                                                                    🩺 DATOS DE LA ORDEN (IA)
+                                                                                                </span>
+                                                                                                <button
+                                                                                                    onClick={(e) => {
+                                                                                                        e.stopPropagation();
+                                                                                                        const textToCopy = msg.orderAnalysis.raw_summary ||
+                                                                                                            `Estudio a autorizar: ${msg.orderAnalysis.estudio || 'No especificado'}
+Solicitante: ${msg.orderAnalysis.solicitante || 'No especificado'}
+Matricula: ${msg.orderAnalysis.matricula || 'No especificada'}
+Diagnostico: ${msg.orderAnalysis.diagnostico || 'No especificado'}
+Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
+                                                                                                        navigator.clipboard.writeText(textToCopy);
+                                                                                                        alert('Ficha copiada al portapapeles');
+                                                                                                    }}
+                                                                                                    style={{
+                                                                                                        background: 'none', border: 'none', cursor: 'pointer',
+                                                                                                        fontSize: '0.68rem', color: '#15803D', fontWeight: 700, padding: 0
+                                                                                                    }}
+                                                                                                    title="Copiar datos de la orden"
+                                                                                                >
+                                                                                                    📋 Copiar
+                                                                                                </button>
+                                                                                            </div>
+                                                                                            <div style={{ display: 'grid', gap: '3px' }}>
+                                                                                                <div><span style={{ fontWeight: 700, color: '#1E293B' }}>Estudio a autorizar:</span> {msg.orderAnalysis.estudio || 'No especificado'}</div>
+                                                                                                <div><span style={{ fontWeight: 700, color: '#1E293B' }}>Solicitante:</span> {msg.orderAnalysis.solicitante || 'No especificado'}</div>
+                                                                                                <div><span style={{ fontWeight: 700, color: '#1E293B' }}>Matricula:</span> {msg.orderAnalysis.matricula || 'No especificada'}</div>
+                                                                                                <div><span style={{ fontWeight: 700, color: '#1E293B' }}>Diagnostico:</span> {msg.orderAnalysis.diagnostico || 'No especificado'}</div>
+                                                                                                <div><span style={{ fontWeight: 700, color: '#1E293B' }}>Fecha de solicitud:</span> {msg.orderAnalysis.fecha_solicitud || 'No especificada'}</div>
+                                                                                                {/* CONTROL DE VIGENCIA DE 30 DÍAS */}
+                                                                                                {msg.orderAnalysis.vigencia_estado && (
+                                                                                                    <div style={{
+                                                                                                        marginTop: '5px',
+                                                                                                        padding: '6px 8px',
+                                                                                                        borderRadius: '6px',
+                                                                                                        background: msg.orderAnalysis.vigencia_estado === 'vencida' ? '#FEF2F2' : (msg.orderAnalysis.vigencia_estado === 'vigente' ? '#ECFDF5' : '#F8FAFC'),
+                                                                                                        border: `1px solid ${msg.orderAnalysis.vigencia_estado === 'vencida' ? '#FCA5A5' : (msg.orderAnalysis.vigencia_estado === 'vigente' ? '#86EFAC' : '#E2E8F0')}`,
+                                                                                                        color: msg.orderAnalysis.vigencia_estado === 'vencida' ? '#B91C1C' : (msg.orderAnalysis.vigencia_estado === 'vigente' ? '#15803D' : '#64748B'),
+                                                                                                        fontWeight: 700,
+                                                                                                        fontSize: '0.72rem',
+                                                                                                        display: 'flex',
+                                                                                                        flexDirection: 'column',
+                                                                                                        gap: '4px'
+                                                                                                    }}>
+                                                                                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
+                                                                                                            <span>{msg.orderAnalysis.alerta_vigencia}</span>
+                                                                                                            {msg.orderAnalysis.vigencia_estado === 'vencida' && (
+                                                                                                                <button
+                                                                                                                    type="button"
+                                                                                                                    onClick={(e) => {
+                                                                                                                        e.stopPropagation();
+                                                                                                                        const aviso = `Estimado/a paciente, verificamos su orden médica para "${msg.orderAnalysis.estudio || 'la práctica solicitada'}" pero observamos que fue emitida el ${msg.orderAnalysis.fecha_solicitud} (hace ${msg.orderAnalysis.dias_transcurridos || '>30'} días). Por normativa de las obras sociales, las órdenes médicas poseen una vigencia máxima de 30 días corridos para su autorización. Por favor solicite a su médico tratante la renovación o revalidación de la orden. ¡Muchas gracias!`;
+                                                                                                                        navigator.clipboard.writeText(aviso);
+                                                                                                                        alert('Aviso de orden vencida copiado al portapapeles. Podés pegarlo directamente en el chat.');
+                                                                                                                    }}
+                                                                                                                    style={{
+                                                                                                                        background: '#DC2626', color: '#FFFFFF', border: 'none',
+                                                                                                                        borderRadius: '4px', padding: '2px 6px', fontSize: '0.64rem',
+                                                                                                                        fontWeight: 800, cursor: 'pointer', whiteSpace: 'nowrap'
+                                                                                                                    }}
+                                                                                                                    title="Copiar respuesta modelo de orden vencida para el paciente"
+                                                                                                                >
+                                                                                                                    Copiar aviso
+                                                                                                                </button>
+                                                                                                            )}
+                                                                                                        </div>
+                                                                                                    </div>
+                                                                                                )}
+                                                                                            </div>
+                                                                                        </div>
+                                                                                    ) : (
+                                                                                        <div style={{ marginTop: '6px', textAlign: 'left' }}>
+                                                                                            <button
+                                                                                                onClick={async (e) => {
+                                                                                                    e.stopPropagation();
+                                                                                                    try {
+                                                                                                        setAnalyzingMsgId(msg.id);
+                                                                                                        const analysis = await analyzeMedicalOrderImage(msg.mediaUrl, msg.realId, selectedChat?.phone);
+                                                                                                        if (analysis) {
+                                                                                                            msg.orderAnalysis = analysis;
+                                                                                                            setForceUpdate(k => k + 1);
+                                                                                                        }
+                                                                                                    } catch (err) {
+                                                                                                        alert('No se pudo analizar la imagen: ' + (err.message || 'Error'));
+                                                                                                    } finally {
+                                                                                                        setAnalyzingMsgId(null);
+                                                                                                    }
+                                                                                                }}
+                                                                                                disabled={analyzingMsgId === msg.id}
+                                                                                                style={{
+                                                                                                    display: 'inline-flex', alignItems: 'center', gap: '5px',
+                                                                                                    padding: '4px 10px', borderRadius: '6px',
+                                                                                                    background: '#F1F5F9', border: '1px solid #CBD5E1',
+                                                                                                    fontSize: '0.72rem', fontWeight: 700, color: '#334155',
+                                                                                                    cursor: analyzingMsgId === msg.id ? 'wait' : 'pointer'
+                                                                                                }}
+                                                                                            >
+                                                                                                {analyzingMsgId === msg.id ? (
+                                                                                                    <>⏳ Analizando orden con IA...</>
+                                                                                                ) : (
+                                                                                                    <>🔍 Analizar orden médica con IA</>
+                                                                                                )}
+                                                                                            </button>
+                                                                                        </div>
+                                                                                    )}
+                                                                                </div>
+                                                                            )}
+                                                                        </>
+                                                                    );
+                                                                })()}
 
-                            <p style={{ margin: '0 0 16px', fontSize: '0.78rem', color: '#475569', lineHeight: 1.4 }}>
-                                Cuando este paciente vuelva a escribir, ingresará como una conversación completamente nueva desde el menú inicial de autogestión sin historial contaminado.
-                            </p>
+                                                                {msg.text && !msg.text.startsWith('_event_') && msg.text !== msg.audioTranscription && !(msg.text === '[sticker]' && (msg.type === 'sticker' || msg.mediaUrl)) && (
+                                                                    msg.text.startsWith('📋 [Plantilla Meta') ? (
+                                                                        <div style={{
+                                                                            background: '#F0F9FF',
+                                                                            border: '1px solid #BAE6FD',
+                                                                            borderRadius: '8px',
+                                                                            padding: '8px 10px',
+                                                                            color: '#0369A1'
+                                                                        }}>
+                                                                            <div style={{
+                                                                                fontSize: '0.67rem',
+                                                                                fontWeight: 800,
+                                                                                color: '#0284C7',
+                                                                                textTransform: 'uppercase',
+                                                                                marginBottom: '4px',
+                                                                                display: 'flex',
+                                                                                alignItems: 'center',
+                                                                                gap: '4px'
+                                                                            }}>
+                                                                                <LayoutTemplate size={12} /> Plantilla Oficial de Meta WhatsApp
+                                                                            </div>
+                                                                            <div style={{ whiteSpace: 'pre-line', fontSize: '0.84rem', color: '#1E293B', lineHeight: 1.45, wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
+                                                                                {formatWhatsAppText(msg.text.replace(/^📋\s*\[Plantilla Meta:[^\]]*\]\s*/, ''))}
+                                                                            </div>
+                                                                        </div>
+                                                                    ) : (
+                                                                        <div style={{ whiteSpace: 'pre-line', wordBreak: 'break-word', overflowWrap: 'anywhere', maxWidth: '100%', minWidth: 0, userSelect: 'text', cursor: 'text' }}>
+                                                                            {formatWhatsAppText(msg.text)}
+                                                                        </div>
+                                                                    )
+                                                                )}
 
-                            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-                                <button
-                                    type="button"
-                                    onClick={() => setDeleteContextModalOpen(false)}
-                                    disabled={isDeletingChatContext}
-                                    style={{
-                                        padding: '8px 16px', borderRadius: '8px', border: '1px solid #CBD5E1',
-                                        background: '#FFFFFF', color: '#475569', fontSize: '0.8rem', fontWeight: 700,
-                                        cursor: 'pointer'
-                                    }}
-                                >
-                                    Cancelar
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={handleConfirmDeleteChatContext}
-                                    disabled={isDeletingChatContext}
-                                    style={{
-                                        padding: '8px 18px', borderRadius: '8px', border: 'none',
-                                        background: '#DC2626', color: '#FFFFFF', fontSize: '0.8rem', fontWeight: 800,
-                                        cursor: isDeletingChatContext ? 'wait' : 'pointer',
-                                        display: 'flex', alignItems: 'center', gap: '6px',
-                                        boxShadow: '0 4px 6px -1px rgba(220, 38, 38, 0.3)'
-                                    }}
-                                >
-                                    {isDeletingChatContext ? (
-                                        <>
-                                            <Loader2 size={14} className="animate-spin" />
-                                            <span>Eliminando...</span>
-                                        </>
-                                    ) : (
-                                        <>
-                                            <Trash2 size={14} />
-                                            <span>Sí, borrar chat y contexto</span>
-                                        </>
-                                    )}
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
+                                                                {/* Reacciones Emoji en la burbuja */}
+                                                                {Array.isArray(msg.reactions) && msg.reactions.length > 0 && (
+                                                                    <div style={{
+                                                                        display: 'flex',
+                                                                        flexWrap: 'wrap',
+                                                                        gap: '4px',
+                                                                        marginTop: '6px',
+                                                                        marginBottom: '2px',
+                                                                        justifyContent: isPatient ? 'flex-start' : 'flex-end'
+                                                                    }}>
+                                                                        {msg.reactions.map((rx, rIdx) => (
+                                                                            <button
+                                                                                key={rIdx}
+                                                                                type="button"
+                                                                                title={`Reacción de ${rx.agentName || rx.name || 'Usuario'}`}
+                                                                                onClick={(e) => {
+                                                                                    e.stopPropagation();
+                                                                                    onToggleReaction?.(msg, rx.emoji);
+                                                                                }}
+                                                                                style={{
+                                                                                    display: 'inline-flex',
+                                                                                    alignItems: 'center',
+                                                                                    gap: '3px',
+                                                                                    background: '#FFFFFF',
+                                                                                    border: '1px solid #CBD5E1',
+                                                                                    borderRadius: '12px',
+                                                                                    padding: '1px 6px',
+                                                                                    fontSize: '0.72rem',
+                                                                                    cursor: 'pointer',
+                                                                                    boxShadow: '0 1px 2px rgba(0,0,0,0.06)',
+                                                                                    lineHeight: 1.2
+                                                                                }}
+                                                                            >
+                                                                                <span>{rx.emoji}</span>
+                                                                            </button>
+                                                                        ))}
+                                                                    </div>
+                                                                )}
 
-            {/* Modal de Envío de Plantillas Oficiales de Meta (WhatsApp Business) */}
-            {templateModalOpen && (
-                <div style={{
-                    position: 'fixed', inset: 0, zIndex: 120,
-                    backgroundColor: 'rgba(15, 23, 42, 0.65)',
-                    backdropFilter: 'blur(4px)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    padding: '16px'
-                }}>
-                    <div style={{
-                        backgroundColor: '#FFFFFF',
-                        borderRadius: '16px',
-                        maxWidth: '560px',
-                        width: '100%',
-                        boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
-                        border: '1px solid #E2E8F0',
-                        overflow: 'hidden',
-                        display: 'flex',
-                        flexDirection: 'column'
-                    }}>
-                        {/* Cabecera */}
-                        <div style={{
-                            padding: '16px 20px',
-                            background: 'linear-gradient(135deg, #0284C7 0%, #0369A1 100%)',
-                            color: '#FFFFFF',
-                            display: 'flex', alignItems: 'center', justifyContent: 'space-between'
-                        }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                <div style={{
-                                    width: '36px', height: '36px', borderRadius: '10px',
-                                    background: 'rgba(255, 255, 255, 0.2)',
-                                    display: 'flex', alignItems: 'center', justifyContent: 'center'
-                                }}>
-                                    <LayoutTemplate size={20} color="#FFFFFF" />
-                                </div>
-                                <div>
-                                    <div style={{ fontWeight: 800, fontSize: '0.98rem' }}>Plantillas Oficiales de WhatsApp (Meta)</div>
-                                    <div style={{ fontSize: '0.72rem', opacity: 0.9 }}>
-                                        {is24hWindowExpired 
-                                            ? 'Ventana de 24hs expirada • Inicio obligatorio con plantilla' 
-                                            : 'Inicio institucional de conversación con plantilla aprobada'}
-                                    </div>
-                                </div>
-                            </div>
-                            <button
-                                type="button"
-                                onClick={() => setTemplateModalOpen(false)}
-                                disabled={sendingTemplate}
-                                style={{ background: 'transparent', border: 'none', color: '#FFFFFF', cursor: 'pointer', padding: '4px' }}
-                            >
-                                <X size={20} />
-                            </button>
-                        </div>
+                                                                <div style={{
+                                                                    fontSize: '0.68rem', color: '#94A3B8', marginTop: '6px',
+                                                                    textAlign: 'right', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '4px'
+                                                                }}>
+                                                                    <span title={msg.created_at ? new Date(msg.created_at).toLocaleString('es-AR') : msg.timestamp}>
+                                                                        {msg.created_at && !formatChatDateDivider(msg.created_at)?.startsWith('Hoy') && (
+                                                                            <span style={{ marginRight: '4px', opacity: 0.85, fontWeight: 700 }}>
+                                                                                {new Date(msg.created_at).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' })}
+                                                                            </span>
+                                                                        )}
+                                                                        {msg.timestamp}
+                                                                    </span>
+                                                                    {!isPatient && !isNote && (
+                                                                        <span title="Entregado al paciente por WhatsApp (Doble tilde)">
+                                                                            <CheckCheck size={14} color="#0284C7" />
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                            </div>
 
-                        {/* Cuerpo */}
-                        <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px', maxHeight: '75vh', overflowY: 'auto' }}>
-                            {/* Alerta de Estado 24h */}
-                            <div style={{
-                                background: is24hWindowExpired ? '#FFFBEB' : '#F0FDF4',
-                                border: is24hWindowExpired ? '1px solid #FCD34D' : '1px solid #BBF7D0',
-                                borderRadius: '10px',
-                                padding: '10px 14px',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '10px'
-                            }}>
-                                {is24hWindowExpired ? (
-                                    <>
-                                        <Clock size={20} color="#D97706" style={{ flexShrink: 0 }} />
-                                        <div style={{ fontSize: '0.78rem', color: '#92400E', lineHeight: 1.4 }}>
-                                            <strong>Ventana de 24 horas expirada:</strong> Según las políticas de Meta, no es posible enviar texto libre directo hasta que el paciente responda a esta plantilla aprobada.
-                                        </div>
+                                                            {/* Micro-Barra Flotante de Acciones FUERA de la burbuja (renderizada a su lado en el espacio libre para no tapar el texto ni el DNI) */}
+                                                            {hoveredMsgId === msg.id && (
+                                                                <div style={{
+                                                                    display: 'flex',
+                                                                    alignItems: 'center',
+                                                                    gap: '3px',
+                                                                    background: '#FFFFFF',
+                                                                    border: '1px solid #CBD5E1',
+                                                                    borderRadius: '20px',
+                                                                    padding: '3px 8px',
+                                                                    boxShadow: '0 4px 12px rgba(0,0,0,0.12)',
+                                                                    zIndex: 20,
+                                                                    flexShrink: 0,
+                                                                    alignSelf: 'center',
+                                                                    userSelect: 'none',
+                                                                    whiteSpace: 'nowrap'
+                                                                }}>
+                                                                    {/* Emojis Rápidos */}
+                                                                    {['👍', '❤️', '😂', '😮', '😢', '🙏'].map(emoji => (
+                                                                        <button
+                                                                            key={emoji}
+                                                                            type="button"
+                                                                            onClick={(e) => {
+                                                                                e.stopPropagation();
+                                                                                onToggleReaction?.(msg, emoji);
+                                                                            }}
+                                                                            style={{
+                                                                                background: 'none',
+                                                                                border: 'none',
+                                                                                cursor: 'pointer',
+                                                                                fontSize: '0.85rem',
+                                                                                padding: '1px 3px',
+                                                                                borderRadius: '4px',
+                                                                                lineHeight: 1
+                                                                            }}
+                                                                            title={`Reaccionar con ${emoji}`}
+                                                                        >
+                                                                            {emoji}
+                                                                        </button>
+                                                                    ))}
+
+                                                                    <div style={{ width: '1px', height: '14px', background: '#E2E8F0', margin: '0 2px' }} />
+
+                                                                    {/* Si se detectó DNI en el mensaje: Botón de copiado directo de DNI */}
+                                                                    {(() => {
+                                                                        const detectedDni = extractDniFromText(msg.text);
+                                                                        if (!detectedDni) return null;
+                                                                        const isCopied = copiedDniMsgId === msg.id;
+                                                                        return (
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={(e) => {
+                                                                                    e.stopPropagation();
+                                                                                    navigator.clipboard.writeText(detectedDni);
+                                                                                    setCopiedDniMsgId(msg.id);
+                                                                                    setTimeout(() => setCopiedDniMsgId(null), 2000);
+                                                                                }}
+                                                                                style={{
+                                                                                    display: 'flex',
+                                                                                    alignItems: 'center',
+                                                                                    gap: '3px',
+                                                                                    background: isCopied ? '#DCFCE7' : '#EFF6FF',
+                                                                                    border: `1px solid ${isCopied ? '#86EFAC' : '#BFDBFE'}`,
+                                                                                    color: isCopied ? '#15803D' : '#1D4ED8',
+                                                                                    fontSize: '0.70rem',
+                                                                                    fontWeight: 800,
+                                                                                    cursor: 'pointer',
+                                                                                    padding: '2px 7px',
+                                                                                    borderRadius: '12px'
+                                                                                }}
+                                                                                title={`Copiar DNI detectado: ${detectedDni}`}
+                                                                            >
+                                                                                {isCopied ? <Check size={11} color="#15803D" /> : <Copy size={11} />}
+                                                                                <span>{isCopied ? '¡DNI Copiado!' : `DNI: ${detectedDni}`}</span>
+                                                                            </button>
+                                                                        );
+                                                                    })()}
+
+                                                                    {/* Botón Copiar Texto Completo del Mensaje */}
+                                                                    {msg.text && (
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={(e) => {
+                                                                                e.stopPropagation();
+                                                                                navigator.clipboard.writeText(msg.text);
+                                                                                setCopiedMsgId(msg.id);
+                                                                                setTimeout(() => setCopiedMsgId(null), 2000);
+                                                                            }}
+                                                                            style={{
+                                                                                display: 'flex',
+                                                                                alignItems: 'center',
+                                                                                gap: '3px',
+                                                                                background: copiedMsgId === msg.id ? '#DCFCE7' : 'none',
+                                                                                border: 'none',
+                                                                                color: copiedMsgId === msg.id ? '#15803D' : '#475569',
+                                                                                fontSize: '0.70rem',
+                                                                                fontWeight: 700,
+                                                                                cursor: 'pointer',
+                                                                                padding: '2px 6px',
+                                                                                borderRadius: '4px'
+                                                                            }}
+                                                                            title="Copiar texto del mensaje"
+                                                                        >
+                                                                            {copiedMsgId === msg.id ? <Check size={11} color="#15803D" /> : <Copy size={11} />}
+                                                                            <span>{copiedMsgId === msg.id ? 'Copiado' : 'Copiar'}</span>
+                                                                        </button>
+                                                                    )}
+
+                                                                    <div style={{ width: '1px', height: '14px', background: '#E2E8F0', margin: '0 2px' }} />
+
+                                                                    {/* Botón Responder */}
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            setReplyingToMessage({
+                                                                                id: msg.id,
+                                                                                senderName: msg.senderName,
+                                                                                text: msg.text || msg.caption || (msg.type === 'audio' ? 'Nota de voz' : msg.type === 'image' ? 'Foto médica' : msg.type === 'sticker' ? 'Sticker' : 'Adjunto'),
+                                                                                type: msg.type,
+                                                                                isPatient
+                                                                            });
+                                                                            inputRef.current?.focus();
+                                                                        }}
+                                                                        style={{
+                                                                            display: 'flex',
+                                                                            alignItems: 'center',
+                                                                            gap: '3px',
+                                                                            background: 'none',
+                                                                            border: 'none',
+                                                                            color: '#0284C7',
+                                                                            fontSize: '0.70rem',
+                                                                            fontWeight: 700,
+                                                                            cursor: 'pointer',
+                                                                            padding: '2px 6px',
+                                                                            borderRadius: '4px'
+                                                                        }}
+                                                                        title="Responder citando este mensaje"
+                                                                    >
+                                                                        <Reply size={12} />
+                                                                        <span>Responder</span>
+                                                                    </button>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                </React.Fragment>
+                                            );
+                                        })}
                                     </>
-                                ) : (
-                                    <>
-                                        <CheckCircle2 size={20} color="#16A34A" style={{ flexShrink: 0 }} />
-                                        <div style={{ fontSize: '0.78rem', color: '#166534', lineHeight: 1.4 }}>
-                                            <strong>Ventana de 24 horas activa:</strong> Puedes usar esta plantilla institucional para presentarte o reanudar el contacto formal con el paciente.
-                                        </div>
-                                    </>
-                                )}
-                            </div>
+                                );
+                            })()}
+                            <div ref={messagesEndRef} />
+                        </div>
 
-                            {/* Selector de Plantilla */}
-                            <div>
-                                <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
-                                    📋 Seleccionar Plantilla Aprobada:
-                                </label>
-                                {metaTemplates.length > 1 ? (
-                                    <select
-                                        value={selectedTemplate?.name || ''}
-                                        onChange={(e) => {
-                                            const found = metaTemplates.find(t => t.name === e.target.value);
-                                            if (found) setSelectedTemplate(found);
-                                        }}
-                                        style={{
-                                            width: '100%',
-                                            padding: '9px 12px',
-                                            borderRadius: '8px',
-                                            border: '1.5px solid #CBD5E1',
-                                            fontSize: '0.82rem',
-                                            fontWeight: 700,
-                                            color: '#0F172A',
-                                            background: '#F8FAFC',
-                                            outline: 'none'
-                                        }}
-                                    >
-                                        {metaTemplates.map(t => (
-                                            <option key={t.id || t.name} value={t.name}>
-                                                {t.name} ({t.category || 'UTILIDAD'} - {t.language || 'es_AR'})
-                                            </option>
-                                        ))}
-                                    </select>
-                                ) : (
-                                    <div style={{
-                                        padding: '9px 12px',
-                                        borderRadius: '8px',
-                                        background: '#F8FAFC',
-                                        border: '1px solid #E2E8F0',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'space-between'
-                                    }}>
-                                        <span style={{ fontSize: '0.84rem', fontWeight: 800, color: '#0284C7' }}>
-                                            {selectedTemplate?.name || 'ojonoscobran'}
-                                        </span>
-                                        <span style={{
-                                            fontSize: '0.68rem', fontWeight: 800, color: '#16A34A',
-                                            background: '#DCFCE7', padding: '2px 8px', borderRadius: '9999px',
-                                            display: 'flex', alignItems: 'center', gap: '4px'
-                                        }}>
-                                            <CheckCircle2 size={12} /> Aprobada ({selectedTemplate?.language || 'es_AR'})
-                                        </span>
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* Inputs de Variables 1 y 2 */}
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                    <label style={{ fontSize: '0.74rem', fontWeight: 800, color: '#475569', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                        <User size={13} color="#0284C7" />
-                                        Variable {'{{1}}'} (Paciente):
-                                    </label>
-                                    <input
-                                        type="text"
-                                        value={templateVar1}
-                                        onChange={(e) => setTemplateVar1(e.target.value)}
-                                        placeholder="Nombre del paciente"
-                                        style={{
-                                            padding: '8px 10px',
-                                            borderRadius: '8px',
-                                            border: '1.5px solid #CBD5E1',
-                                            fontSize: '0.82rem',
-                                            fontWeight: 700,
-                                            color: '#0F172A',
-                                            background: '#F8FAFC',
-                                            outline: 'none'
-                                        }}
-                                    />
-                                    <span style={{ fontSize: '0.66rem', color: '#64748B' }}>
-                                        Detectado por DNI / Webhook ({'{name}'}).
-                                    </span>
-                                </div>
-
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                    <label style={{ fontSize: '0.74rem', fontWeight: 800, color: '#475569', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                        <ShieldCheck size={13} color={activeAgent.color || '#0284C7'} />
-                                        Variable {'{{2}}'} (Agente):
-                                    </label>
-                                    <input
-                                        type="text"
-                                        value={templateVar2}
-                                        onChange={(e) => setTemplateVar2(e.target.value)}
-                                        placeholder="Nombre de la agente"
-                                        style={{
-                                            padding: '8px 10px',
-                                            borderRadius: '8px',
-                                            border: '1.5px solid #CBD5E1',
-                                            fontSize: '0.82rem',
-                                            fontWeight: 700,
-                                            color: '#0F172A',
-                                            background: '#F8FAFC',
-                                            outline: 'none'
-                                        }}
-                                    />
-                                    <span style={{ fontSize: '0.66rem', color: '#64748B' }}>
-                                        Agente activa que inicia la charla.
-                                    </span>
-                                </div>
-                            </div>
-
-                            {/* Vista Previa WhatsApp */}
-                            <div style={{
-                                background: '#EFEAE2',
-                                borderRadius: '10px',
-                                padding: '12px 14px',
-                                border: '1px solid #D1D5DB'
-                            }}>
-                                <div style={{ fontSize: '0.67rem', fontWeight: 800, color: '#6B7280', textTransform: 'uppercase', marginBottom: '6px' }}>
-                                    Vista previa del mensaje WhatsApp:
-                                </div>
+                        {/* COMPOSITOR DE MENSAJE: CON CONTROL DE ASIGNACIÓN ESTRICTO (DOS AGENTES NO PUEDEN ESCRIBIR A LA VEZ) */}
+                        <div style={{ flexShrink: 0, padding: '14px 20px', background: '#FFFFFF', borderTop: '1px solid #E2E8F0' }}>
+                            {/* CASO 1: CHAT CERRADO / ARCHIVADO */}
+                            {isClosedOrArchived(selectedChat) ? (
                                 <div style={{
-                                    background: '#FFFFFF',
-                                    borderRadius: '8px 8px 8px 2px',
-                                    padding: '10px 14px',
-                                    maxWidth: '100%',
-                                    boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
-                                    fontSize: '0.84rem',
-                                    color: '#111827',
-                                    lineHeight: 1.45
+                                    padding: '12px 16px', borderRadius: '10px',
+                                    background: '#ECFDF5', border: '1px solid #A7F3D0', color: '#047857',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.78rem'
                                 }}>
-                                    Hola <strong style={{ color: '#0284C7' }}>{templateVar1 || '{{1}}'}</strong> soy <strong style={{ color: activeAgent.color || '#0284C7' }}>{templateVar2 || '{{2}}'}</strong> de *Sanatorio Argentino* , gracias por contactarnos. Te escribo por tu consulta realizada.
-                                    <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '3px', marginTop: '6px', fontSize: '0.65rem', color: '#9CA3AF' }}>
-                                        <span>{new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}</span>
-                                        <CheckCircle2 size={12} color="#3B82F6" />
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 600 }}>
+                                        <CheckCircle2 size={16} color="#047857" />
+                                        Conversación finalizada {selectedChat.resolutionReason ? `• Motivo: ${selectedChat.resolutionReason}` : ''}. Reabre para continuar la atención.
                                     </div>
-                                </div>
-                            </div>
-
-                            {/* Botones de Acción */}
-                            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '6px' }}>
-                                <button
-                                    type="button"
-                                    onClick={() => setTemplateModalOpen(false)}
-                                    disabled={sendingTemplate}
-                                    style={{
-                                        padding: '9px 16px', borderRadius: '8px', border: '1px solid #CBD5E1',
-                                        background: '#FFFFFF', color: '#475569', fontSize: '0.82rem', fontWeight: 700,
-                                        cursor: 'pointer'
-                                    }}
-                                >
-                                    Cancelar
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => handleExecuteSendTemplate(selectedTemplate, templateVar1, templateVar2)}
-                                    disabled={sendingTemplate || !templateVar1.trim() || !templateVar2.trim() || isLocked}
-                                    style={{
-                                        padding: '9px 20px', borderRadius: '8px', border: 'none',
-                                        background: (!templateVar1.trim() || !templateVar2.trim() || isLocked || sendingTemplate)
-                                            ? '#94A3B8'
-                                            : 'linear-gradient(135deg, #0284C7 0%, #0369A1 100%)',
-                                        color: '#FFFFFF', fontSize: '0.82rem', fontWeight: 800,
-                                        cursor: (!templateVar1.trim() || !templateVar2.trim() || isLocked || sendingTemplate) ? 'not-allowed' : 'pointer',
-                                        display: 'flex', alignItems: 'center', gap: '8px',
-                                        boxShadow: '0 2px 6px rgba(2, 132, 199, 0.3)'
-                                    }}
-                                >
-                                    {sendingTemplate ? (
-                                        <>
-                                            <Loader2 size={16} className="animate-spin" />
-                                            <span>Enviando plantilla...</span>
-                                        </>
-                                    ) : (
-                                        <>
-                                            <Send size={16} />
-                                            <span>Enviar Plantilla Oficial</span>
-                                        </>
-                                    )}
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* ═══════════════════════════════════════════════════════════════════════ */}
-            {/* MODAL DE PREVISUALIZACIÓN DE IMAGEN ESTILO WHATSAPP WEB (CTRL+V / ADJUNTOS) */}
-            {/* ═══════════════════════════════════════════════════════════════════════ */}
-            {imagePreviewModal.isOpen && typeof document !== 'undefined' && createPortal(
-                <div
-                    role="dialog"
-                    aria-modal="true"
-                    aria-label="Previsualización de imagen para enviar"
-                    onKeyDown={(e) => {
-                        if (e.key === 'Escape') {
-                            e.preventDefault();
-                            handleCloseImagePreviewModal();
-                        }
-                    }}
-                    style={{
-                        position: 'fixed',
-                        inset: 0,
-                        zIndex: 999999,
-                        backgroundColor: 'rgba(11, 20, 26, 0.94)',
-                        backdropFilter: 'blur(8px)',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        justifyContent: 'space-between',
-                        animation: 'fadeIn 0.18s ease-out'
-                    }}
-                >
-                    {/* BARRA SUPERIOR DE ENCABEZADO */}
-                    <div style={{
-                        height: '64px',
-                        backgroundColor: 'rgba(15, 23, 42, 0.85)',
-                        borderBottom: '1px solid rgba(255, 255, 255, 0.12)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        padding: '0 24px',
-                        color: '#FFFFFF'
-                    }}>
-                        {/* Botón Cerrar (X) estilo WhatsApp Web */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                            <button
-                                type="button"
-                                onClick={handleCloseImagePreviewModal}
-                                title="Descartar imagen (Esc)"
-                                style={{
-                                    width: '38px',
-                                    height: '38px',
-                                    borderRadius: '50%',
-                                    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-                                    border: 'none',
-                                    color: '#FFFFFF',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    cursor: 'pointer',
-                                    transition: 'all 0.15s ease'
-                                }}
-                                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.3)'}
-                                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)'}
-                            >
-                                <X size={20} />
-                            </button>
-
-                            <div>
-                                <div style={{ fontSize: '0.92rem', fontWeight: 700, color: '#FFFFFF', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                    <span>Vista previa de imagen</span>
-                                    <span style={{
-                                        fontSize: '0.70rem',
-                                        fontWeight: 600,
-                                        padding: '2px 8px',
-                                        borderRadius: '12px',
-                                        backgroundColor: '#0284C7',
-                                        color: '#FFFFFF'
-                                    }}>
-                                        WhatsApp
-                                    </span>
-                                </div>
-                                <div style={{ fontSize: '0.75rem', color: '#94A3B8' }}>
-                                    Enviar a: <strong style={{ color: '#E2E8F0' }}>{selectedChat?.contactName || selectedChat?.phoneNumber}</strong>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Detalles del archivo */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                            <div style={{
-                                padding: '4px 12px',
-                                borderRadius: '8px',
-                                backgroundColor: 'rgba(255, 255, 255, 0.08)',
-                                border: '1px solid rgba(255, 255, 255, 0.12)',
-                                fontSize: '0.75rem',
-                                color: '#CBD5E1',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '6px'
-                            }}>
-                                <span style={{ fontWeight: 600, maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                    {imagePreviewModal.name}
-                                </span>
-                                <span>•</span>
-                                <span style={{ color: '#94A3B8' }}>{imagePreviewModal.size}</span>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* ÁREA CENTRAL: PREVISUALIZACIÓN DE LA IMAGEN EN ALTA DEFINICIÓN */}
-                    <div 
-                        style={{
-                            flex: 1,
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            padding: '20px',
-                            overflow: 'hidden'
-                        }}
-                    >
-                        {imagePreviewModal.previewUrl ? (
-                            <div style={{
-                                position: 'relative',
-                                maxHeight: '65vh',
-                                maxWidth: '85vw',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                boxShadow: '0 20px 50px rgba(0, 0, 0, 0.6)',
-                                borderRadius: '12px',
-                                overflow: 'hidden',
-                                border: '1px solid rgba(255, 255, 255, 0.15)',
-                                backgroundColor: 'rgba(0, 0, 0, 0.3)'
-                            }}>
-                                <img
-                                    src={imagePreviewModal.previewUrl}
-                                    alt="Previsualización antes de enviar"
-                                    style={{
-                                        maxHeight: '65vh',
-                                        maxWidth: '85vw',
-                                        objectFit: 'contain',
-                                        display: 'block'
-                                    }}
-                                    onError={(e) => {
-                                        console.error('Error al renderizar preview de imagen:', e);
-                                    }}
-                                />
-                            </div>
-                        ) : (
-                            <div style={{
-                                padding: '30px',
-                                borderRadius: '12px',
-                                backgroundColor: 'rgba(255, 255, 255, 0.05)',
-                                color: '#FFFFFF',
-                                textAlign: 'center'
-                            }}>
-                                <Loader2 size={32} className="animate-spin" style={{ margin: '0 auto 12px' }} />
-                                <div>Cargando imagen...</div>
-                            </div>
-                        )}
-                    </div>
-
-                    {/* BARRA INFERIOR ESTILO WHATSAPP WEB: AÑADIR COMENTARIO + BOTÓN ENVIAR */}
-                    <div style={{
-                        padding: '16px 24px 24px',
-                        backgroundColor: 'rgba(15, 23, 42, 0.90)',
-                        borderTop: '1px solid rgba(255, 255, 255, 0.12)',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        alignItems: 'center'
-                    }}>
-                        {/* Advertencia si no está asignado o bloqueado */}
-                        {isLocked ? (
-                            <div style={{
-                                width: '100%',
-                                maxWidth: '720px',
-                                padding: '8px 14px',
-                                marginBottom: '10px',
-                                borderRadius: '8px',
-                                backgroundColor: 'rgba(239, 68, 68, 0.2)',
-                                border: '1px solid rgba(239, 68, 68, 0.4)',
-                                color: '#FCA5A5',
-                                fontSize: '0.80rem',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '8px'
-                            }}>
-                                <AlertTriangle size={16} />
-                                <span>Esta conversación está asignada exclusivamente a <strong>{assignedAgentObj?.name || 'otra agente'}</strong>. No tienes permisos de envío.</span>
-                            </div>
-                        ) : !canWriteMessage ? (
-                            <div style={{
-                                width: '100%',
-                                maxWidth: '720px',
-                                padding: '8px 14px',
-                                marginBottom: '10px',
-                                borderRadius: '8px',
-                                backgroundColor: 'rgba(245, 158, 11, 0.2)',
-                                border: '1px solid rgba(245, 158, 11, 0.4)',
-                                color: '#FDE68A',
-                                fontSize: '0.80rem',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'space-between'
-                            }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                    <AlertCircle size={16} />
-                                    <span>Debes asignarte esta conversación para poder enviar la imagen.</span>
-                                </div>
-                                {onAssignChat && (
                                     <button
                                         type="button"
                                         onClick={() => handleAssignChatAndSwitchTab(selectedChat.id, activeAgent.id)}
                                         style={{
-                                            padding: '4px 10px',
-                                            borderRadius: '6px',
-                                            backgroundColor: '#0284C7',
-                                            border: 'none',
-                                            color: '#FFFFFF',
-                                            fontSize: '0.74rem',
-                                            fontWeight: 700,
+                                            padding: '6px 14px', borderRadius: '6px', border: 'none',
+                                            background: '#059669', color: '#FFFFFF', fontSize: '0.74rem', fontWeight: 700,
                                             cursor: 'pointer'
                                         }}
                                     >
-                                        Asignármela ahora
+                                        Reabrir y Asignarme
                                     </button>
-                                )}
-                            </div>
-                        ) : null}
+                                </div>
+                            ) : isLocked ? (
+                                /* CASO 2: ASIGNADA A OTRA AGENTE -> BLOQUEO ESTRICTO (MODO SOLO LECTURA) */
+                                <div style={{
+                                    padding: '14px 18px', borderRadius: '10px',
+                                    background: '#FEF2F2', border: '1.5px solid #F87171', color: '#991B1B',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px'
+                                }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                        <Lock size={20} color="#DC2626" />
+                                        <div>
+                                            <div style={{ fontSize: '0.84rem', fontWeight: 800 }}>
+                                                Conversación asignada exclusivamente a {assignedAgentObj?.name || selectedChat.assignedTo}
+                                            </div>
+                                            <div style={{ fontSize: '0.74rem', fontWeight: 400, color: '#B91C1C', marginTop: '2px' }}>
+                                                Modo solo lectura. Para evitar colisiones y que dos agentes escriban a la vez al paciente, el teclado está bloqueado.
+                                            </div>
+                                        </div>
+                                    </div>
+                                    {isSupervisor && (
+                                        <button
+                                            type="button"
+                                            onClick={() => handleAssignChatAndSwitchTab(selectedChat.id, activeAgent.id, { forceReassign: true })}
+                                            style={{
 
-                        <div style={{
-                            width: '100%',
-                            maxWidth: '720px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '12px'
-                        }}>
-                            {/* Input de Comentario / Mensaje que acompaña a la imagen */}
-                            <div style={{
-                                flex: 1,
-                                display: 'flex',
-                                alignItems: 'center',
-                                backgroundColor: '#1E293B',
-                                border: '1.5px solid rgba(255, 255, 255, 0.15)',
-                                borderRadius: '24px',
-                                padding: '8px 16px',
-                                boxShadow: '0 2px 8px rgba(0, 0, 0, 0.2)',
-                                transition: 'border-color 0.15s ease'
-                            }}>
-                                <input
-                                    ref={imageCaptionInputRef}
-                                    type="text"
-                                    disabled={uploadingMedia || isLocked}
-                                    placeholder="Añade un comentario... (Enter para enviar)"
-                                    value={imagePreviewModal.caption}
-                                    onChange={(e) => setImagePreviewModal(prev => ({ ...prev, caption: e.target.value }))}
-                                    onKeyDown={(e) => {
-                                        if (e.key === 'Enter' && !e.shiftKey) {
-                                            e.preventDefault();
-                                            handleSendImageFromModal();
-                                        }
-                                    }}
-                                    style={{
-                                        width: '100%',
-                                        background: 'transparent',
-                                        border: 'none',
-                                        outline: 'none',
-                                        color: '#FFFFFF',
-                                        fontSize: '0.90rem',
-                                        fontFamily: 'inherit'
-                                    }}
-                                />
-                            </div>
+                                                padding: '6px 14px', borderRadius: '6px', border: '1px solid #DC2626',
+                                                background: '#FFFFFF', color: '#DC2626', fontWeight: 700, fontSize: '0.74rem',
+                                                cursor: 'pointer', whiteSpace: 'nowrap'
+                                            }}
+                                        >
+                                            Supervisión: Reasignar a mí
+                                        </button>
+                                    )}
+                                </div>
+                            ) : isBot ? (
+                                /* CASO BOT: GESTIONADO POR ASISTENTE VIRTUAL */
+                                <div style={{
+                                    padding: '12px 18px', borderRadius: '10px',
+                                    background: '#F5F3FF', border: '1.5px solid #DDD6FE', color: '#5B21B6',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px'
+                                }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                        <Bot size={22} color="#7C3AED" />
+                                        <div>
+                                            <div style={{ fontSize: '0.84rem', fontWeight: 800 }}>
+                                                Conversación en Auto-gestión (Bot Activo)
+                                            </div>
+                                            <div style={{ fontSize: '0.74rem', color: '#6D28D9', marginTop: '2px' }}>
+                                                El paciente está interactuando con el asistente o su consulta fue resuelta. Para responder como asesor humano, puedes asignártela.
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <button
+                                            type="button"
+                                            onClick={() => setCloseModalOpen(true)}
+                                            title="Finalizar esta charla y archivar conversación"
+                                            style={{
+                                                padding: '8px 14px', borderRadius: '8px',
+                                                border: '1.5px solid #059669',
+                                                background: '#FFFFFF',
+                                                color: '#059669', fontSize: '0.76rem', fontWeight: 700,
+                                                cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px',
+                                                whiteSpace: 'nowrap',
+                                                boxShadow: '0 1px 3px rgba(5, 150, 105, 0.15)'
+                                            }}
+                                        >
+                                            <CheckCircle2 size={14} /> Finalizar charla
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => handleAssignChatAndSwitchTab(selectedChat.id, activeAgent.id)}
+                                            style={{
+                                                padding: '8px 16px', borderRadius: '8px', border: 'none',
+                                                background: 'linear-gradient(135deg, #7C3AED 0%, #6D28D9 100%)',
+                                                color: '#FFFFFF', fontSize: '0.76rem', fontWeight: 700,
+                                                cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px',
+                                                boxShadow: '0 2px 6px rgba(124, 58, 237, 0.3)', whiteSpace: 'nowrap'
+                                            }}
+                                        >
+                                            <UserCheck size={14} /> Asignarme y pausar Bot
+                                        </button>
+                                    </div>
+                                </div>
+                            ) : isUnassigned ? (
+                                /* CASO 3: SIN ASIGNAR -> BLOQUEO DE TECLADO HASTA ASIGNARSE */
+                                <div style={{
+                                    padding: '14px 18px', borderRadius: '10px',
+                                    background: '#FFFBEB', border: '1.5px solid #FCD34D', color: '#92400E',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px'
+                                }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                        <AlertCircle size={20} color="#D97706" />
+                                        <div>
+                                            <div style={{ fontSize: '0.84rem', fontWeight: 800 }}>
+                                                Conversación en cola general (Sin Asignar)
+                                            </div>
+                                            <div style={{ fontSize: '0.74rem', color: '#B45309', marginTop: '2px' }}>
+                                                Para evitar que dos agentes respondan a la vez, debes asignártela antes de poder redactar mensajes.
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <button
+                                            type="button"
+                                            onClick={() => setCloseModalOpen(true)}
+                                            title="Finalizar esta charla y archivar conversación"
+                                            style={{
+                                                padding: '8px 14px', borderRadius: '8px',
+                                                border: '1.5px solid #059669',
+                                                background: '#FFFFFF',
+                                                color: '#059669', fontSize: '0.76rem', fontWeight: 700,
+                                                cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px',
+                                                whiteSpace: 'nowrap',
+                                                boxShadow: '0 1px 3px rgba(5, 150, 105, 0.15)'
+                                            }}
+                                        >
+                                            <CheckCircle2 size={14} /> Finalizar charla
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => handleAssignChatAndSwitchTab(selectedChat.id, activeAgent.id)}
+                                            style={{
+                                                padding: '8px 16px', borderRadius: '8px', border: 'none',
+                                                background: 'linear-gradient(135deg, #0284C7 0%, #0369A1 100%)',
+                                                color: '#FFFFFF', fontSize: '0.76rem', fontWeight: 700,
+                                                cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px',
+                                                boxShadow: '0 2px 6px rgba(2, 132, 199, 0.3)', whiteSpace: 'nowrap'
+                                            }}
+                                        >
+                                            <UserCheck size={14} /> Asignarme para responder
+                                        </button>
+                                    </div>
+                                </div>
+                            ) : null}
 
-                            {/* Botón Enviar estilo WhatsApp (Circular azul institucional) */}
-                            <button
-                                type="button"
-                                onClick={handleSendImageFromModal}
-                                disabled={uploadingMedia || isLocked}
-                                title="Enviar imagen con comentario (Enter)"
-                                style={{
-                                    width: '46px',
-                                    height: '46px',
-                                    borderRadius: '50%',
-                                    backgroundColor: '#0284C7',
-                                    border: 'none',
-                                    color: '#FFFFFF',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    cursor: (uploadingMedia || isLocked) ? 'not-allowed' : 'pointer',
-                                    opacity: (uploadingMedia || isLocked) ? 0.6 : 1,
-                                    boxShadow: '0 4px 14px rgba(2, 132, 199, 0.45)',
-                                    transition: 'transform 0.12s ease, background-color 0.15s ease',
-                                    flexShrink: 0
-                                }}
-                                onMouseEnter={(e) => {
-                                    if (!uploadingMedia && !isLocked) e.currentTarget.style.transform = 'scale(1.06)';
-                                }}
-                                onMouseLeave={(e) => {
-                                    e.currentTarget.style.transform = 'scale(1)';
-                                }}
-                            >
-                                {uploadingMedia ? (
-                                    <Loader2 size={20} className="animate-spin" />
-                                ) : (
-                                    <Send size={19} style={{ marginLeft: '2px' }} />
-                                )}
-                            </button>
-                        </div>
+                            {/* Formulario de redacción de mensaje: Habilitado ÚNICAMENTE si está asignado a mí */}
+                            {canWriteMessage && (
+                                <form onSubmit={handleSend} style={{ marginTop: '0px' }}>
+                                    {/* BANNER DE RESPUESTA A MENSAJE CITADO (ESTILO WHATSAPP WEB) */}
+                                    {replyingToMessage && (
+                                        <div style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'space-between',
+                                            padding: '8px 12px',
+                                            marginBottom: '10px',
+                                            background: '#F0F9FF',
+                                            borderLeft: `4px solid ${replyingToMessage.isPatient ? '#0284C7' : '#059669'}`,
+                                            borderTop: '1px solid #BAE6FD',
+                                            borderRight: '1px solid #BAE6FD',
+                                            borderBottom: '1px solid #BAE6FD',
+                                            borderRadius: '8px',
+                                            boxShadow: '0 2px 4px rgba(2, 132, 199, 0.08)'
+                                        }}>
+                                            <div style={{ minWidth: 0, flex: 1 }}>
+                                                <div style={{
+                                                    fontSize: '0.74rem',
+                                                    fontWeight: 800,
+                                                    color: replyingToMessage.isPatient ? '#0284C7' : '#059669',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '6px'
+                                                }}>
+                                                    <Reply size={13} />
+                                                    <span>Respondiendo a <strong>{replyingToMessage.senderName}</strong></span>
+                                                </div>
+                                                <div style={{
+                                                    fontSize: '0.76rem',
+                                                    color: '#475569',
+                                                    whiteSpace: 'nowrap',
+                                                    overflow: 'hidden',
+                                                    textOverflow: 'ellipsis',
+                                                    marginTop: '3px'
+                                                }}>
+                                                    {replyingToMessage.text}
+                                                </div>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => setReplyingToMessage(null)}
+                                                style={{
+                                                    background: '#FFFFFF',
+                                                    border: '1px solid #CBD5E1',
+                                                    color: '#64748B',
+                                                    cursor: 'pointer',
+                                                    padding: '4px',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'center',
+                                                    borderRadius: '6px',
+                                                    marginLeft: '10px'
+                                                }}
+                                                title="Cancelar respuesta"
+                                            >
+                                                <X size={14} />
+                                            </button>
+                                        </div>
+                                    )}
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                            {/* Selector Segmentado: WhatsApp Público vs Nota Privada */}
+                                            <div style={{
+                                                display: 'inline-flex',
+                                                background: '#F1F5F9',
+                                                padding: '2px',
+                                                borderRadius: '8px',
+                                                border: '1px solid #CBD5E1'
+                                            }}>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setIsPrivateNote(false)}
+                                                    style={{
+                                                        padding: '4px 10px',
+                                                        borderRadius: '6px',
+                                                        fontSize: '0.72rem',
+                                                        fontWeight: 700,
+                                                        border: 'none',
+                                                        background: !isPrivateNote ? '#0284C7' : 'transparent',
+                                                        color: !isPrivateNote ? '#FFFFFF' : '#64748B',
+                                                        cursor: 'pointer',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '4px',
+                                                        boxShadow: !isPrivateNote ? '0 1px 3px rgba(2,132,199,0.3)' : 'none',
+                                                        transition: 'all 0.15s'
+                                                    }}
+                                                >
+                                                    <Send size={12} />
+                                                    WhatsApp
+                                                </button>
 
-                        <div style={{ marginTop: '8px', fontSize: '0.70rem', color: '#64748B' }}>
-                            Presiona <strong>Enter</strong> para enviar • <strong>Esc</strong> para descartar
-                        </div>
-                    </div>
-                </div>,
-                document.body
-            )}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setIsPrivateNote(true)}
+                                                    title="Registrar una nota interna confidencial para el equipo del Sanatorio (no se envía al paciente)"
+                                                    style={{
+                                                        padding: '4px 10px',
+                                                        borderRadius: '6px',
+                                                        fontSize: '0.72rem',
+                                                        fontWeight: 700,
+                                                        border: 'none',
+                                                        background: isPrivateNote ? '#EA580C' : 'transparent',
+                                                        color: isPrivateNote ? '#FFFFFF' : '#64748B',
+                                                        cursor: 'pointer',
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        gap: '4px',
+                                                        boxShadow: isPrivateNote ? '0 1px 3px rgba(234,88,12,0.3)' : 'none',
+                                                        transition: 'all 0.15s'
+                                                    }}
+                                                >
+                                                    <Lock size={12} />
+                                                    Nota Privada
+                                                </button>
+                                            </div>
 
-            {/* Modal de Personalización Visual (Presets, Nano Banana, Opacidad y Sidebars) */}
-            <ContactCenterThemeModal
-                isOpen={themeModalOpen}
-                onClose={() => setThemeModalOpen(false)}
-                currentTheme={ccTheme}
-                onThemeChange={setCcTheme}
-            />
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setQuickReplyFilter('');
+                                                    setQuickRepliesModalOpen(true);
+                                                }}
+                                                title="Abrir catálogo completo de respuestas rápidas (o tipea / en el chat)"
+                                                style={{
+                                                    padding: '4px 10px', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 700,
+                                                    border: '1px solid #BAE6FD', background: '#F0F9FF', color: '#0284C7',
+                                                    cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px',
+                                                    boxShadow: '0 1px 2px rgba(2, 132, 199, 0.08)'
+                                                }}
+                                            >
+                                                <Zap size={12} /> Respuestas rápidas (/)
+                                            </button>
 
-            {/* Modal de Final de Turno e Insights Diarios del Agente */}
-            <AgentShiftSummaryModal
-                isOpen={shiftSummaryModalOpen}
-                onClose={() => setShiftSummaryModalOpen(false)}
-                activeAgent={activeAgent}
-                initialAgent={shiftAuditReturnContext?.agent}
-                initialDate={shiftAuditReturnContext?.date}
-                initialCategoriaModal={shiftAuditReturnContext?.categoriaKey}
-                onOpenHandoverModal={() => setHandoverModalOpen(true)}
-                myAssignedChatsCount={myAssignedChats.length}
-                onOpenChatWithPhone={(phone, auditCtx) => {
-                    if (auditCtx) {
-                        setShiftAuditReturnContext(auditCtx);
-                    }
-                    if (!phone) return;
-                    const cleanP = String(phone).replace(/\D/g, '').slice(-8);
-                    const targetChat = (chats || []).find(c => {
-                        const cPhone = String(c.phone || c.client_phone || '').replace(/\D/g, '').slice(-8);
-                        return cPhone === cleanP;
-                    });
-                    if (targetChat && onSelectChat) {
-                        onSelectChat(targetChat.id);
-                    } else if (onSelectChat) {
-                        const partialChat = (chats || []).find(c => String(c.phone || '').includes(cleanP));
-                        if (partialChat) onSelectChat(partialChat.id);
-                    }
-                }}
-            />
+                                            <button
+                                                type="button"
+                                                onClick={() => setTemplateModalOpen(true)}
+                                                title="Abrir catálogo de plantillas oficiales de Meta WhatsApp"
+                                                style={{
+                                                    padding: '4px 10px', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 700,
+                                                    border: '1px solid #C7D2FE', background: '#EEF2FF', color: '#4F46E5',
+                                                    cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px',
+                                                    boxShadow: '0 1px 2px rgba(79, 70, 229, 0.08)'
+                                                }}
+                                            >
+                                                <LayoutTemplate size={12} /> Plantillas Meta
+                                            </button>
 
-            {/* Modal de Barrido Rápido de Inactivos (+24h) - Exclusivo lmarinero */}
-            {isStrictLMarinero && (
-                <SweepInactiveChatsModal
-                    isOpen={sweepModalOpen}
-                    onClose={() => setSweepModalOpen(false)}
-                    activeAgent={activeAgent}
-                    currentUser={currentUser}
-                    chats={chats}
-                    onSweepSuccess={(result) => {
-                        if (Array.isArray(result?.history)) {
-                            setSweepHistoryTop(result.history);
-                        }
-                        if (!result?.isUndoRedo && typeof onBulkCloseChats === 'function' && Array.isArray(result?.targetChatIds) && result.targetChatIds.length > 0) {
-                            onBulkCloseChats(result.targetChatIds, result.resolutionReason || 'Cierre automático por inactividad');
-                        }
-                        if (onReloadChats) {
-                            setTimeout(() => {
-                                onReloadChats();
-                            }, 350);
-                        }
-                    }}
-                />
-            )}
-        </div>
-    );
-}
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    const plantillaDatos = 'Indíqueme los siguientes datos del paciente:\nDNI (sin puntos ni espacios):\nNombre y Apellido:\nObra social:\nDepartamento donde vive:\nFecha de nacimiento:';
+                                                    setMessageInput(prev => prev ? `${prev}\n\n${plantillaDatos}` : plantillaDatos);
+                                                    setTimeout(() => inputRef.current?.focus(), 50);
+                                                }}
+                                                title="Insertar plantilla de solicitud de datos del paciente (/datos)"
+                                                style={{
+                                                    padding: '4px 10px', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 700,
+                                                    border: '1px solid #FED7AA', background: '#FFF7ED', color: '#C2410C',
+                                                    cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px',
+                                                    boxShadow: '0 1px 2px rgba(194, 65, 12, 0.08)'
+                                                }}
+                                            >
+                                                <UserCheck size={12} /> Pedir Datos
+                                            </button>
+                                        </div>
 
+                                        <span style={{ fontSize: '0.72rem', color: '#64748B', fontWeight: 600 }}>
+                                            Respondiendo como: <strong style={{ color: activeAgent.color }}>{activeAgent.name} ({activeAgent.role})</strong>
+                                        </span>
+                                    </div>
+
+                                    {/* BLOQUE MANDATORIO META: VENTANA DE 24HS EXPIRADA (SOLO SE PUEDE ESCRIBIR INICIANDO CON PLANTILLA) */}
+                                    {!isPrivateNote && is24hWindowExpired ? (
+                                        <div style={{
+                                            background: '#FFFDF5',
+                                            border: '1.5px solid #FCD34D',
+                                            borderRadius: '12px',
+                                            padding: '16px',
+                                            boxShadow: '0 4px 12px rgba(245, 158, 11, 0.08)',
+                                            display: 'flex',
+                                            flexDirection: 'column',
+                                            gap: '14px'
+                                        }}>
+                                            {/* Encabezado Clínico de la Alerta */}
+                                            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px' }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                                    <div style={{
+                                                        width: '36px', height: '36px', borderRadius: '10px',
+                                                        background: '#FEF3C7', border: '1px solid #FDE68A',
+                                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                        color: '#D97706', flexShrink: 0
+                                                    }}>
+                                                        <Clock size={20} />
+                                                    </div>
+                                                    <div>
+                                                        <div style={{ fontSize: '0.86rem', fontWeight: 800, color: '#92400E', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                            <span>Ventana de 24 horas Expirada</span>
+                                                            <span style={{
+                                                                fontSize: '0.65rem', fontWeight: 800, padding: '1px 6px', borderRadius: '4px',
+                                                                background: '#D97706', color: '#FFFFFF', textTransform: 'uppercase'
+                                                            }}>
+                                                                Política Oficial Meta
+                                                            </span>
+                                                        </div>
+                                                        <div style={{ fontSize: '0.74rem', color: '#B45309', marginTop: '2px', lineHeight: 1.4 }}>
+                                                            Han pasado más de 24 horas desde el último mensaje del paciente. La conversación <strong>únicamente puede iniciarse o reanudarse enviando una plantilla oficial aprobada</strong>.
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setIsPrivateNote(true)}
+                                                    style={{
+                                                        padding: '5px 10px', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 700,
+                                                        border: '1px solid #FED7AA', background: '#FFF7ED', color: '#EA580C',
+                                                        cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', whiteSpace: 'nowrap'
+                                                    }}
+                                                    title="Redactar nota confidencial para el equipo del Sanatorio"
+                                                >
+                                                    <Lock size={12} /> Redactar Nota Interna
+                                                </button>
+                                            </div>
+
+                                            {/* Selector de Plantilla y Detalles */}
+                                            <div style={{
+                                                background: '#FFFFFF',
+                                                border: '1px solid #E2E8F0',
+                                                borderRadius: '10px',
+                                                padding: '12px 14px',
+                                                display: 'flex',
+                                                flexDirection: 'column',
+                                                gap: '12px'
+                                            }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                        <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#334155' }}>
+                                                            Plantilla Oficial Aprobada:
+                                                        </span>
+                                                        {metaTemplates.length > 1 ? (
+                                                            <select
+                                                                value={selectedTemplate?.name || ''}
+                                                                onChange={(e) => {
+                                                                    const found = metaTemplates.find(t => t.name === e.target.value);
+                                                                    if (found) setSelectedTemplate(found);
+                                                                }}
+                                                                style={{
+                                                                    padding: '4px 8px', borderRadius: '6px', border: '1px solid #CBD5E1',
+                                                                    fontSize: '0.76rem', fontWeight: 700, color: '#0F172A', outline: 'none',
+                                                                    background: '#F8FAFC'
+                                                                }}
+                                                            >
+                                                                {metaTemplates.map(t => (
+                                                                    <option key={t.id || t.name} value={t.name}>
+                                                                        {t.name} ({t.category || 'UTILIDAD'})
+                                                                    </option>
+                                                                ))}
+                                                            </select>
+                                                        ) : (
+                                                            <span style={{
+                                                                fontSize: '0.76rem', fontWeight: 800, color: '#0284C7',
+                                                                background: '#F0F9FF', padding: '2px 8px', borderRadius: '6px', border: '1px solid #BAE6FD'
+                                                            }}>
+                                                                {selectedTemplate?.name || 'ojonoscobran'}
+                                                            </span>
+                                                        )}
+                                                    </div>
+
+                                                    <span style={{
+                                                        fontSize: '0.68rem', fontWeight: 800, color: '#16A34A',
+                                                        background: '#DCFCE7', padding: '2px 8px', borderRadius: '9999px',
+                                                        display: 'flex', alignItems: 'center', gap: '4px'
+                                                    }}>
+                                                        <CheckCircle2 size={12} /> Aprobada por Meta ({selectedTemplate?.language || 'es_AR'})
+                                                    </span>
+                                                </div>
+
+                                                {/* Inputs de las Variables 1 y 2 */}
+                                                <div style={{
+                                                    display: 'grid',
+                                                    gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                                                    gap: '10px'
+                                                }}>
+                                                    {/* Variable 1: Nombre del paciente */}
+                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                                        <label style={{ fontSize: '0.72rem', fontWeight: 800, color: '#475569', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                            <User size={12} color="#0284C7" />
+                                                            Variable {'{{1}}'} — Nombre del Paciente:
+                                                        </label>
+                                                        <input
+                                                            type="text"
+                                                            value={templateVar1}
+                                                            onChange={(e) => setTemplateVar1(e.target.value)}
+                                                            placeholder="Ej: María (detectado por DNI / WhatsApp)"
+                                                            style={{
+                                                                padding: '7px 10px',
+                                                                borderRadius: '8px',
+                                                                border: '1.5px solid #CBD5E1',
+                                                                fontSize: '0.82rem',
+                                                                fontWeight: 700,
+                                                                color: '#0F172A',
+                                                                background: '#F8FAFC',
+                                                                outline: 'none'
+                                                            }}
+                                                        />
+                                                        <span style={{ fontSize: '0.65rem', color: '#64748B' }}>
+                                                            Mapeado automáticamente por DNI / Ficha o webhook de WhatsApp ({'{name}'}).
+                                                        </span>
+                                                    </div>
+
+                                                    {/* Variable 2: Nombre de la agente */}
+                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                                        <label style={{ fontSize: '0.72rem', fontWeight: 800, color: '#475569', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                            <ShieldCheck size={12} color={activeAgent.color || '#0284C7'} />
+                                                            Variable {'{{2}}'} — Nombre de la Agente:
+                                                        </label>
+                                                        <input
+                                                            type="text"
+                                                            value={templateVar2}
+                                                            onChange={(e) => setTemplateVar2(e.target.value)}
+                                                            placeholder="Ej: Daniela"
+                                                            style={{
+                                                                padding: '7px 10px',
+                                                                borderRadius: '8px',
+                                                                border: '1.5px solid #CBD5E1',
+                                                                fontSize: '0.82rem',
+                                                                fontWeight: 700,
+                                                                color: '#0F172A',
+                                                                background: '#F8FAFC',
+                                                                outline: 'none'
+                                                            }}
+                                                        />
+                                                        <span style={{ fontSize: '0.65rem', color: '#64748B' }}>
+                                                            Nombre de la agente responsable que inicia la conversación.
+                                                        </span>
+                                                    </div>
+                                                </div>
+
+                                                {/* Vista Previa en Vivo Formato WhatsApp */}
+                                                <div style={{
+                                                    background: '#EFEAE2',
+                                                    borderRadius: '8px',
+                                                    padding: '10px 14px',
+                                                    border: '1px solid #D1D5DB'
+                                                }}>
+                                                    <div style={{ fontSize: '0.65rem', fontWeight: 800, color: '#6B7280', textTransform: 'uppercase', marginBottom: '6px' }}>
+                                                        Vista previa del mensaje que recibirá el paciente:
+                                                    </div>
+                                                    <div style={{
+                                                        background: '#FFFFFF',
+                                                        borderRadius: '8px 8px 8px 2px',
+                                                        padding: '8px 12px',
+                                                        maxWidth: '450px',
+                                                        boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
+                                                        fontSize: '0.82rem',
+                                                        color: '#111827',
+                                                        lineHeight: 1.45
+                                                    }}>
+                                                        Hola <strong style={{ color: '#0284C7' }}>{templateVar1 || '{{1}}'}</strong> soy <strong style={{ color: activeAgent.color || '#0284C7' }}>{templateVar2 || '{{2}}'}</strong> de *Sanatorio Argentino* , gracias por contactarnos. Te escribo por tu consulta realizada.
+                                                        <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '3px', marginTop: '4px', fontSize: '0.65rem', color: '#9CA3AF' }}>
+                                                            <span>{new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}</span>
+                                                            <CheckCircle2 size={11} color="#3B82F6" />
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                {/* Botón de Envío */}
+                                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', marginTop: '2px', flexWrap: 'wrap' }}>
+                                                    <span style={{ fontSize: '0.72rem', color: '#64748B' }}>
+                                                        💡 Al enviar la plantilla, la ventana de 24hs se reactivará en cuanto el paciente responda.
+                                                    </span>
+
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleExecuteSendTemplate(selectedTemplate, templateVar1, templateVar2)}
+                                                        disabled={sendingTemplate || !templateVar1.trim() || !templateVar2.trim() || isLocked}
+                                                        style={{
+                                                            padding: '9px 20px',
+                                                            borderRadius: '8px',
+                                                            border: 'none',
+                                                            background: (!templateVar1.trim() || !templateVar2.trim() || isLocked || sendingTemplate)
+                                                                ? '#94A3B8'
+                                                                : 'linear-gradient(135deg, #0284C7 0%, #0369A1 100%)',
+                                                            color: '#FFFFFF',
+                                                            fontSize: '0.80rem',
+                                                            fontWeight: 800,
+                                                            cursor: (!templateVar1.trim() || !templateVar2.trim() || isLocked || sendingTemplate) ? 'not-allowed' : 'pointer',
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            gap: '8px',
+                                                            boxShadow: '0 2px 6px rgba(2, 132, 199, 0.3)',
+                                                            whiteSpace: 'nowrap',
+                                                            transition: 'all 0.15s ease'
+                                                        }}
+                                                    >
+                                                        {sendingTemplate ? (
+                                                            <>
+                                                                <Loader2 size={15} className="animate-spin" />
+                                                                Enviando plantilla oficial...
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                <Send size={15} />
+                                                                Iniciar charla con Plantilla Oficial
+                                                            </>
+                                                        )}
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div style={{ position: 'relative' }}>
+                                            {/* POPOVER FLOTANTE CONTEXTUAL DE ATAJOS RÁPIDOS CON TECLADO */}
+                                            {quickRepliesOpen && (
+                                                <div style={{
+                                                    position: 'absolute', bottom: '100%', left: 0, right: 0, marginBottom: '8px',
+                                                    background: '#FFFFFF', border: '1px solid #CBD5E1', borderRadius: '12px',
+                                                    boxShadow: '0 -6px 20px rgba(0,0,0,0.12)', zIndex: 100, overflow: 'hidden'
+                                                }}>
+                                                    <div style={{
+                                                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                                                        padding: '8px 12px', background: '#F8FAFC', borderBottom: '1px solid #E2E8F0',
+                                                        fontSize: '0.7rem', fontWeight: 700, color: '#475569'
+                                                    }}>
+                                                        <span>⚡ ATAJOS RÁPIDOS (Enter: Enviar • Tab: Editar • Esc: Cerrar)</span>
+                                                        <span style={{ background: '#E2E8F0', padding: '1px 6px', borderRadius: '4px', fontSize: '0.65rem' }}>
+                                                            {filterQuickReplies(quickReplyFilter, currentAgentId).length} resultados
+                                                        </span>
+                                                    </div>
+                                                    <div style={{ maxHeight: '240px', overflowY: 'auto' }}>
+                                                        {filterQuickReplies(quickReplyFilter, currentAgentId).length === 0 ? (
+                                                            <div style={{ padding: '14px', fontSize: '0.76rem', color: '#94A3B8', textAlign: 'center' }}>
+                                                                No hay atajos que coincidan con "<strong>/{quickReplyFilter}</strong>".
+                                                            </div>
+                                                        ) : (
+                                                            filterQuickReplies(quickReplyFilter, currentAgentId).map((qr, idx) => {
+                                                                const isSel = idx === selectedQuickReplyIndex;
+                                                                return (
+                                                                    <div
+                                                                        key={qr.id}
+                                                                        onClick={() => sendDirectMessage(resolveQuickReplyText(qr.content), isPrivateNote)}
+                                                                        style={{
+                                                                            padding: '8px 12px', cursor: 'pointer',
+                                                                            background: isSel ? '#F0F9FF' : '#FFFFFF',
+                                                                            borderLeft: isSel ? '3px solid #0284C7' : '3px solid transparent',
+                                                                            borderBottom: '1px solid #F1F5F9',
+                                                                            display: 'flex', flexDirection: 'column', gap: '2px',
+                                                                            transition: 'background 0.1s ease'
+                                                                        }}
+                                                                    >
+                                                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                                                <span style={{ fontSize: '0.76rem', fontWeight: 800, color: '#0284C7' }}>
+                                                                                    /{qr.shortcut} <span style={{ color: '#0F172A', fontWeight: 700 }}>• {qr.title}</span>
+                                                                                </span>
+                                                                                {qr.isPersonal && (
+                                                                                    <span style={{
+                                                                                        fontSize: '0.62rem', fontWeight: 700, padding: '1px 5px',
+                                                                                        borderRadius: '4px', background: '#EDE9FE', color: '#6D28D9'
+                                                                                    }}>
+                                                                                        👤 Mío
+                                                                                    </span>
+                                                                                )}
+                                                                            </div>
+                                                                            <div style={{ display: 'flex', gap: '4px' }}>
+                                                                                <button
+                                                                                    type="button"
+                                                                                    onClick={(e) => {
+                                                                                        e.stopPropagation();
+                                                                                        setMessageInput(resolveQuickReplyText(qr.content));
+                                                                                        setQuickRepliesOpen(false);
+                                                                                        inputRef.current?.focus();
+                                                                                    }}
+                                                                                    style={{
+                                                                                        padding: '2px 8px', fontSize: '0.65rem', fontWeight: 600,
+                                                                                        border: '1px solid #CBD5E1', borderRadius: '4px',
+                                                                                        background: '#FFFFFF', color: '#475569', cursor: 'pointer'
+                                                                                    }}
+                                                                                >
+                                                                                    Editar
+                                                                                </button>
+                                                                                <button
+                                                                                    type="button"
+                                                                                    onClick={(e) => {
+                                                                                        e.stopPropagation();
+                                                                                        sendDirectMessage(resolveQuickReplyText(qr.content), isPrivateNote);
+                                                                                    }}
+                                                                                    style={{
+                                                                                        padding: '2px 8px', fontSize: '0.65rem', fontWeight: 700,
+                                                                                        border: 'none', borderRadius: '4px',
+                                                                                        background: '#0284C7', color: '#FFFFFF', cursor: 'pointer'
+                                                                                    }}
+                                                                                >
+                                                                                    Enviar ↵
+                                                                                </button>
+                                                                            </div>
+                                                                        </div>
+                                                                        <div style={{
+                                                                            fontSize: '0.72rem', color: '#64748B', lineHeight: 1.3,
+                                                                            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'
+                                                                        }}>
+                                                                            {qr.content}
+                                                                        </div>
+                                                                    </div>
+                                                                );
+                                                            })
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {/* Alert de Error en subida de archivo / audio */}
+                                            {uploadError && (
+                                                <div style={{
+                                                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                                    padding: '6px 12px', marginBottom: '6px', background: '#FEF2F2',
+                                                    border: '1px solid #FECACA', borderRadius: '8px', color: '#B91C1C',
+                                                    fontSize: '0.72rem', fontWeight: 600
+                                                }}>
+                                                    <span>⚠️ {uploadError}</span>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setUploadError(null)}
+                                                        style={{ background: 'none', border: 'none', color: '#B91C1C', cursor: 'pointer' }}
+                                                    >
+                                                        <X size={13} />
+                                                    </button>
+                                                </div>
+                                            )}
+
+                                            {/* Chip / Card de Archivo Adjunto Seleccionado */}
+                                            {selectedFile && (
+                                                <div style={{
+                                                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                                    padding: '8px 12px', marginBottom: '8px', background: '#F0F9FF',
+                                                    border: '1.5px solid #BAE6FD', borderRadius: '10px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
+                                                }}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+                                                        {selectedFile.type === 'image' && selectedFile.previewUrl ? (
+                                                            <img
+                                                                src={selectedFile.previewUrl}
+                                                                alt="Preview"
+                                                                onClick={() => {
+                                                                    setImagePreviewModal({
+                                                                        isOpen: true,
+                                                                        file: selectedFile.file,
+                                                                        previewUrl: selectedFile.previewUrl,
+                                                                        name: selectedFile.name,
+                                                                        size: selectedFile.size,
+                                                                        caption: messageInput || ''
+                                                                    });
+                                                                }}
+                                                                title="Clic para ver previsualización estilo WhatsApp Web y editar comentario"
+                                                                style={{ width: '40px', height: '40px', borderRadius: '6px', objectFit: 'cover', cursor: 'pointer', border: '1.5px solid #0284C7', boxShadow: '0 1px 3px rgba(2,132,199,0.2)' }}
+                                                            />
+                                                        ) : selectedFile.name.endsWith('.xlsx') || selectedFile.name.endsWith('.xls') || selectedFile.name.endsWith('.csv') ? (
+                                                            <div style={{ width: '36px', height: '36px', borderRadius: '6px', background: '#DCFCE7', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#16A34A' }}>
+                                                                <FileSpreadsheet size={20} />
+                                                            </div>
+                                                        ) : selectedFile.name.endsWith('.docx') || selectedFile.name.endsWith('.doc') ? (
+                                                            <div style={{ width: '36px', height: '36px', borderRadius: '6px', background: '#DBEAFE', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#2563EB' }}>
+                                                                <FileText size={20} />
+                                                            </div>
+                                                        ) : selectedFile.name.endsWith('.pdf') ? (
+                                                            <div style={{ width: '36px', height: '36px', borderRadius: '6px', background: '#FEE2E2', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#DC2626' }}>
+                                                                <FileText size={20} />
+                                                            </div>
+                                                        ) : selectedFile.name.endsWith('.txt') ? (
+                                                            <div style={{ width: '36px', height: '36px', borderRadius: '6px', background: '#F1F5F9', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#475569' }}>
+                                                                <FileText size={20} />
+                                                            </div>
+                                                        ) : (
+                                                            <div style={{ width: '36px', height: '36px', borderRadius: '6px', background: '#E0F2FE', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0284C7' }}>
+                                                                <File size={20} />
+                                                            </div>
+                                                        )}
+                                                        <div
+                                                            style={{ minWidth: 0, cursor: selectedFile.type === 'image' ? 'pointer' : 'default' }}
+                                                            onClick={() => {
+                                                                if (selectedFile.type === 'image') {
+                                                                    setImagePreviewModal({
+                                                                        isOpen: true,
+                                                                        file: selectedFile.file,
+                                                                        previewUrl: selectedFile.previewUrl,
+                                                                        name: selectedFile.name,
+                                                                        size: selectedFile.size,
+                                                                        caption: messageInput || ''
+                                                                    });
+                                                                }
+                                                            }}
+                                                        >
+                                                            <div style={{ fontSize: '0.80rem', fontWeight: 800, color: '#0369A1', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                                {selectedFile.name}
+                                                            </div>
+                                                            ... [truncated for diff preview]
