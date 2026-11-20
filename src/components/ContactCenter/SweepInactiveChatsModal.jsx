@@ -77,25 +77,33 @@ export default function SweepInactiveChatsModal({
                         return (now - (timeStr ? new Date(timeStr).getTime() : 0)) >= 24 * 3600 * 1000;
                     }).length;
                     if (count24 === 0) {
-                        const count8 = data.filter(c => {
+                        const count12 = data.filter(c => {
                             const timeStr = c.last_message_at || c.updated_at || c.created_at;
-                            return (now - (timeStr ? new Date(timeStr).getTime() : 0)) >= 8 * 3600 * 1000;
+                            return (now - (timeStr ? new Date(timeStr).getTime() : 0)) >= 12 * 3600 * 1000;
                         }).length;
-                        if (count8 > 0) {
-                            setHoursThreshold(8);
+                        if (count12 > 0) {
+                            setHoursThreshold(12);
                         } else {
-                            const count4 = data.filter(c => {
+                            const count8 = data.filter(c => {
                                 const timeStr = c.last_message_at || c.updated_at || c.created_at;
-                                return (now - (timeStr ? new Date(timeStr).getTime() : 0)) >= 4 * 3600 * 1000;
+                                return (now - (timeStr ? new Date(timeStr).getTime() : 0)) >= 8 * 3600 * 1000;
                             }).length;
-                            if (count4 > 0) {
-                                setHoursThreshold(4);
+                            if (count8 > 0) {
+                                setHoursThreshold(8);
                             } else {
-                                const count2 = data.filter(c => {
+                                const count4 = data.filter(c => {
                                     const timeStr = c.last_message_at || c.updated_at || c.created_at;
-                                    return (now - (timeStr ? new Date(timeStr).getTime() : 0)) >= 2 * 3600 * 1000;
+                                    return (now - (timeStr ? new Date(timeStr).getTime() : 0)) >= 4 * 3600 * 1000;
                                 }).length;
-                                if (count2 > 0) setHoursThreshold(2);
+                                if (count4 > 0) {
+                                    setHoursThreshold(4);
+                                } else {
+                                    const count2 = data.filter(c => {
+                                        const timeStr = c.last_message_at || c.updated_at || c.created_at;
+                                        return (now - (timeStr ? new Date(timeStr).getTime() : 0)) >= 2 * 3600 * 1000;
+                                    }).length;
+                                    if (count2 > 0) setHoursThreshold(2);
+                                }
                             }
                         }
                     }
@@ -147,6 +155,8 @@ export default function SweepInactiveChatsModal({
                 myOpen: openList.filter(c => c.assigned_agent_id === activeAgent?.id).length,
                 over24hAll: getOlderCount(24, false),
                 over24hMine: getOlderCount(24, true),
+                over12hAll: getOlderCount(12, false),
+                over12hMine: getOlderCount(12, true),
                 over8hAll: getOlderCount(8, false),
                 over8hMine: getOlderCount(8, true),
                 over4hAll: getOlderCount(4, false),
@@ -180,6 +190,8 @@ export default function SweepInactiveChatsModal({
             myOpen: openChats.filter(c => c.assignedTo === activeAgent?.id || c.assigned_agent_id === activeAgent?.id).length,
             over24hAll: getOlderCount(24, false),
             over24hMine: getOlderCount(24, true),
+            over12hAll: getOlderCount(12, false),
+            over12hMine: getOlderCount(12, true),
             over8hAll: getOlderCount(8, false),
             over8hMine: getOlderCount(8, true),
             over4hAll: getOlderCount(4, false),
@@ -345,7 +357,7 @@ export default function SweepInactiveChatsModal({
                 backgroundColor: '#FFFFFF',
                 borderRadius: '16px',
                 width: '100%',
-                maxWidth: '580px',
+                maxWidth: '640px',
                 maxHeight: '92vh',
                 boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)',
                 border: '1px solid #E2E8F0',
@@ -660,9 +672,10 @@ export default function SweepInactiveChatsModal({
                                         </span>
                                     )}
                                 </div>
-                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px' }}>
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '6px' }}>
                                     {[
-                                        { h: 24, label: '+24 Horas', desc: 'Meta Vencida (Ayer)', badge: 'Ayer' },
+                                        { h: 24, label: '+24 Horas', desc: 'Meta Vencida', badge: 'Ayer' },
+                                        { h: 12, label: '+12 Horas', desc: 'Turno Anterior', badge: '12h' },
                                         { h: 8, label: '+8 Horas', desc: 'Turno Mañana', badge: null },
                                         { h: 4, label: '+4 Horas', desc: 'Sin Resp. (+4h)', badge: 'Recomendado' },
                                         { h: 2, label: '+2 Horas', desc: 'Inactivos (+2h)', badge: 'Hoy' }
@@ -721,6 +734,48 @@ export default function SweepInactiveChatsModal({
                                             </div>
                                         );
                                     })}
+                                </div>
+                                <div style={{
+                                    marginTop: '8px',
+                                    padding: '6px 10px',
+                                    borderRadius: '8px',
+                                    backgroundColor: '#F8FAFC',
+                                    border: '1px solid #E2E8F0',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between',
+                                    gap: '8px'
+                                }}>
+                                    <span style={{ fontSize: '0.73rem', fontWeight: 700, color: '#475569' }}>
+                                        ⚙️ O ingresá una cantidad de horas personalizada:
+                                    </span>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                        <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#0284C7' }}>+</span>
+                                        <input
+                                            type="number"
+                                            min={1}
+                                            max={720}
+                                            value={hoursThreshold}
+                                            onChange={(e) => {
+                                                const v = parseInt(e.target.value, 10);
+                                                if (!isNaN(v) && v >= 1) {
+                                                    setHoursThreshold(Math.min(v, 720));
+                                                }
+                                            }}
+                                            style={{
+                                                width: '62px',
+                                                padding: '3px 6px',
+                                                borderRadius: '6px',
+                                                border: '1.5px solid #0284C7',
+                                                fontSize: '0.78rem',
+                                                fontWeight: 800,
+                                                color: '#0F172A',
+                                                textAlign: 'center',
+                                                outline: 'none'
+                                            }}
+                                        />
+                                        <span style={{ fontSize: '0.73rem', fontWeight: 700, color: '#475569' }}>horas</span>
+                                    </div>
                                 </div>
                                 <div style={{
                                     marginTop: '8px',
