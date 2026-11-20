@@ -35,7 +35,7 @@ antigravity-awesome-skills/
 *.dat
 *.pdf
 !public/Informe_Contact_Center_Sanatorio_Argentino.pdf
-gobernanza/
+/gobernanza/
 
 # Import scripts and migration payloads (may contain sensitive data)
 import_pacientes.mjs
