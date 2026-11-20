@@ -185,11 +185,13 @@ for (const r of salusRes.recordset) {
     const descripcion = r.Modulo || '(CX) CIRUGIA GENERAL';
     const isContactCenterExcluded = seq > 1 || EXCLUDED_CONTACT_CENTER_MODULES.some(m => descripcion.toLowerCase().includes(m.toLowerCase()));
 
+    const todayIso = new Date().toISOString().split('T')[0];
     const asist = r.Asistencia ? String(r.Asistencia).trim() : null;
     const isSuspendedInSalus = asist === 'SUSPENDIDA' || asist === 'CX SUSPENDIDA 24H' || asist === 'Ausencia';
+    const isUpcomingPending = !isSuspendedInSalus && (fecha_cirugia > todayIso || (fecha_cirugia === todayIso && asist === null));
 
-    let ausente = '0';
-    let status = preserved.status || null;
+    let ausente = null;
+    let status = preserved.status || 'lila';
     let motivo = null;
 
     if (isSuspendedInSalus) {
@@ -197,17 +199,23 @@ for (const r of salusRes.recordset) {
         status = 'rojo';
         const salusMot = `[${asist}]${r.Motivo_Ausencia ? ' ' + String(r.Motivo_Ausencia).trim() : ''}`;
         motivo = (preserved.motivo && preserved.motivo.trim()) ? preserved.motivo : salusMot;
+    } else if (isUpcomingPending) {
+        ausente = null;
+        if (status === 'rojo' || status === 'suspendida') {
+            status = 'lila';
+        }
+        motivo = null;
     } else {
         ausente = '0';
         if (status === 'rojo' || status === 'suspendida') {
-            status = null;
+            status = 'lila';
         }
         motivo = null;
     }
 
     let instrucciones = preserved.instrucciones || null;
     const cleanInst = instrucciones ? instrucciones.replace(/\s*\[FOJA_SIN_RECEPCION_VISITA\]/g, '').trim() : '';
-    if (asist === null) {
+    if (asist === null && fecha_cirugia < todayIso) {
         instrucciones = cleanInst ? `${cleanInst} [FOJA_SIN_RECEPCION_VISITA]` : '[FOJA_SIN_RECEPCION_VISITA]';
     } else {
         instrucciones = cleanInst || null;

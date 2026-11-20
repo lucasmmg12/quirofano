@@ -91,7 +91,13 @@ export async function fetchSurgeries({ status, fromDate, toDate, limit, ausenteF
     }
     // 'all' no aplica filtro
 
-    if (status) query = query.eq('status', status);
+    if (status) {
+        if (status === 'lila') {
+            query = query.or('status.eq.lila,status.is.null');
+        } else {
+            query = query.eq('status', status);
+        }
+    }
     if (fromDate) query = query.or(`fecha_cirugia.gte.${fromDate},fecha_cirugia.is.null`);
     if (toDate) query = query.lte('fecha_cirugia', toDate);
 
@@ -100,7 +106,7 @@ export async function fetchSurgeries({ status, fromDate, toDate, limit, ausenteF
         query = query.limit(limit);
         const { data, error } = await query;
         if (error) throw error;
-        return data;
+        return (data || []).map(row => ({ ...row, status: row.status || 'lila' }));
     }
 
     // Sin límite: paginar para obtener TODO (Supabase default = 1000 por request)
@@ -117,7 +123,7 @@ export async function fetchSurgeries({ status, fromDate, toDate, limit, ausenteF
         from += PAGE_SIZE;
     }
 
-    return allData;
+    return allData.map(row => ({ ...row, status: row.status || 'lila' }));
 }
 
 /**
@@ -922,7 +928,7 @@ export async function getSurgeryStats() {
 
     if (!data) return {};
 
-    const stats = { lila: 0, amarillo: 0, verde: 0, azul: 0, rojo: 0, precaucion: 0, realizada: 0, suspendida: 0, total: data.length };
+    const stats = { lila: 0, amarillo: 0, verde: 0, azul: 0, rojo: 0, precaucion: 0, fertilidad: 0, realizada: 0, suspendida: 0, total: data.length };
     data.forEach(s => {
         // Determinar status efectivo basado en ausente
         if (s.ausente === '0') {
@@ -930,7 +936,8 @@ export async function getSurgeryStats() {
         } else if (s.ausente === '1') {
             stats.suspendida++;
         } else {
-            stats[s.status] = (stats[s.status] || 0) + 1;
+            const effStatus = s.status || 'lila';
+            stats[effStatus] = (stats[effStatus] || 0) + 1;
         }
     });
     return stats;

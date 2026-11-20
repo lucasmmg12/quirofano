@@ -340,11 +340,9 @@ export default function SurgeryPanel({ addToast, currentUser }) {
     const loadData = useCallback(async () => {
         if (!initialLoadDone) setLoading(true);
         try {
-            // Vista activa: mostrar pendientes + suspendidas (las suspendidas siguen visibles con indicador)
-            // Vista historial: mostrar cirugías finalizadas/históricas
-            const ausenteFilter = viewMode === 'history' ? 'all' : 'active';
-            const dbStatusValues = ['lila', 'amarillo', 'verde', 'azul', 'rojo', 'precaucion'];
-            const dbStatus = dbStatusValues.includes(filter) ? filter : undefined;
+            // Vista Próximas (>= hoy): incluye pendientes (NULL), recepcionadas/realizadas del día ('0') y suspendidas ('1')
+            // para que los pacientes de hoy no desaparezcan del listado al dar presente en admisión.
+            const ausenteFilter = 'all';
             const today = new Date().toISOString().split('T')[0];
 
             // En modo historial con filtro de mes, usar fromDate/toDate para acotar el query
@@ -361,7 +359,6 @@ export default function SurgeryPanel({ addToast, currentUser }) {
 
             const [surgeriesData, statsData] = await Promise.all([
                 fetchSurgeries({
-                    ...(dbStatus && { status: dbStatus }),
                     ausenteFilter,
                     ...(fromDateParam && { fromDate: fromDateParam }),
                     ...(historyToDate && { toDate: historyToDate }),
@@ -388,7 +385,7 @@ export default function SurgeryPanel({ addToast, currentUser }) {
             setLoading(false);
             setInitialLoadDone(true);
         }
-    }, [filter, viewMode, historyMonth, agendaFilter, addToast, initialLoadDone]);
+    }, [viewMode, historyMonth, addToast, initialLoadDone]);
 
     useEffect(() => { loadData(); }, [loadData]);
 
@@ -440,7 +437,7 @@ export default function SurgeryPanel({ addToast, currentUser }) {
     // FILTERED & COMPUTED DATA
     // ============================================================
 
-    const filtered = useMemo(() => {
+    const baseViewSurgeries = useMemo(() => {
         let list = surgeries;
 
         // Agenda filter (Quirófanos vs Hemodinamia vs Reproducción Asistida)
@@ -467,6 +464,32 @@ export default function SurgeryPanel({ addToast, currentUser }) {
             );
         }
 
+        return list;
+    }, [surgeries, searchTerm, agendaFilter, patientDataMap]);
+
+    const viewStats = useMemo(() => {
+        const counts = {
+            lila: 0,
+            amarillo: 0,
+            verde: 0,
+            azul: 0,
+            rojo: 0,
+            precaucion: 0,
+            fertilidad: 0,
+            realizada: 0,
+            suspendida: 0,
+            total: baseViewSurgeries.length
+        };
+        baseViewSurgeries.forEach(s => {
+            const eff = getEffectiveStatus(s);
+            counts[eff] = (counts[eff] || 0) + 1;
+        });
+        return counts;
+    }, [baseViewSurgeries]);
+
+    const filtered = useMemo(() => {
+        let list = baseViewSurgeries;
+
         // Status filter (supports virtual statuses from ausente column)
         if (filter !== 'all') {
             if (filter === 'realizada') {
@@ -475,12 +498,12 @@ export default function SurgeryPanel({ addToast, currentUser }) {
                 list = list.filter(s => s.ausente === '1');
             } else {
                 // Filtro por status real, solo si ausente no aplica
-                list = list.filter(s => s.status === filter && s.ausente !== '0' && s.ausente !== '1');
+                list = list.filter(s => (s.status || 'lila') === filter && s.ausente !== '0' && s.ausente !== '1');
             }
         }
 
         return list;
-    }, [surgeries, searchTerm, filter, agendaFilter, patientDataMap]);
+    }, [baseViewSurgeries, filter]);
 
     // Count for tabs (based on ausente from raw data, not filtered)
     const historySurgeries = useMemo(() => {
@@ -2042,7 +2065,7 @@ export default function SurgeryPanel({ addToast, currentUser }) {
                                 transition: 'all 0.2s',
                             }}
                         >
-                            Todos <span style={{ opacity: 0.8 }}>({surgeries.length})</span>
+                            Todos <span style={{ opacity: 0.8 }}>({viewStats.total})</span>
                         </button>
 
                         {Object.entries(STATUS_CONFIG).map(([key, cfg]) => (
@@ -2065,7 +2088,7 @@ export default function SurgeryPanel({ addToast, currentUser }) {
                                     background: filter === key ? 'rgba(255,255,255,0.25)' : cfg.color + '18',
                                     padding: '1px 7px', borderRadius: '10px', fontSize: '0.7rem',
                                 }}>
-                                    {stats[key] || 0}
+                                    {viewStats[key] || 0}
                                 </span>
                             </button>
                         ))}

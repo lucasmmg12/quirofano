@@ -1075,11 +1075,14 @@ async function syncCirugias(db) {
           AND (
             (A.GrupoAgendas IN (N'QUIRÓFANOS CENTRALES', N'QUIRÓFANOS HdD') AND CAST(A.Data AS DATE) >= DATEADD(DAY, -14, CAST(GETDATE() AS DATE)))
             OR
-            (A.GrupoAgendas = N'HEMODINAMIA' AND CAST(A.Data AS DATE) >= '2026-01-01' AND EXISTS (
-                SELECT 1 FROM dbo.TABLEAU_Cirugias tc WITH (NOLOCK)
-                WHERE tc.idvisita = A.idVisita
-                  AND tc.Anestesista IS NOT NULL
-                  AND LEN(LTRIM(RTRIM(tc.Anestesista))) > 0
+            (A.GrupoAgendas = N'HEMODINAMIA' AND CAST(A.Data AS DATE) >= '2026-01-01' AND (
+                CAST(A.Data AS DATE) >= CAST(GETDATE() AS DATE)
+                OR EXISTS (
+                    SELECT 1 FROM dbo.TABLEAU_Cirugias tc WITH (NOLOCK)
+                    WHERE tc.idvisita = A.idVisita
+                      AND tc.Anestesista IS NOT NULL
+                      AND LEN(LTRIM(RTRIM(tc.Anestesista))) > 0
+                )
             ))
           )
         ORDER BY A.Data DESC
@@ -1088,6 +1091,7 @@ async function syncCirugias(db) {
 
     // Transformar y preparar para upsert
     const records = [];
+    const todayIso = new Date().toISOString().split('T')[0];
     const FIELDS_TO_PRESERVE = [
         'status', 'notificado_at', 'documentacion_recibida_at', 'autorizado_at',
         'confirmado_at', 'archivos', 'whatsapp_message_id', 'ultimo_mensaje_at',
@@ -1103,17 +1107,22 @@ async function syncCirugias(db) {
         const descripcion = r.Descrip || '';
         const excluido = EXCLUDED_MODULES.some(mod => descripcion.toLowerCase().includes(mod.toLowerCase()));
         const phone = normalizePhone(r.telefono1 ? String(r.telefono1) : '');
+        const fechaCirugia = formatDate(r.Data_Fecha);
+        const rawAus = r.Ausente != null ? String(r.Ausente).trim() : null;
+        // En fechas futuras (> hoy), nunca puede estar ya realizada ('0')
+        const ausente = (fechaCirugia > todayIso && rawAus === '0') ? null : rawAus;
 
         records.push({
             id_paciente: String(r.idPaciente),
             nombre: normalizeNameForUpsert(nombre),
-            fecha_cirugia: formatDate(r.Data_Fecha),
+            fecha_cirugia: fechaCirugia,
             telefono: phone.normalized || '',
             telefono_original: phone.original || '',
             descripcion: descripcion,
             modulo: descripcion,
             obra_social: r.mutua || null,
-            ausente: r.Ausente != null ? String(r.Ausente).trim() : null,
+            ausente,
+            status: ausente === '1' ? 'rojo' : 'lila',
             grupo_agendas: r.GrupoAgendas || null,
             medico: r.Doctor || r.GrupoAgendas || null,
             instrucciones: stripRtf(r.Instrucciones_RTF),
@@ -3395,6 +3404,7 @@ async function syncRecepcionesVisitas(db, fastSync = false) {
             ${hastaClause}
             AND (
                   [TIPO VISITA] LIKE '%(CHQ) CHEQUEO PREVENTIVO%' 
+                  OR [TIPO VISITA] LIKE '%(CHQ) CHEQUEO INFORME%'
                   OR [TIPO VISITA] LIKE '%(ECO)%'
                 );
     `);
