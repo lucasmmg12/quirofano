@@ -3747,6 +3747,190 @@ export async function fetchArchivedChats(offset = 0, limit = 25) {
  * @param {string} options.resolutionReason - Motivo de cierre
  * @returns {Promise<{ success: boolean, count: number, phones: string[], error?: any }>}
  */
+const SWEEP_HISTORY_CONFIG_KEY = 'cc_sweep_undo_history';
+const SWEEP_HISTORY_LOCAL_KEY = 'cc_sweep_undo_history_v1';
+const MAX_SWEEP_HISTORY_BATCHES = 10;
+
+/**
+ * Obtiene el historial de barridos masivos con sus snapshots para Undo / Redo.
+ */
+export async function fetchSweepUndoHistory() {
+    try {
+        const { data: row, error } = await supabase
+            .from('app_config')
+            .select('value')
+            .eq('key', SWEEP_HISTORY_CONFIG_KEY)
+            .maybeSingle();
+
+        if (!error && row?.value) {
+            const parsed = typeof row.value === 'string' ? JSON.parse(row.value) : row.value;
+            if (Array.isArray(parsed)) {
+                try {
+                    localStorage.setItem(SWEEP_HISTORY_LOCAL_KEY, JSON.stringify(parsed));
+                } catch (_) {}
+                return parsed;
+            }
+        }
+    } catch (e) {
+        console.warn('[contact-center] Error leyendo historial Undo/Redo en Supabase:', e);
+    }
+
+    try {
+        const localRaw = localStorage.getItem(SWEEP_HISTORY_LOCAL_KEY);
+        if (localRaw) {
+            const parsed = JSON.parse(localRaw);
+            if (Array.isArray(parsed)) return parsed;
+        }
+    } catch (_) {}
+
+    return [];
+}
+
+/**
+ * Persiste el historial de barridos para Undo / Redo en Supabase app_config y localStorage.
+ */
+async function saveSweepUndoHistory(historyList) {
+    const trimmed = (Array.isArray(historyList) ? historyList : []).slice(0, MAX_SWEEP_HISTORY_BATCHES);
+    try {
+        localStorage.setItem(SWEEP_HISTORY_LOCAL_KEY, JSON.stringify(trimmed));
+    } catch (_) {}
+
+    try {
+        await supabase.from('app_config').upsert({
+            key: SWEEP_HISTORY_CONFIG_KEY,
+            value: JSON.stringify(trimmed),
+            label: 'Historial Undo/Redo de Barridos Contact Center',
+            category: 'contact_center',
+            updated_at: new Date().toISOString(),
+            updated_by: 'lmarinero'
+        });
+    } catch (e) {
+        console.warn('[contact-center] No se pudo guardar historial Undo/Redo en app_config:', e);
+    }
+    return trimmed;
+}
+
+/**
+ * Deshace (Undo) un lote de barrido masivo, restaurando cada conversación a su estado previo exacto.
+ */
+export async function undoSweepBatch(batchId = null) {
+    try {
+        const history = await fetchSweepUndoHistory();
+        const targetBatch = batchId
+            ? history.find(b => b.id === batchId)
+            : history.find(b => b.state === 'applied');
+
+        if (!targetBatch || !Array.isArray(targetBatch.items) || targetBatch.items.length === 0) {
+            return { success: false, error: 'No hay ningún barrido activo para deshacer (Undo).' };
+        }
+
+        let restoredCount = 0;
+        for (const item of targetBatch.items) {
+            if (!item?.phone) continue;
+            const b = item.before || {};
+            const restoredStatus = b.status || (b.assigned_agent_id ? 'abierto' : 'sin_asignar');
+            const { error } = await supabase
+                .from('contact_center_conversations')
+                .update({
+                    status: restoredStatus,
+                    bot_active: b.bot_active ?? false,
+                    closed_at: b.closed_at ?? null,
+                    closed_by_agent_id: b.closed_by_agent_id ?? null,
+                    closed_by_agent_name: b.closed_by_agent_name ?? null,
+                    resolution_reason: b.resolution_reason ?? null,
+                    updated_at: b.updated_at || new Date().toISOString()
+                })
+                .eq('phone', item.phone);
+
+            if (!error) restoredCount++;
+        }
+
+        const nowIso = new Date().toISOString();
+        const nextHistory = history.map(b =>
+            b.id === targetBatch.id
+                ? { ...b, state: 'undone', undoneAt: nowIso }
+                : b
+        );
+        await saveSweepUndoHistory(nextHistory);
+
+        return {
+            success: true,
+            action: 'undo',
+            batchId: targetBatch.id,
+            count: restoredCount,
+            phones: targetBatch.items.map(i => i.phone),
+            batch: { ...targetBatch, state: 'undone', undoneAt: nowIso },
+            history: nextHistory
+        };
+    } catch (err) {
+        console.error('[contact-center] Error en undoSweepBatch:', err);
+        return { success: false, error: err.message || String(err) };
+    }
+}
+
+/**
+ * Rehace (Redo) un lote de barrido previamente revertido, volviendo a archivar las conversaciones del lote.
+ */
+export async function redoSweepBatch(batchId = null) {
+    try {
+        const history = await fetchSweepUndoHistory();
+        const targetBatch = batchId
+            ? history.find(b => b.id === batchId)
+            : history.find(b => b.state === 'undone');
+
+        if (!targetBatch || !Array.isArray(targetBatch.items) || targetBatch.items.length === 0) {
+            return { success: false, error: 'No hay ningún barrido deshecho disponible para rehacer (Redo).' };
+        }
+
+        const nowIso = new Date().toISOString();
+        const phones = targetBatch.items.map(i => i.phone).filter(Boolean);
+        const sampleAfter = targetBatch.items[0]?.after || {};
+        const reason = targetBatch.reason || sampleAfter.resolution_reason || `Cierre automático por inactividad (+${targetBatch.hoursThreshold || 24}h)`;
+        const closedByAgentId = targetBatch.closedByAgentId || sampleAfter.closed_by_agent_id || 'lmarinero';
+        const closedByAgentName = targetBatch.closedByAgentName || sampleAfter.closed_by_agent_name || 'Lucas Marinero (Supervisor)';
+
+        let reappliedCount = 0;
+        for (let i = 0; i < phones.length; i += 50) {
+            const batchPhones = phones.slice(i, i + 50);
+            const { error } = await supabase
+                .from('contact_center_conversations')
+                .update({
+                    status: 'finalizado',
+                    closed_at: nowIso,
+                    closed_by_agent_id: closedByAgentId,
+                    closed_by_agent_name: closedByAgentName,
+                    resolution_reason: reason,
+                    bot_active: false,
+                    updated_at: nowIso
+                })
+                .in('phone', batchPhones);
+
+            if (!error) reappliedCount += batchPhones.length;
+        }
+
+        const nextHistory = history.map(b =>
+            b.id === targetBatch.id
+                ? { ...b, state: 'applied', redoneAt: nowIso }
+                : b
+        );
+        await saveSweepUndoHistory(nextHistory);
+
+        return {
+            success: true,
+            action: 'redo',
+            batchId: targetBatch.id,
+            count: reappliedCount,
+            phones,
+            reason,
+            batch: { ...targetBatch, state: 'applied', redoneAt: nowIso },
+            history: nextHistory
+        };
+    } catch (err) {
+        console.error('[contact-center] Error en redoSweepBatch:', err);
+        return { success: false, error: err.message || String(err) };
+    }
+}
+
 export async function sweepInactiveConversations({
     hoursThreshold = 24,
     assignedAgentId = null,
@@ -3768,7 +3952,7 @@ export async function sweepInactiveConversations({
             let query = supabase
                 .from('contact_center_conversations')
                 .select('phone, updated_at, last_message_at, created_at, assigned_agent_id')
-                .not('status', 'in', '("archivado","cerrado","finalizado","resuelto","archived","closed")');
+                .not('status', 'in', '("archivado","cerrado","finalizado","finalizada","resuelto","archived","closed")');
 
             if (assignedAgentId) {
                 query = query.eq('assigned_agent_id', assignedAgentId);
@@ -3787,6 +3971,21 @@ export async function sweepInactiveConversations({
 
         if (phones.length === 0) {
             return { success: true, count: 0, phones: [], reason };
+        }
+
+        // Capturar snapshot exacto ANTES de aplicar el barrido para poder hacer Undo / Redo 1:1
+        const beforeByPhone = new Map();
+        for (let i = 0; i < phones.length; i += 50) {
+            const batch = phones.slice(i, i + 50);
+            const { data: existingRows } = await supabase
+                .from('contact_center_conversations')
+                .select('phone, nombre_completo, status, assigned_agent_id, assigned_agent_name, assigned_at, bot_active, bot_stage, closed_at, closed_by_agent_id, closed_by_agent_name, resolution_reason, last_message_at, created_at, updated_at')
+                .in('phone', batch);
+
+            (existingRows || []).forEach(r => {
+                const normP = normalizeArgentinePhone(r.phone) || r.phone;
+                beforeByPhone.set(normP, r);
+            });
         }
 
         let updatedCount = 0;
@@ -3841,11 +4040,59 @@ export async function sweepInactiveConversations({
             updatedCount += batch.length;
         }
 
+        // Guardar lote en el historial Undo/Redo
+        const snapshotItems = phones.map(p => {
+            const prev = beforeByPhone.get(p) || {};
+            return {
+                phone: p,
+                nombre_completo: prev.nombre_completo || p,
+                before: {
+                    status: prev.status || (prev.assigned_agent_id ? 'abierto' : 'sin_asignar'),
+                    assigned_agent_id: prev.assigned_agent_id || null,
+                    bot_active: prev.bot_active ?? false,
+                    closed_at: prev.closed_at || null,
+                    closed_by_agent_id: prev.closed_by_agent_id || null,
+                    closed_by_agent_name: prev.closed_by_agent_name || null,
+                    resolution_reason: prev.resolution_reason || null,
+                    updated_at: prev.last_message_at || prev.updated_at || prev.created_at || nowIso
+                },
+                after: {
+                    status: 'finalizado',
+                    bot_active: false,
+                    closed_at: nowIso,
+                    closed_by_agent_id: closedByAgentId,
+                    closed_by_agent_name: closedByAgentName,
+                    resolution_reason: reason,
+                    updated_at: nowIso
+                }
+            };
+        });
+
+        const batchEntry = {
+            id: `sweep_${Date.now()}`,
+            executedAt: nowIso,
+            hoursThreshold,
+            scope: assignedAgentId ? 'mine' : 'all',
+            reason,
+            closedByAgentId,
+            closedByAgentName,
+            count: updatedCount,
+            state: 'applied',
+            items: snapshotItems
+        };
+
+        const currentHistory = await fetchSweepUndoHistory();
+        const nextHistory = [batchEntry, ...currentHistory].slice(0, MAX_SWEEP_HISTORY_BATCHES);
+        await saveSweepUndoHistory(nextHistory);
+
         return {
             success: true,
             count: updatedCount,
             phones,
-            reason
+            reason,
+            batchId: batchEntry.id,
+            batch: batchEntry,
+            history: nextHistory
         };
     } catch (err) {
         console.error('[contact-center] Error en sweepInactiveConversations:', err);

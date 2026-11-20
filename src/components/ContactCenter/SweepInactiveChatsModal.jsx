@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { 
     Brush, 
     Clock, 
@@ -10,14 +10,22 @@ import {
     User, 
     Sparkles, 
     Filter,
-    Loader2
+    Loader2,
+    RotateCcw,
+    RotateCw
 } from 'lucide-react';
-import { sweepInactiveConversations } from '../../services/contactCenterService';
+import {
+    sweepInactiveConversations,
+    fetchSweepUndoHistory,
+    undoSweepBatch,
+    redoSweepBatch
+} from '../../services/contactCenterService';
 import { supabase } from '../../lib/supabase';
 
 /**
  * Modal de Barrido Rápido de Conversaciones Inactivas
  * Permite archivar en bloque conversaciones sin actividad (+24h, +8h, +4h, +2h)
+ * y deshacer/rehacer (Undo / Redo) los últimos barridos con 1 clic.
  * Estilo Clean Clinical - Calidad QOAG
  */
 export default function SweepInactiveChatsModal({
@@ -36,34 +44,46 @@ export default function SweepInactiveChatsModal({
     const [sweepResult, setSweepResult] = useState(null);
     const [dbConvs, setDbConvs] = useState(null);
     const [loadingDbStats, setLoadingDbStats] = useState(false);
+    const [sweepHistory, setSweepHistory] = useState([]);
+    const [undoRedoBusyId, setUndoRedoBusyId] = useState(null);
+    const [undoRedoFeedback, setUndoRedoFeedback] = useState(null);
 
     // Actualizar motivo predeterminado al cambiar el umbral
     useEffect(() => {
         setResolutionReason(`Cierre automático por inactividad (+${hoursThreshold}h)`);
     }, [hoursThreshold]);
 
-    // Cargar estadísticas globales en vivo desde Supabase al abrir el modal
-    useEffect(() => {
-        if (isOpen) {
-            setSweepResult(null);
-            setErrorMsg(null);
-            setIsSweeping(false);
-            setLoadingDbStats(true);
+    const reloadOpenConvsAndHistory = useCallback(async (autoSelectThreshold = false) => {
+        setLoadingDbStats(true);
+        try {
+            const [{ data, error }, hist] = await Promise.all([
+                supabase
+                    .from('contact_center_conversations')
+                    .select('phone, last_message_at, updated_at, created_at, assigned_agent_id, status, nombre_completo')
+                    .not('status', 'in', '("archivado","cerrado","finalizado","finalizada","resuelto","archived","closed")'),
+                fetchSweepUndoHistory()
+            ]);
 
-            supabase
-                .from('contact_center_conversations')
-                .select('phone, last_message_at, updated_at, created_at, assigned_agent_id, status, nombre_completo')
-                .not('status', 'in', '("archivado","cerrado","finalizado","resuelto","archived","closed")')
-                .then(({ data, error }) => {
-                    if (!error && Array.isArray(data)) {
-                        setDbConvs(data);
-                        // Si no hay conversaciones de +24h, auto-seleccionar el umbral con inactividad disponible
-                        const now = Date.now();
-                        const count24 = data.filter(c => {
+            if (Array.isArray(hist)) {
+                setSweepHistory(hist);
+            }
+
+            if (!error && Array.isArray(data)) {
+                setDbConvs(data);
+                if (autoSelectThreshold) {
+                    const now = Date.now();
+                    const count24 = data.filter(c => {
+                        const timeStr = c.last_message_at || c.updated_at || c.created_at;
+                        return (now - (timeStr ? new Date(timeStr).getTime() : 0)) >= 24 * 3600 * 1000;
+                    }).length;
+                    if (count24 === 0) {
+                        const count8 = data.filter(c => {
                             const timeStr = c.last_message_at || c.updated_at || c.created_at;
-                            return (now - (timeStr ? new Date(timeStr).getTime() : 0)) >= 24 * 3600 * 1000;
+                            return (now - (timeStr ? new Date(timeStr).getTime() : 0)) >= 8 * 3600 * 1000;
                         }).length;
-                        if (count24 === 0) {
+                        if (count8 > 0) {
+                            setHoursThreshold(8);
+                        } else {
                             const count4 = data.filter(c => {
                                 const timeStr = c.last_message_at || c.updated_at || c.created_at;
                                 return (now - (timeStr ? new Date(timeStr).getTime() : 0)) >= 4 * 3600 * 1000;
@@ -79,15 +99,25 @@ export default function SweepInactiveChatsModal({
                             }
                         }
                     }
-                })
-                .catch((err) => {
-                    console.warn('[SweepModal] Error consultando conversaciones abiertas:', err);
-                })
-                .finally(() => {
-                    setLoadingDbStats(false);
-                });
+                }
+            }
+        } catch (err) {
+            console.warn('[SweepModal] Error consultando conversaciones abiertas:', err);
+        } finally {
+            setLoadingDbStats(false);
         }
-    }, [isOpen]);
+    }, []);
+
+    // Cargar estadísticas globales e historial Undo/Redo en vivo desde Supabase al abrir el modal
+    useEffect(() => {
+        if (isOpen) {
+            setSweepResult(null);
+            setErrorMsg(null);
+            setUndoRedoFeedback(null);
+            setIsSweeping(false);
+            reloadOpenConvsAndHistory(true);
+        }
+    }, [isOpen, reloadOpenConvsAndHistory]);
 
     // Calcular estadísticas en tiempo real: priorizar el padrón completo de la BD
     const stats = useMemo(() => {
@@ -163,6 +193,65 @@ export default function SweepInactiveChatsModal({
 
     if (!isOpen) return null;
 
+    const handleUndoBatch = async (batchId = null) => {
+        setUndoRedoBusyId(batchId || 'latest_undo');
+        setErrorMsg(null);
+        setUndoRedoFeedback(null);
+        try {
+            const res = await undoSweepBatch(batchId);
+            if (!res.success) {
+                throw new Error(res.error || 'No se pudo deshacer el barrido.');
+            }
+            if (Array.isArray(res.history)) setSweepHistory(res.history);
+            setUndoRedoFeedback(`↩️ Undo aplicado: Se restauraron ${res.count} conversaciones a la bandeja activa.`);
+            if (sweepResult && (!batchId || sweepResult.batchId === res.batchId)) {
+                setSweepResult(prev => prev ? { ...prev, isUndone: true } : null);
+            }
+            await reloadOpenConvsAndHistory(false);
+            if (onSweepSuccess) {
+                onSweepSuccess({
+                    ...res,
+                    targetChatIds: [],
+                    isUndoRedo: true
+                });
+            }
+        } catch (err) {
+            setErrorMsg(err.message || 'Error al deshacer barrido');
+        } finally {
+            setUndoRedoBusyId(null);
+        }
+    };
+
+    const handleRedoBatch = async (batchId = null) => {
+        setUndoRedoBusyId(batchId || 'latest_redo');
+        setErrorMsg(null);
+        setUndoRedoFeedback(null);
+        try {
+            const res = await redoSweepBatch(batchId);
+            if (!res.success) {
+                throw new Error(res.error || 'No se pudo rehacer el barrido.');
+            }
+            if (Array.isArray(res.history)) setSweepHistory(res.history);
+            setUndoRedoFeedback(`↪️ Redo aplicado: Se volvieron a archivar ${res.count} conversaciones del lote (+${res.batch?.hoursThreshold || 24}h).`);
+            if (sweepResult && (!batchId || sweepResult.batchId === res.batchId)) {
+                setSweepResult(prev => prev ? { ...prev, isUndone: false } : null);
+            }
+            await reloadOpenConvsAndHistory(false);
+            if (onSweepSuccess) {
+                onSweepSuccess({
+                    ...res,
+                    targetChatIds: [],
+                    resolutionReason: res.reason,
+                    isUndoRedo: true
+                });
+            }
+        } catch (err) {
+            setErrorMsg(err.message || 'Error al rehacer barrido');
+        } finally {
+            setUndoRedoBusyId(null);
+        }
+    };
+
     const handleExecuteSweep = async () => {
         const u = String(currentUser?.usuario || currentUser?.email || activeAgent?.username || activeAgent?.id || '').toLowerCase().trim().split('@')[0];
         const isAllowed = u === 'lmarinero' || u === 'lucas' || u.includes('marinero');
@@ -173,6 +262,7 @@ export default function SweepInactiveChatsModal({
 
         setIsSweeping(true);
         setErrorMsg(null);
+        setUndoRedoFeedback(null);
         try {
             const now = Date.now();
             const cutoffMs = hoursThreshold * 3600 * 1000;
@@ -183,7 +273,7 @@ export default function SweepInactiveChatsModal({
             if (dbConvs && Array.isArray(dbConvs) && dbConvs.length > 0) {
                 const targetConvs = dbConvs.filter(c => {
                     const st = (c.status || '').toLowerCase();
-                    if (['archivado', 'cerrado', 'finalizado', 'resuelto', 'archived', 'closed'].includes(st)) return false;
+                    if (['archivado', 'cerrado', 'finalizado', 'finalizada', 'resuelto', 'archived', 'closed'].includes(st)) return false;
                     if (scope === 'mine' && c.assigned_agent_id !== activeAgent?.id) return false;
                     const timeStr = c.last_message_at || c.updated_at || c.created_at;
                     const time = timeStr ? new Date(timeStr).getTime() : 0;
@@ -193,7 +283,7 @@ export default function SweepInactiveChatsModal({
             } else {
                 const openChats = (chats || []).filter(c => {
                     const st = (c.status || '').toLowerCase();
-                    return !['archivado', 'cerrado', 'finalizado', 'resuelto', 'archived', 'closed'].includes(st);
+                    return !['archivado', 'cerrado', 'finalizado', 'finalizada', 'resuelto', 'archived', 'closed'].includes(st);
                 });
                 const targetChats = openChats.filter(c => {
                     if (scope === 'mine' && c.assignedTo !== activeAgent?.id && c.assigned_agent_id !== activeAgent?.id) return false;
@@ -217,6 +307,9 @@ export default function SweepInactiveChatsModal({
                 throw new Error(result.error);
             }
 
+            if (Array.isArray(result.history)) {
+                setSweepHistory(result.history);
+            }
             setSweepResult(result);
             if (onSweepSuccess) {
                 onSweepSuccess({
@@ -232,6 +325,8 @@ export default function SweepInactiveChatsModal({
             setIsSweeping(false);
         }
     };
+
+    const latestBatch = sweepHistory[0] || null;
 
     return (
         <div style={{
@@ -250,7 +345,8 @@ export default function SweepInactiveChatsModal({
                 backgroundColor: '#FFFFFF',
                 borderRadius: '16px',
                 width: '100%',
-                maxWidth: '540px',
+                maxWidth: '580px',
+                maxHeight: '92vh',
                 boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)',
                 border: '1px solid #E2E8F0',
                 overflow: 'hidden',
@@ -294,17 +390,17 @@ export default function SweepInactiveChatsModal({
                                     padding: '2px 8px',
                                     borderRadius: '12px'
                                 }}>
-                                    Exclusivo @lmarinero
+                                    Exclusivo @lmarinero · Undo/Redo
                                 </span>
                             </div>
                             <p style={{ margin: 0, fontSize: '0.74rem', color: '#94A3B8' }}>
-                                Archivado masivo de conversaciones con ventana Meta expirada
+                                Archivado masivo de conversaciones con ventana Meta expirada y reversión instantánea
                             </p>
                         </div>
                     </div>
                     <button
                         onClick={onClose}
-                        disabled={isSweeping}
+                        disabled={isSweeping || Boolean(undoRedoBusyId)}
                         style={{
                             background: 'transparent',
                             border: 'none',
@@ -322,14 +418,142 @@ export default function SweepInactiveChatsModal({
                 </div>
 
                 {/* Contenido Principal */}
-                <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                    {sweepResult ? (
-                        /* Pantalla de Éxito */
+                <div style={{ padding: '18px 24px', display: 'flex', flexDirection: 'column', gap: '14px', overflowY: 'auto' }}>
+                    {/* PANEL DE CONTROL UNDO / REDO DEL ÚLTIMO BARRIDO */}
+                    {sweepHistory.length > 0 && (
                         <div style={{
-                            padding: '24px',
+                            padding: '12px 14px',
                             borderRadius: '12px',
-                            backgroundColor: '#F0FDF4',
-                            border: '1.5px solid #86EFAC',
+                            backgroundColor: '#F8FAFC',
+                            border: '1.5px solid #CBD5E1',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '8px'
+                        }}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '6px' }}>
+                                <div style={{ fontSize: '0.76rem', fontWeight: 800, color: '#0F172A', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <Clock size={14} color="#0284C7" />
+                                    <span>Control de Reversión (Undo / Redo de Últimos Barridos)</span>
+                                </div>
+                                {latestBatch && (
+                                    <span style={{
+                                        fontSize: '0.64rem',
+                                        fontWeight: 800,
+                                        padding: '2px 8px',
+                                        borderRadius: '999px',
+                                        backgroundColor: latestBatch.state === 'applied' ? '#DCFCE7' : '#FEF3C7',
+                                        color: latestBatch.state === 'applied' ? '#166534' : '#92400E',
+                                        border: `1px solid ${latestBatch.state === 'applied' ? '#86EFAC' : '#FDE68A'}`
+                                    }}>
+                                        {latestBatch.state === 'applied' ? '● Barrido Aplicado (Archivados)' : '● Revertido (Chats en Bandeja)'}
+                                    </span>
+                                )}
+                            </div>
+
+                            {sweepHistory.slice(0, 3).map((b) => {
+                                const isApplied = b.state === 'applied';
+                                const isBusy = undoRedoBusyId === b.id;
+                                const timeLabel = b.executedAt
+                                    ? new Date(b.executedAt).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+                                    : '';
+                                return (
+                                    <div
+                                        key={b.id}
+                                        style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'space-between',
+                                            flexWrap: 'wrap',
+                                            gap: '8px',
+                                            padding: '8px 10px',
+                                            borderRadius: '8px',
+                                            backgroundColor: '#FFFFFF',
+                                            border: '1px solid #E2E8F0'
+                                        }}
+                                    >
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                            <div style={{ fontSize: '0.76rem', fontWeight: 700, color: '#1E293B' }}>
+                                                Lote +{b.hoursThreshold || 24}h · <strong>{b.count} chats</strong> ({timeLabel} hs)
+                                            </div>
+                                            <div style={{ fontSize: '0.66rem', color: '#64748B' }}>
+                                                {b.reason} · Estado: <strong style={{ color: isApplied ? '#059669' : '#D97706' }}>{isApplied ? 'Archivados' : 'Deshecho (Restaurados)'}</strong>
+                                            </div>
+                                        </div>
+
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleUndoBatch(b.id)}
+                                                disabled={!isApplied || Boolean(undoRedoBusyId) || isSweeping}
+                                                title="Deshacer este barrido y devolver los chats a la bandeja activa"
+                                                style={{
+                                                    padding: '5px 10px',
+                                                    borderRadius: '7px',
+                                                    border: isApplied ? '1px solid #F59E0B' : '1px solid #E2E8F0',
+                                                    backgroundColor: isApplied ? '#FFFBEB' : '#F8FAFC',
+                                                    color: isApplied ? '#B45309' : '#94A3B8',
+                                                    fontSize: '0.72rem',
+                                                    fontWeight: 800,
+                                                    cursor: (!isApplied || undoRedoBusyId) ? 'not-allowed' : 'pointer',
+                                                    display: 'inline-flex',
+                                                    alignItems: 'center',
+                                                    gap: '4px'
+                                                }}
+                                            >
+                                                {isBusy && isApplied ? <Loader2 size={12} className="animate-spin" /> : <RotateCcw size={12} />}
+                                                <span>Undo</span>
+                                            </button>
+
+                                            <button
+                                                type="button"
+                                                onClick={() => handleRedoBatch(b.id)}
+                                                disabled={isApplied || Boolean(undoRedoBusyId) || isSweeping}
+                                                title="Rehacer este barrido y volver a archivar los chats del lote"
+                                                style={{
+                                                    padding: '5px 10px',
+                                                    borderRadius: '7px',
+                                                    border: !isApplied ? '1px solid #0284C7' : '1px solid #E2E8F0',
+                                                    backgroundColor: !isApplied ? '#F0F9FF' : '#F8FAFC',
+                                                    color: !isApplied ? '#0369A1' : '#94A3B8',
+                                                    fontSize: '0.72rem',
+                                                    fontWeight: 800,
+                                                    cursor: (isApplied || undoRedoBusyId) ? 'not-allowed' : 'pointer',
+                                                    display: 'inline-flex',
+                                                    alignItems: 'center',
+                                                    gap: '4px'
+                                                }}
+                                            >
+                                                {isBusy && !isApplied ? <Loader2 size={12} className="animate-spin" /> : <RotateCw size={12} />}
+                                                <span>Redo</span>
+                                            </button>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+
+                            {undoRedoFeedback && (
+                                <div style={{
+                                    padding: '6px 10px',
+                                    borderRadius: '7px',
+                                    backgroundColor: '#ECFDF5',
+                                    border: '1px solid #A7F3D0',
+                                    color: '#065F46',
+                                    fontSize: '0.73rem',
+                                    fontWeight: 700
+                                }}>
+                                    {undoRedoFeedback}
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {sweepResult ? (
+                        /* Pantalla de Éxito con botones Undo / Redo integrados */
+                        <div style={{
+                            padding: '22px',
+                            borderRadius: '12px',
+                            backgroundColor: sweepResult.isUndone ? '#FFFBEB' : '#F0FDF4',
+                            border: `1.5px solid ${sweepResult.isUndone ? '#FDE68A' : '#86EFAC'}`,
                             textAlign: 'center',
                             display: 'flex',
                             flexDirection: 'column',
@@ -340,37 +564,87 @@ export default function SweepInactiveChatsModal({
                                 width: '48px',
                                 height: '48px',
                                 borderRadius: '50%',
-                                backgroundColor: '#10B981',
+                                backgroundColor: sweepResult.isUndone ? '#F59E0B' : '#10B981',
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
                                 color: '#FFFFFF',
                                 boxShadow: '0 4px 12px rgba(16, 185, 129, 0.3)'
                             }}>
-                                <CheckCircle2 size={28} />
+                                {sweepResult.isUndone ? <RotateCcw size={26} /> : <CheckCircle2 size={28} />}
                             </div>
-                            <div style={{ fontSize: '1.1rem', fontWeight: 800, color: '#065F46' }}>
-                                ¡Barrido Completado con Éxito!
+                            <div style={{ fontSize: '1.08rem', fontWeight: 800, color: sweepResult.isUndone ? '#92400E' : '#065F46' }}>
+                                {sweepResult.isUndone ? '¡Barrido Deshecho (Undo Aplicado)!' : '¡Barrido Completado con Éxito!'}
                             </div>
-                            <p style={{ fontSize: '0.82rem', color: '#047857', margin: 0, maxWidth: '380px' }}>
-                                Se han finalizado y archivado <strong>{sweepResult.count} conversaciones</strong> inactivas. La bandeja quedó despejada y organizada.
+                            <p style={{ fontSize: '0.82rem', color: sweepResult.isUndone ? '#B45309' : '#047857', margin: 0, maxWidth: '400px' }}>
+                                {sweepResult.isUndone
+                                    ? <>Se restauraron las <strong>{sweepResult.count} conversaciones</strong> a su estado original en la bandeja activa.</>
+                                    : <>Se han finalizado y archivado <strong>{sweepResult.count} conversaciones</strong> inactivas. La bandeja quedó despejada y organizada.</>}
                             </p>
-                            <button
-                                onClick={onClose}
-                                style={{
-                                    marginTop: '10px',
-                                    padding: '8px 24px',
-                                    borderRadius: '8px',
-                                    border: 'none',
-                                    backgroundColor: '#059669',
-                                    color: '#FFFFFF',
-                                    fontSize: '0.84rem',
-                                    fontWeight: 700,
-                                    cursor: 'pointer'
-                                }}
-                            >
-                                Entendido y Cerrar
-                            </button>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '8px', flexWrap: 'wrap', justifyContent: 'center' }}>
+                                {!sweepResult.isUndone ? (
+                                    <button
+                                        type="button"
+                                        onClick={() => handleUndoBatch(sweepResult.batchId)}
+                                        disabled={Boolean(undoRedoBusyId)}
+                                        style={{
+                                            padding: '8px 16px',
+                                            borderRadius: '8px',
+                                            border: '1px solid #F59E0B',
+                                            backgroundColor: '#FFFBEB',
+                                            color: '#B45309',
+                                            fontSize: '0.82rem',
+                                            fontWeight: 800,
+                                            cursor: undoRedoBusyId ? 'wait' : 'pointer',
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: '6px'
+                                        }}
+                                    >
+                                        <RotateCcw size={15} />
+                                        <span>↩️ Deshacer este Barrido (Undo)</span>
+                                    </button>
+                                ) : (
+                                    <button
+                                        type="button"
+                                        onClick={() => handleRedoBatch(sweepResult.batchId)}
+                                        disabled={Boolean(undoRedoBusyId)}
+                                        style={{
+                                            padding: '8px 16px',
+                                            borderRadius: '8px',
+                                            border: '1px solid #0284C7',
+                                            backgroundColor: '#F0F9FF',
+                                            color: '#0369A1',
+                                            fontSize: '0.82rem',
+                                            fontWeight: 800,
+                                            cursor: undoRedoBusyId ? 'wait' : 'pointer',
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: '6px'
+                                        }}
+                                    >
+                                        <RotateCw size={15} />
+                                        <span>↪️ Rehacer este Barrido (Redo)</span>
+                                    </button>
+                                )}
+
+                                <button
+                                    type="button"
+                                    onClick={onClose}
+                                    style={{
+                                        padding: '8px 22px',
+                                        borderRadius: '8px',
+                                        border: 'none',
+                                        backgroundColor: '#059669',
+                                        color: '#FFFFFF',
+                                        fontSize: '0.84rem',
+                                        fontWeight: 700,
+                                        cursor: 'pointer'
+                                    }}
+                                >
+                                    Entendido y Cerrar
+                                </button>
+                            </div>
                         </div>
                     ) : (
                         <>
