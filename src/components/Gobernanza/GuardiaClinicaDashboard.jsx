@@ -405,6 +405,7 @@ export default function GuardiaClinicaDashboard({
                 const prevDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
                 const prevMonthStr = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, '0')}`;
                 
+                onCustomDateChange(dDesde, dHasta);
                 if (nuevoPeriodo === currentMonthStr) {
                     onDatePresetChange?.('este_mes');
                 } else if (nuevoPeriodo === prevMonthStr) {
@@ -412,7 +413,6 @@ export default function GuardiaClinicaDashboard({
                 } else {
                     onDatePresetChange?.('personalizado');
                 }
-                onCustomDateChange(dDesde, dHasta);
             }
         }
     };
@@ -1374,7 +1374,11 @@ export default function GuardiaClinicaDashboard({
                                 return (
                                     <tr 
                                         key={r.periodo}
-                                        onClick={() => setSelectedPeriodo(r.periodo)}
+                                        onClick={(e) => {
+                                            handleSelectPeriodo(r.periodo);
+                                            const scroller = e.currentTarget.closest('div[style*="overflow"]');
+                                            if (scroller) scroller.scrollTo({ top: 0, behavior: 'smooth' });
+                                        }}
                                         style={{
                                             borderBottom: '1px solid #F1F5F9',
                                             background: isCurrent ? '#EFF6FF' : 'transparent',
@@ -1422,7 +1426,9 @@ export default function GuardiaClinicaDashboard({
                                                 type="button"
                                                 onClick={(e) => {
                                                     e.stopPropagation();
-                                                    setSelectedPeriodo(r.periodo);
+                                                    handleSelectPeriodo(r.periodo);
+                                                    const scroller = e.currentTarget.closest('div[style*="overflow"]');
+                                                    if (scroller) scroller.scrollTo({ top: 0, behavior: 'smooth' });
                                                 }}
                                                 style={{
                                                     background: isCurrent ? '#2563EB' : '#F1F5F9',
