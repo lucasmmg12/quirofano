@@ -1624,61 +1624,227 @@ export default function InternacionDashboard({
 
             {/* ═══ CONTENIDO POR PESTAÑA ═══ */}
 
-            {/* 1. PORTAL RESUMEN (EQUIVALENTE A PANTALLA INICIO TABLEAU) */}
+            {/* 1. PORTAL RESUMEN (GRILLA SIMÉTRICA 4x2 CALIDAD-QOAG) */}
             {activeTab === 'portal' && (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '14px' }}>
-                    {[
-                        { tab: 'neonatologia', title: 'Neonatología', desc: 'Terapia Neonatal · Días Cama multianual, Promedio Anual, Ingresos y Egresos', metric: `${fmtNum(telarKpis.bySector.NEONATOLOGIA?.diasCama || 0, 1)} días cama`, sub: `${fmtNum(telarKpis.bySector.NEONATOLOGIA?.ingresos || 0)} ingresos en período Telar`, color: '#0284C7', icon: Baby },
-                        { tab: 'pediatria', title: 'Pediatría', desc: 'Internación Pediátrica desglosada en PISO y TERAPIA (UTIP)', metric: `${fmtNum(telarKpis.bySector.PEDIATRIA?.diasCama || 0, 1)} días cama`, sub: `${fmtNum(telarKpis.bySector.PEDIATRIA?.ingresos || 0)} ingresos en período Telar`, color: '#7C3AED', icon: HeartPulse },
-                        { tab: 'internado', title: 'Internado Adultos', desc: 'Ingresos multianuales, Promedio Anual y matriz Días Cama 2021–2026', metric: `${fmtNum(telarKpis.bySector.INTERNADO?.diasCama || 0, 1)} días cama`, sub: `${fmtNum(telarKpis.bySector.INTERNADO?.ingresos || 0)} ingresos en período Telar`, color: '#003B73', icon: Bed },
-                        { tab: 'terapia', title: 'Terapia Adultos', desc: 'Matrices separadas de UCI y Terapia Intermedia (Ingresos, Egresos, Días Cama)', metric: `${fmtNum((telarKpis.bySector.UCI?.diasCama || 0) + (telarKpis.bySector['TERAPIA INTERMEDIA']?.diasCama || 0), 1)} días cama`, sub: `UCI: ${fmtNum(telarKpis.bySector.UCI?.ingresos || 0)} · Intermedia: ${fmtNum(telarKpis.bySector['TERAPIA INTERMEDIA']?.ingresos || 0)} ing.`, color: '#DC2626', icon: Activity },
-                        { tab: 'hdd', title: 'Hospital de Día', desc: 'Ocupación expresada en Horas (c/Hierro) e Ingresos (s/colocación Hierro)', metric: `${fmtNum(telarKpis.horasHddPeriodo, 1)} horas`, sub: `${fmtNum(telarKpis.ingresosHddSinHierro)} ingresos s/Hierro`, color: '#059669', icon: Clock },
-                        { tab: 'tablas', title: 'Tablas Días Cama / Ingresos / % Ocupación', desc: 'Consolidado multianual por servicio con semáforo de ocupación', metric: telarKpis.ocupIntMes !== null ? `${fmtNum(telarKpis.ocupIntMes, 1)}%` : 'Ver tablas', sub: 'Ocupación Internado mes activo', color: '#0F766E', icon: Table2 },
-                        { tab: 'detalles', title: 'Detalles de Internaciones', desc: 'Rankings por Médico Responsable, Obra Social, Especialidad e Inquilinos', metric: `${fmtNum(detallesData.total)} admisiones`, sub: `Inquilinos: ${fmtNum(detallesData.inquilinosSiPct, 1)}%`, color: '#4F46E5', icon: BarChart3 },
-                        { tab: 'pacientes', title: 'Detalle de Pacientes', desc: 'Auditoría nominal paciente por paciente con cálculo 0,5 y descarga Excel', metric: `${fmtNum(pacientesTabla.length)} pacientes`, sub: 'En ventana activa del Telar', color: '#334155', icon: Users },
-                    ].map(card => {
-                        const Icon = card.icon;
-                        return (
-                            <button
-                                key={card.tab}
-                                type="button"
-                                onClick={() => handleSelectTab(card.tab)}
-                                style={{
-                                    textAlign: 'left',
-                                    background: '#FFFFFF',
-                                    border: '1px solid #E2E8F0',
-                                    borderTop: `4px solid ${card.color}`,
-                                    borderRadius: '10px',
-                                    padding: '16px',
-                                    cursor: 'pointer',
-                                    boxShadow: '0 1px 3px rgba(15,23,42,0.05)',
-                                    display: 'flex',
-                                    flexDirection: 'column',
-                                    justifyContent: 'space-between',
-                                    gap: '10px',
-                                    transition: 'transform 0.15s ease, box-shadow 0.15s ease',
-                                }}
-                                onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 6px 16px rgba(15,23,42,0.08)'; }}
-                                onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '0 1px 3px rgba(15,23,42,0.05)'; }}
-                            >
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                        <span style={{ padding: '7px', borderRadius: '8px', background: `${card.color}15`, color: card.color, display: 'inline-flex' }}>
-                                            <Icon size={18} />
-                                        </span>
-                                        <span style={{ fontSize: '0.95rem', fontWeight: 800, color: '#0F172A' }}>{card.title}</span>
+                <>
+                    <style>{`
+                        .internacion-portal-grid {
+                            display: grid;
+                            grid-template-columns: repeat(4, minmax(0, 1fr));
+                            gap: 16px;
+                        }
+                        @media (max-width: 1180px) {
+                            .internacion-portal-grid {
+                                grid-template-columns: repeat(2, minmax(0, 1fr));
+                            }
+                        }
+                        @media (max-width: 640px) {
+                            .internacion-portal-grid {
+                                grid-template-columns: 1fr;
+                            }
+                        }
+                    `}</style>
+                    <div className="internacion-portal-grid">
+                        {[
+                            {
+                                tab: 'neonatologia',
+                                title: 'Neonatología',
+                                desc: 'Terapia Neonatal · Días Cama multianual, Promedio Anual, Ingresos y Egresos.',
+                                value: fmtNum(telarKpis.bySector.NEONATOLOGIA?.diasCama || 0, 1),
+                                unit: 'días cama',
+                                sub: `${fmtNum(telarKpis.bySector.NEONATOLOGIA?.ingresos || 0)} ingresos en el período`,
+                                color: '#0284C7',
+                                icon: Baby,
+                            },
+                            {
+                                tab: 'pediatria',
+                                title: 'Pediatría',
+                                desc: 'Internación Pediátrica desglosada en Piso y Terapia Intensiva (UTIP).',
+                                value: fmtNum(telarKpis.bySector.PEDIATRIA?.diasCama || 0, 1),
+                                unit: 'días cama',
+                                sub: `${fmtNum(telarKpis.bySector.PEDIATRIA?.ingresos || 0)} ingresos en el período`,
+                                color: '#7C3AED',
+                                icon: HeartPulse,
+                            },
+                            {
+                                tab: 'internado',
+                                title: 'Internado Adultos',
+                                desc: 'Ingresos multianuales, Promedio Anual y matriz Días Cama 2021–2026.',
+                                value: fmtNum(telarKpis.bySector.INTERNADO?.diasCama || 0, 1),
+                                unit: 'días cama',
+                                sub: `${fmtNum(telarKpis.bySector.INTERNADO?.ingresos || 0)} ingresos en el período`,
+                                color: '#003B73',
+                                icon: Bed,
+                            },
+                            {
+                                tab: 'terapia',
+                                title: 'Terapia Adultos',
+                                desc: 'Matrices separadas de UCI y Terapia Intermedia (Ingresos, Egresos, Días Cama).',
+                                value: fmtNum((telarKpis.bySector.UCI?.diasCama || 0) + (telarKpis.bySector['TERAPIA INTERMEDIA']?.diasCama || 0), 1),
+                                unit: 'días cama',
+                                sub: `UCI: ${fmtNum(telarKpis.bySector.UCI?.ingresos || 0)} · Intermedia: ${fmtNum(telarKpis.bySector['TERAPIA INTERMEDIA']?.ingresos || 0)} ing.`,
+                                color: '#DC2626',
+                                icon: Activity,
+                            },
+                            {
+                                tab: 'hdd',
+                                title: 'Hospital de Día',
+                                desc: 'Ocupación expresada en Horas (c/Hierro) e Ingresos (s/colocación de Hierro).',
+                                value: fmtNum(telarKpis.horasHddPeriodo, 1),
+                                unit: 'horas',
+                                sub: `${fmtNum(telarKpis.ingresosHddSinHierro)} s/Hierro${telarKpis.ingresosHddHierro > 0 ? ` · +${fmtNum(telarKpis.ingresosHddHierro)} Hierro` : ''}`,
+                                color: '#059669',
+                                icon: Clock,
+                            },
+                            {
+                                tab: 'tablas',
+                                title: 'Tablas Matriciales',
+                                desc: 'Consolidado multianual de Días Cama, Ingresos y % Ocupación con semáforo.',
+                                value: telarKpis.ocupIntMes !== null ? `${fmtNum(telarKpis.ocupIntMes, 1)}%` : 'Ver',
+                                unit: telarKpis.ocupIntMes !== null ? 'ocupación' : 'tablas',
+                                sub: `Internado Adultos${telarKpis.isCurrentMonthCutoff ? ` · al día ${cutoffYMD.d}` : ''}`,
+                                color: '#0F766E',
+                                icon: Table2,
+                            },
+                            {
+                                tab: 'detalles',
+                                title: 'Detalles y Rankings',
+                                desc: 'Rankings por Médico Responsable, Obra Social, Especialidad e Inquilinos.',
+                                value: fmtNum(detallesData.total),
+                                unit: 'admisiones',
+                                sub: `Médicos inquilinos: ${fmtNum(detallesData.inquilinosSiPct, 1)}%`,
+                                color: '#4F46E5',
+                                icon: BarChart3,
+                            },
+                            {
+                                tab: 'pacientes',
+                                title: 'Detalle de Pacientes',
+                                desc: 'Auditoría nominal paciente por paciente con cálculo 0,5 y descarga Excel.',
+                                value: fmtNum(pacientesTabla.length),
+                                unit: 'pacientes',
+                                sub: 'En ventana activa del Telar',
+                                color: '#334155',
+                                icon: Users,
+                            },
+                        ].map(card => {
+                            const Icon = card.icon;
+                            return (
+                                <button
+                                    key={card.tab}
+                                    type="button"
+                                    onClick={() => handleSelectTab(card.tab)}
+                                    style={{
+                                        textAlign: 'left',
+                                        background: '#FFFFFF',
+                                        border: '1px solid #E2E8F0',
+                                        borderTop: `3.5px solid ${card.color}`,
+                                        borderRadius: '12px',
+                                        padding: '18px 20px',
+                                        minHeight: '176px',
+                                        cursor: 'pointer',
+                                        boxShadow: '0 1px 3px rgba(15,23,42,0.04)',
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                        justifyContent: 'space-between',
+                                        gap: '12px',
+                                        transition: 'transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease',
+                                    }}
+                                    onMouseEnter={e => {
+                                        e.currentTarget.style.transform = 'translateY(-2px)';
+                                        e.currentTarget.style.boxShadow = '0 10px 24px -6px rgba(15,23,42,0.10)';
+                                        e.currentTarget.style.borderColor = '#CBD5E1';
+                                        e.currentTarget.style.borderTopColor = card.color;
+                                    }}
+                                    onMouseLeave={e => {
+                                        e.currentTarget.style.transform = 'none';
+                                        e.currentTarget.style.boxShadow = '0 1px 3px rgba(15,23,42,0.04)';
+                                        e.currentTarget.style.borderColor = '#E2E8F0';
+                                        e.currentTarget.style.borderTopColor = card.color;
+                                    }}
+                                >
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+                                                <span style={{
+                                                    width: '36px',
+                                                    height: '36px',
+                                                    borderRadius: '10px',
+                                                    background: `${card.color}14`,
+                                                    color: card.color,
+                                                    display: 'inline-flex',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'center',
+                                                    flexShrink: 0,
+                                                }}>
+                                                    <Icon size={18} />
+                                                </span>
+                                                <span style={{
+                                                    fontSize: '0.96rem',
+                                                    fontWeight: 800,
+                                                    color: '#0F172A',
+                                                    whiteSpace: 'nowrap',
+                                                    overflow: 'hidden',
+                                                    textOverflow: 'ellipsis',
+                                                }}>
+                                                    {card.title}
+                                                </span>
+                                            </div>
+                                            <ChevronRight size={16} color="#94A3B8" style={{ flexShrink: 0 }} />
+                                        </div>
+                                        <div style={{ fontSize: '0.76rem', color: '#64748B', lineHeight: 1.45 }}>
+                                            {card.desc}
+                                        </div>
                                     </div>
-                                    <ChevronRight size={16} color="#94A3B8" />
-                                </div>
-                                <div style={{ fontSize: '0.76rem', color: '#64748B', lineHeight: 1.4 }}>{card.desc}</div>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', paddingTop: '8px', borderTop: '1px solid #F1F5F9' }}>
-                                    <span style={{ fontSize: '1.1rem', fontWeight: 900, color: card.color, fontVariantNumeric: 'tabular-nums' }}>{card.metric}</span>
-                                    <span style={{ fontSize: '0.7rem', color: '#64748B', fontWeight: 600 }}>{card.sub}</span>
-                                </div>
-                            </button>
-                        );
-                    })}
-                </div>
+
+                                    <div style={{
+                                        paddingTop: '12px',
+                                        borderTop: '1px solid #F1F5F9',
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                        gap: '6px',
+                                    }}>
+                                        <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px', whiteSpace: 'nowrap' }}>
+                                            <span style={{
+                                                fontSize: '1.38rem',
+                                                fontWeight: 900,
+                                                color: card.color,
+                                                fontVariantNumeric: 'tabular-nums',
+                                                letterSpacing: '-0.02em',
+                                                lineHeight: 1.1,
+                                            }}>
+                                                {card.value}
+                                            </span>
+                                            <span style={{
+                                                fontSize: '0.8rem',
+                                                fontWeight: 700,
+                                                color: card.color,
+                                                opacity: 0.85,
+                                            }}>
+                                                {card.unit}
+                                            </span>
+                                        </div>
+                                        <span style={{
+                                            fontSize: '0.72rem',
+                                            color: '#475569',
+                                            fontWeight: 600,
+                                            background: '#F8FAFC',
+                                            border: '1px solid #E2E8F0',
+                                            borderRadius: '6px',
+                                            padding: '3px 8px',
+                                            width: 'fit-content',
+                                            maxWidth: '100%',
+                                            whiteSpace: 'nowrap',
+                                            overflow: 'hidden',
+                                            textOverflow: 'ellipsis',
+                                        }}>
+                                            {card.sub}
+                                        </span>
+                                    </div>
+                                </button>
+                            );
+                        })}
+                    </div>
+                </>
             )}
 
             {/* 2. NEONATOLOGÍA */}
