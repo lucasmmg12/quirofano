@@ -62,10 +62,11 @@ export function mapSectorYSubsector(rawServicio, rawHabitacion = '', rawNumAdm =
     if (s.includes('NEONATOLOG') || h.includes('CUNA')) {
         return { sector: 'NEONATOLOGIA', subsector: '' };
     }
-    if (s.includes('TERAPIA PEDIATRIC') || s.includes('UTIP') || h.includes('UTIP') || /^21[789]$|^22[01]$/.test(h)) {
+    const isPedService = s.includes('PEDIATR') || s.includes('INFANTIL');
+    if (s.includes('TERAPIA PEDIATRIC') || s.includes('UTIP') || h.includes('UTIP') || (isPedService && /^(21[789]|22[01])(\b|-|\s|$)/.test(h))) {
         return { sector: 'PEDIATRIA', subsector: 'TERAPIA' };
     }
-    if (s.includes('PEDIATR') || s.includes('INFANTIL')) {
+    if (isPedService) {
         return { sector: 'PEDIATRIA', subsector: 'PISO' };
     }
     if (s === 'TERAPIA INTERMEDIA' || n.startsWith('TI')) {
@@ -147,15 +148,19 @@ function dayNumber(y, m, d) {
  * - Ingreso y egreso el mismo día = 0.5
  * Retorna Map<"YYYY-MM", number>
  */
-export function prorratearDiasCamaPorMes(fechaInicio, fechaFin, nowDate = new Date()) {
+export function prorratearDiasCamaPorMes(fechaInicio, fechaFin, nowDate = new Date(), { hasHabitacion = true } = {}) {
     const result = new Map();
     if (!fechaInicio) return result;
 
     const isOpen = !fechaFin;
     let effectiveEnd = fechaFin || nowDate;
     if (effectiveEnd < fechaInicio) return result;
-    // Protección contra admisiones administrativas viejas nunca cerradas en SALUS (> 120 días abiertas sin alta)
-    if (isOpen && (effectiveEnd.getTime() - fechaInicio.getTime()) > 120 * 86400000) {
+
+    // Protección anti-zombies y cierres administrativos tardíos SALUS:
+    // 1) Admisión SIN habitación física asignada con duración > 2 días (abierta o cerrada en barrido masivo meses después)
+    // 2) Admisión abierta sin alta incluso con habitación con > 60 días sin cierre administrativo
+    const durationDays = (effectiveEnd.getTime() - fechaInicio.getTime()) / 86400000;
+    if ((!hasHabitacion && durationDays > 2) || (isOpen && durationDays > 60)) {
         effectiveEnd = fechaInicio;
     }
 
@@ -369,7 +374,7 @@ export async function syncInternacionGobernanza({ startYear = 2021, nominalStart
 
                 if (validTramos.length > 0 && (mapped.sector === 'PEDIATRIA' || mapped.sector === 'UCI' || mapped.sector === 'TERAPIA INTERMEDIA' || hasShockRoomTramo)) {
                     for (const t of validTramos) {
-                        const porMes = prorratearDiasCamaPorMes(t.tStart, t.tEnd, now);
+                        const porMes = prorratearDiasCamaPorMes(t.tStart, t.tEnd, now, { hasHabitacion: true });
                         for (const [ym, dVal] of porMes.entries()) {
                             const [yy, mm] = ym.split('-').map(Number);
                             const b = getAggBucket(yy, mm, t.sector, t.subsector, cliente, especialidad, esHierro);
@@ -378,7 +383,8 @@ export async function syncInternacionGobernanza({ startYear = 2021, nominalStart
                         }
                     }
                 } else {
-                    const porMes = prorratearDiasCamaPorMes(fIng, fAlta, now);
+                    const hasHab = Boolean(r.habitacion && String(r.habitacion).trim());
+                    const porMes = prorratearDiasCamaPorMes(fIng, fAlta, now, { hasHabitacion: hasHab });
                     for (const [ym, dVal] of porMes.entries()) {
                         const [yy, mm] = ym.split('-').map(Number);
                         const b = getAggBucket(yy, mm, mapped.sector, mapped.subsector, cliente, especialidad, esHierro);
@@ -442,8 +448,16 @@ export async function syncInternacionGobernanza({ startYear = 2021, nominalStart
         }
         console.log(`   ✅ gob_internacion_mensual_agg actualizada (${aggList.length} filas).`);
 
-        // 5. Upsert gob_internacion_admisiones en lotes de 500
-        console.log('☁️ Subiendo gob_internacion_admisiones a Supabase...');
+        // 5. Reemplazo limpio + Upsert gob_internacion_admisiones en lotes de 500
+        // Limpiar registros desde nominalStartYear para purgar admisiones excluidas (ej. BOX *-SR / Shock Room / anuladas)
+        console.log('☁️ Limpiando huérfanos y subiendo gob_internacion_admisiones a Supabase...');
+        const { error: delNomErr } = await supabase
+            .from('gob_internacion_admisiones')
+            .delete()
+            .gte('fecha_ingreso', `${nominalStartYear}-01-01T00:00:00Z`);
+        if (delNomErr) {
+            console.warn(`⚠️ No se pudo limpiar rango nominal previo (${delNomErr.message}), continuando con upsert...`);
+        }
         const NOM_BATCH = 500;
         let nomOk = 0;
         for (let i = 0; i < nominalRows.length; i += NOM_BATCH) {

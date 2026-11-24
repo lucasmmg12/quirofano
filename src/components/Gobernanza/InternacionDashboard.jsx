@@ -78,13 +78,25 @@ function toArgYMD(isoStr) {
 
 /**
  * Calcula los Días Cama exactos de un paciente dentro de la ventana [desdeYMD .. hastaYMD] del Telar
- * aplicando la regla de medios días (0.5 ingreso, 1.0 intermedios, 0.5 egreso).
+ * aplicando la regla de medios días (0.5 ingreso, 1.0 intermedios, 0.5 egreso) y protección anti-zombies
+ * (admisiones abiertas sin alta ni habitación > 2 días o > 60 días abiertas sin cierre en SALUS).
  */
-function calcDiasCamaEnVentana(fechaIngresoIso, fechaAltaIso, desdeStr, hastaStr) {
+function calcDiasCamaEnVentana(fechaIngresoIso, fechaAltaIso, desdeStr, hastaStr, habitacion = null) {
     const s = toArgYMD(fechaIngresoIso);
     if (!s) return 0;
     const isOpen = !fechaAltaIso;
-    const e = fechaAltaIso ? toArgYMD(fechaAltaIso) : toArgYMD(new Date().toISOString());
+    const nowDt = new Date();
+    const ingDt = new Date(fechaIngresoIso);
+    const hasHabitacion = Boolean(habitacion && String(habitacion).trim());
+    const endDt = fechaAltaIso ? new Date(fechaAltaIso) : nowDt;
+    const durationDays = !isNaN(ingDt.getTime()) && !isNaN(endDt.getTime())
+        ? (endDt.getTime() - ingDt.getTime()) / 86400000
+        : 0;
+    const isZombieOrNoBedOutlier = (!hasHabitacion && durationDays > 2) || (isOpen && durationDays > 60);
+
+    const e = isZombieOrNoBedOutlier
+        ? s
+        : (fechaAltaIso ? toArgYMD(fechaAltaIso) : toArgYMD(nowDt.toISOString()));
     const winStart = parseYMD(desdeStr);
     const winEnd = parseYMD(hastaStr);
     if (!e || !winStart || !winEnd) return 0;
@@ -586,6 +598,15 @@ export default function InternacionDashboard({
         return { camas_operativas: 10 };
     }, [camasConfig]);
 
+    // Fecha de corte efectiva para prorratear el denominador de ocupación en el mes en curso
+    const cutoffYMD = useMemo(() => {
+        if (filtrosMeta.last_sync) {
+            const parsed = toArgYMD(filtrosMeta.last_sync);
+            if (parsed) return parsed;
+        }
+        return toArgYMD(new Date().toISOString()) || { y: 2026, m: 11, d: 24 };
+    }, [filtrosMeta.last_sync]);
+
     const ocupacionMatrices = useMemo(() => {
         const calcGrid = (sourceGrid, sector, subsector = '', isHdd = false) => {
             const out = {};
@@ -596,9 +617,12 @@ export default function InternacionDashboard({
                 for (let m = 1; m <= 12; m++) {
                     const val = sourceGrid[yr][m] || 0;
                     if (val <= 0) continue;
+                    const totalDays = getDaysInMonth(yr, m);
+                    const isCurrentMonth = yr === cutoffYMD.y && m === cutoffYMD.m;
+                    const effectiveDays = isCurrentMonth ? Math.max(1, Math.min(totalDays, cutoffYMD.d)) : totalDays;
                     const denom = isHdd
-                        ? Number(cfg.horas_mes_hdd || 1200)
-                        : Number(cfg.camas_operativas || 1) * getDaysInMonth(yr, m);
+                        ? Number(cfg.horas_mes_hdd || 1200) * (effectiveDays / totalDays)
+                        : Number(cfg.camas_operativas || 1) * effectiveDays;
                     out[yr][m] = denom > 0 ? Math.round((val / denom) * 1000) / 10 : 0;
                 }
             }
@@ -614,17 +638,18 @@ export default function InternacionDashboard({
             uci: calcGrid(matrices.uciDias, 'UCI'),
             ti: calcGrid(matrices.tiDias, 'TERAPIA INTERMEDIA'),
         };
-    }, [matrices, getCamasOperativas]);
+    }, [matrices, getCamasOperativas, cutoffYMD]);
 
     // ─── KPIs DEL PERÍODO ACTIVO DEL TELAR ───
     const telarKpis = useMemo(() => {
-        const desdeIso = `${effectiveDesde}T00:00:00-03:00`;
-        const hastaIso = `${effectiveHasta}T23:59:59-03:00`;
+        const desdeMs = new Date(`${effectiveDesde}T00:00:00-03:00`).getTime();
+        const hastaMs = new Date(`${effectiveHasta}T23:59:59-03:00`).getTime();
 
         let ingresosPeriodo = 0;
         let diasCamaPeriodo = 0;
         let horasHddPeriodo = 0;
         let ingresosHddSinHierro = 0;
+        let ingresosHddHierro = 0;
         const bySector = {};
 
         for (const r of nominalRows) {
@@ -634,11 +659,15 @@ export default function InternacionDashboard({
             const sec = r.sector_arreglado;
             if (!bySector[sec]) bySector[sec] = { ingresos: 0, diasCama: 0, horas: 0, activos: 0 };
 
-            const ingresóEnVentana = r.fecha_ingreso >= desdeIso && r.fecha_ingreso <= hastaIso;
+            const ingMs = r.fecha_ingreso ? new Date(r.fecha_ingreso).getTime() : NaN;
+            const ingresóEnVentana = !isNaN(ingMs) && ingMs >= desdeMs && ingMs <= hastaMs;
             if (ingresóEnVentana) {
                 ingresosPeriodo++;
                 bySector[sec].ingresos++;
-                if (sec === 'HOSPITAL DE DIA' && !r.es_hierro) ingresosHddSinHierro++;
+                if (sec === 'HOSPITAL DE DIA') {
+                    if (r.es_hierro) ingresosHddHierro++;
+                    else ingresosHddSinHierro++;
+                }
             }
             if (!r.fecha_alta) bySector[sec].activos++;
 
@@ -649,7 +678,7 @@ export default function InternacionDashboard({
                     bySector[sec].horas += hrs;
                 }
             } else {
-                const dc = calcDiasCamaEnVentana(r.fecha_ingreso, r.fecha_alta, effectiveDesde, effectiveHasta);
+                const dc = calcDiasCamaEnVentana(r.fecha_ingreso, r.fecha_alta, effectiveDesde, effectiveHasta, r.habitacion);
                 diasCamaPeriodo += dc;
                 bySector[sec].diasCama += dc;
             }
@@ -658,17 +687,20 @@ export default function InternacionDashboard({
         // Ocupación Internado en el mes del Telar
         const ocupIntMes = ocupacionMatrices.internado[telarYMD.y]?.[telarYMD.m] ?? null;
         const ocupNeoMes = ocupacionMatrices.neonatologia[telarYMD.y]?.[telarYMD.m] ?? null;
+        const isCurrentMonthCutoff = telarYMD.y === cutoffYMD.y && telarYMD.m === cutoffYMD.m;
 
         return {
             ingresosPeriodo,
             diasCamaPeriodo: Math.round(diasCamaPeriodo * 10) / 10,
             horasHddPeriodo: Math.round(horasHddPeriodo * 10) / 10,
             ingresosHddSinHierro,
+            ingresosHddHierro,
             ocupIntMes,
             ocupNeoMes,
+            isCurrentMonthCutoff,
             bySector,
         };
-    }, [nominalRows, effectiveDesde, effectiveHasta, filterCliente, filterEspecialidad, ocupacionMatrices, telarYMD]);
+    }, [nominalRows, effectiveDesde, effectiveHasta, filterCliente, filterEspecialidad, ocupacionMatrices, telarYMD, cutoffYMD]);
 
     // Sincronizar contexto global para Beto / Telar
     useEffect(() => {
@@ -695,12 +727,13 @@ export default function InternacionDashboard({
     }, [inquilinos]);
 
     const detallesData = useMemo(() => {
-        const desdeIso = `${effectiveDesde}T00:00:00-03:00`;
-        const hastaIso = `${effectiveHasta}T23:59:59-03:00`;
+        const desdeMs = new Date(`${effectiveDesde}T00:00:00-03:00`).getTime();
+        const hastaMs = new Date(`${effectiveHasta}T23:59:59-03:00`).getTime();
 
-        // Filtrar ingresos dentro del período Telar + filtros de sector/cliente/proceso
+        // Filtrar ingresos dentro del período Telar + filtros de sector/cliente/proceso (comparación numérica UTC)
         const filtered = nominalRows.filter(r => {
-            if (r.fecha_ingreso < desdeIso || r.fecha_ingreso > hastaIso) return false;
+            const ingMs = r.fecha_ingreso ? new Date(r.fecha_ingreso).getTime() : NaN;
+            if (isNaN(ingMs) || ingMs < desdeMs || ingMs > hastaMs) return false;
             if (!selectedSectoresDetalles.includes(r.sector_arreglado)) return false;
             if (filterCliente && r.cliente !== filterCliente) return false;
             if (filterProceso && r.proceso !== filterProceso) return false;
@@ -751,7 +784,7 @@ export default function InternacionDashboard({
             if (filterCliente && r.cliente !== filterCliente) continue;
             const diasVentana = r.sector_arreglado === 'HOSPITAL DE DIA'
                 ? Number(r.horas_ocupacion || 0)
-                : calcDiasCamaEnVentana(r.fecha_ingreso, r.fecha_alta, effectiveDesde, effectiveHasta);
+                : calcDiasCamaEnVentana(r.fecha_ingreso, r.fecha_alta, effectiveDesde, effectiveHasta, r.habitacion);
 
             if (diasVentana <= 0 && r.sector_arreglado !== 'HOSPITAL DE DIA') continue;
 
@@ -985,7 +1018,7 @@ export default function InternacionDashboard({
                             {loadingNominal ? '...' : fmtNum(telarKpis.ingresosPeriodo)}
                         </div>
                         <div style={{ fontSize: '0.72rem', opacity: 0.85, marginTop: '2px' }}>
-                            Internado: {fmtNum(telarKpis.bySector.INTERNADO?.ingresos || 0)} · Neo: {fmtNum(telarKpis.bySector.NEONATOLOGIA?.ingresos || 0)} · Ped: {fmtNum(telarKpis.bySector.PEDIATRIA?.ingresos || 0)}
+                            Int: {fmtNum(telarKpis.bySector.INTERNADO?.ingresos || 0)} · Ped: {fmtNum(telarKpis.bySector.PEDIATRIA?.ingresos || 0)} · Neo: {fmtNum(telarKpis.bySector.NEONATOLOGIA?.ingresos || 0)} · UCI/TI: {fmtNum((telarKpis.bySector.UCI?.ingresos || 0) + (telarKpis.bySector['TERAPIA INTERMEDIA']?.ingresos || 0))} · HdD: {fmtNum(telarKpis.ingresosHddSinHierro)}{telarKpis.ingresosHddHierro > 0 ? ` (+${fmtNum(telarKpis.ingresosHddHierro)} Hierro)` : ''}
                         </div>
                     </div>
 
@@ -997,13 +1030,13 @@ export default function InternacionDashboard({
                             {loadingNominal ? '...' : fmtNum(telarKpis.diasCamaPeriodo, 1)}
                         </div>
                         <div style={{ fontSize: '0.72rem', opacity: 0.85, marginTop: '2px' }}>
-                            Int: {fmtNum(telarKpis.bySector.INTERNADO?.diasCama || 0, 1)} · Neo: {fmtNum(telarKpis.bySector.NEONATOLOGIA?.diasCama || 0, 1)} · UCI: {fmtNum((telarKpis.bySector.UCI?.diasCama || 0) + (telarKpis.bySector['TERAPIA INTERMEDIA']?.diasCama || 0), 1)}
+                            Int: {fmtNum(telarKpis.bySector.INTERNADO?.diasCama || 0, 1)} · Ped: {fmtNum(telarKpis.bySector.PEDIATRIA?.diasCama || 0, 1)} · Neo: {fmtNum(telarKpis.bySector.NEONATOLOGIA?.diasCama || 0, 1)} · UCI: {fmtNum((telarKpis.bySector.UCI?.diasCama || 0) + (telarKpis.bySector['TERAPIA INTERMEDIA']?.diasCama || 0), 1)}
                         </div>
                     </div>
 
                     <div style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.18)', borderRadius: '10px', padding: '14px 16px' }}>
                         <div style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', opacity: 0.85, letterSpacing: '0.04em' }}>
-                            % Ocupación ({MESES_CORTO[telarYMD.m - 1]} {telarYMD.y})
+                            % Ocupación ({MESES_CORTO[telarYMD.m - 1]} {telarYMD.y}{telarKpis.isCurrentMonthCutoff ? ` · al día ${cutoffYMD.d}` : ''})
                         </div>
                         <div style={{ fontSize: '1.9rem', fontWeight: 900, fontVariantNumeric: 'tabular-nums', marginTop: '2px', color: '#FDE68A' }}>
                             {telarKpis.ocupIntMes !== null ? `${fmtNum(telarKpis.ocupIntMes, 1)}%` : '—'}
@@ -1021,7 +1054,7 @@ export default function InternacionDashboard({
                             {loadingNominal ? '...' : `${fmtNum(telarKpis.horasHddPeriodo, 1)} hs`}
                         </div>
                         <div style={{ fontSize: '0.72rem', opacity: 0.85, marginTop: '2px' }}>
-                            C/Hierro · Ingresos s/Hierro: {fmtNum(telarKpis.ingresosHddSinHierro)}
+                            C/Hierro · {fmtNum(telarKpis.ingresosHddSinHierro)} s/Hierro{telarKpis.ingresosHddHierro > 0 ? ` + ${fmtNum(telarKpis.ingresosHddHierro)} Hierro` : ''}
                         </div>
                     </div>
                 </div>
