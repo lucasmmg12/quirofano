@@ -108,7 +108,7 @@ function LabPortalWrapper() {
 }
 
 const HERMOSA_MANANA_DATE = '2026-11-24';
-const HERMOSA_MANANA_USERS = ['ctorres', 'gcortez', 'frojo'];
+const HERMOSA_MANANA_USERS = ['ctorres', 'gcortez', 'frojo', 'lmarinero'];
 
 function isHermosaMananaToday() {
     try {
