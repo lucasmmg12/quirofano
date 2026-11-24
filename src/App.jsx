@@ -107,10 +107,43 @@ function LabPortalWrapper() {
     return <LabPortal labSlug={labSlug} />;
 }
 
+const HERMOSA_MANANA_DATE = '2026-11-24';
+const HERMOSA_MANANA_USERS = ['ctorres', 'gcortez', 'frojo'];
+
+function isHermosaMananaToday() {
+    try {
+        const argDate = new Date(Date.now() - 3 * 3600000).toISOString().slice(0, 10);
+        return argDate === HERMOSA_MANANA_DATE;
+    } catch {
+        return false;
+    }
+}
+
+function getHermosaMananaUsername(user) {
+    return String(user?.usuario || '').toLowerCase().trim().split('@')[0];
+}
+
 export default function AppRoot() {
     const [currentUser, setCurrentUser] = useState(() => getCurrentUser());
     const [displacedConflict, setDisplacedConflict] = useState(null);
     const [reclaimingSession, setReclaimingSession] = useState(false);
+    const [hermosaMananaOpen, setHermosaMananaOpen] = useState(false);
+
+    // Solo hoy (2026-11-24): obligar a reingresar 1 vez a ctorres, gcortez y frojo para que vean la imagen al loguearse
+    useEffect(() => {
+        if (!currentUser || !isHermosaMananaToday()) return;
+        const uname = getHermosaMananaUsername(currentUser);
+        if (!HERMOSA_MANANA_USERS.includes(uname)) return;
+        const key = `admqui_hermosa_manana_relogin_${HERMOSA_MANANA_DATE}_${uname}`;
+        try {
+            if (localStorage.getItem(key) !== 'done') {
+                authLogout();
+                setCurrentUser(null);
+            }
+        } catch {
+            // ignore storage errors
+        }
+    }, [currentUser]);
 
     const handleLogin = useCallback((user) => {
         if (typeof window !== 'undefined') {
@@ -118,6 +151,15 @@ export default function AppRoot() {
         }
         setDisplacedConflict(null);
         setCurrentUser(user);
+        if (isHermosaMananaToday()) {
+            const uname = getHermosaMananaUsername(user);
+            if (HERMOSA_MANANA_USERS.includes(uname)) {
+                try {
+                    localStorage.setItem(`admqui_hermosa_manana_relogin_${HERMOSA_MANANA_DATE}_${uname}`, 'done');
+                } catch {}
+                setHermosaMananaOpen(true);
+            }
+        }
         // Start activity tracking session
         startSession(user);
     }, []);
@@ -317,6 +359,68 @@ export default function AppRoot() {
                             >
                                 <LogOut size={16} />
                                 Cerrar sesión en este dispositivo y mantener la otra
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+            {hermosaMananaOpen && isHermosaMananaToday() && (
+                <div
+                    onClick={() => setHermosaMananaOpen(false)}
+                    style={{
+                        position: 'fixed',
+                        inset: 0,
+                        background: 'rgba(15, 23, 42, 0.82)',
+                        backdropFilter: 'blur(6px)',
+                        zIndex: 100001,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        padding: '20px',
+                    }}
+                >
+                    <div
+                        onClick={(e) => e.stopPropagation()}
+                        style={{
+                            background: '#FFFFFF',
+                            borderRadius: '18px',
+                            maxWidth: '540px',
+                            width: '100%',
+                            overflow: 'hidden',
+                            boxShadow: '0 25px 60px rgba(0, 0, 0, 0.45)',
+                            border: '2px solid #0284C7',
+                            textAlign: 'center',
+                        }}
+                    >
+                        <img
+                            src="/hermosa-manana.jpeg"
+                            alt="Hermosa mañana"
+                            style={{
+                                width: '100%',
+                                maxHeight: '72vh',
+                                objectFit: 'contain',
+                                display: 'block',
+                                background: '#0F172A',
+                            }}
+                        />
+                        <div style={{ padding: '16px 20px', background: '#FFFFFF' }}>
+                            <button
+                                type="button"
+                                onClick={() => setHermosaMananaOpen(false)}
+                                style={{
+                                    width: '100%',
+                                    padding: '12px 20px',
+                                    borderRadius: '10px',
+                                    border: 'none',
+                                    background: '#003B73',
+                                    color: '#FFFFFF',
+                                    fontSize: '0.92rem',
+                                    fontWeight: 800,
+                                    cursor: 'pointer',
+                                    boxShadow: '0 4px 12px rgba(0, 59, 115, 0.25)',
+                                }}
+                            >
+                                Continuar al sistema
                             </button>
                         </div>
                     </div>
