@@ -1,11 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
-    Search, RefreshCw, FileSpreadsheet, Clock, Sliders, X, AlertTriangle, CheckCircle2, Info
+    Search, RefreshCw, FileSpreadsheet
 } from 'lucide-react';
-import {
-    ResponsiveContainer, ComposedChart, Bar, Line, XAxis, YAxis,
-    CartesianGrid, Tooltip as RechartsTooltip, Legend
-} from 'recharts';
 import { supabase } from '../../lib/supabase';
 
 const INCONSISTENCIA_META = {
@@ -55,6 +51,13 @@ const INCONSISTENCIA_META = {
 
 const BOX_COLORS = ['#1E40AF', '#0284C7', '#0D9488', '#4F46E5', '#D97706', '#059669'];
 
+function cleanAuditDetail(text) {
+    if (!text) return 'OK — Consistente';
+    return String(text)
+        .replace(/para evitar inflar el presupuesto/gi, 'para evitar distorsión horaria')
+        .replace(/presupuesto/gi, 'cálculo de ocupación');
+}
+
 function formatDateDMY(ymd) {
     if (!ymd) return '-';
     const s = String(ymd).slice(0, 10);
@@ -98,17 +101,6 @@ function countCalendarDaysInclusive(startStr, endStr) {
     return Math.floor((t2 - t1) / 86400000) + 1;
 }
 
-/**
- * Fórmula que aplica actualmente la planilla de Dirección:
- * Si Horas/24 < 1 -> pone 1 día entero; si Horas >= 24 -> redondea Horas/24 a 2 decimales.
- */
-function calcDiasFormulaDireccion(horas) {
-    const h = Number(horas || 0);
-    if (h <= 0) return 0;
-    if (h < 24) return 1;
-    return Math.round((h / 24) * 100) / 100;
-}
-
 function isSerieI(adm) {
     const n = String(adm.numero_admision || '').trim().toUpperCase();
     return n.startsWith('I');
@@ -131,10 +123,8 @@ export default function GuardiaAdmisionesOcupacionPanel({
     addToast,
     selectedPeriodoProp,
     fechaDesde,
-    fechaHasta,
-    onOpenFicha557ById
+    fechaHasta
 }) {
-    // Vista principal por defecto: LA PLANILLA COMPLETA DE ADMISIONES (formato Excel comparable con Dirección)
     const [viewTab, setViewTab] = useState('planilla_excel'); // 'planilla_excel' | 'ocupacion_boxes' | 'auditoria'
     const [loading, setLoading] = useState(true);
     const [syncing, setSyncing] = useState(false);
@@ -142,20 +132,15 @@ export default function GuardiaAdmisionesOcupacionPanel({
     const [ocupacionDiaria, setOcupacionDiaria] = useState([]);
     const [boxesConfig, setBoxesConfig] = useState(3);
 
-    // Override local de rango para que el usuario pueda ver con 1 clic "Corte Dirección (Nov 2025 - Jun 2026)" o "Año 2026" o usar el filtro superior del Telar
-    const [rangeMode, setRangeMode] = useState('telar'); // 'telar' | 'corte_direccion' | 'anio_2026' | 'todo_2025_2026' | 'custom_local'
-    const [customDesde, setCustomDesde] = useState('2025-11-01');
-    const [customHasta, setCustomHasta] = useState('2026-06-30');
+    const [rangeMode, setRangeMode] = useState('telar'); // 'telar' | 'anio_2026' | 'todo_2025_2026'
 
-    // Filtros de la planilla tipo Excel
-    const [serieFilter, setSerieFilter] = useState('TODAS'); // 'TODAS' | 'SOLO_I_DIRECCION' | 'SOLO_SR_OMITIDAS'
+    const [serieFilter, setSerieFilter] = useState('TODAS'); // 'TODAS' | 'SOLO_I' | 'SOLO_SR'
     const [ubicacionFilter, setUbicacionFilter] = useState('TODAS'); // 'TODAS' | 'SHOCK_ROOM' | 'PISO' | 'SIN_HABITACION' | 'EXCLUIDAS'
     const [procesoFilter, setProcesoFilter] = useState('TODOS'); // 'TODOS' | '400109' | '420301' | 'SIN_PROCESO'
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedAdmDetail, setSelectedAdmDetail] = useState(null);
     const [selectedInspectDate, setSelectedInspectDate] = useState('');
 
-    // Si el usuario cambia las fechas arriba en la barra del Telar, volver automáticamente a 'telar'
     useEffect(() => {
         if (fechaDesde && fechaHasta) {
             setRangeMode('telar');
@@ -236,20 +221,11 @@ export default function GuardiaAdmisionesOcupacionPanel({
         }
     };
 
-    // Rango efectivo activo
     const effectiveDateRange = useMemo(() => {
         const todayStr = new Date().toISOString().slice(0, 10);
         const maxDataDate = ocupacionDiaria.length > 0 ? ocupacionDiaria[0].fecha : todayStr;
         const capEnd = maxDataDate < todayStr ? todayStr : maxDataDate;
 
-        if (rangeMode === 'corte_direccion') {
-            return {
-                desde: '2025-11-01',
-                hasta: '2026-06-30',
-                diasCalendario: countCalendarDaysInclusive('2025-11-01', '2026-06-30'),
-                label: 'Corte Planilla Dirección (01/11/2025 al 30/06/2026)'
-            };
-        }
         if (rangeMode === 'anio_2026') {
             return {
                 desde: '2026-01-01',
@@ -266,16 +242,7 @@ export default function GuardiaAdmisionesOcupacionPanel({
                 label: `Histórico Completo 2025–2026 (01/01/2025 al ${formatDateDMY(capEnd)})`
             };
         }
-        if (rangeMode === 'custom_local') {
-            return {
-                desde: customDesde,
-                hasta: customHasta,
-                diasCalendario: countCalendarDaysInclusive(customDesde, customHasta),
-                label: `${formatDateDMY(customDesde)} al ${formatDateDMY(customHasta)}`
-            };
-        }
 
-        // Default 'telar'
         if (fechaDesde && fechaHasta) {
             const endEffective = fechaHasta > capEnd ? capEnd : fechaHasta;
             const safeEnd = endEffective >= fechaDesde ? endEffective : fechaHasta;
@@ -305,9 +272,8 @@ export default function GuardiaAdmisionesOcupacionPanel({
             diasCalendario: countCalendarDaysInclusive('2026-01-01', capEnd),
             label: `01/01/2026 al ${formatDateDMY(capEnd)}`
         };
-    }, [rangeMode, customDesde, customHasta, fechaDesde, fechaHasta, selectedPeriodoProp, ocupacionDiaria]);
+    }, [rangeMode, fechaDesde, fechaHasta, selectedPeriodoProp, ocupacionDiaria]);
 
-    // Admisiones del rango de fechas seleccionado
     const periodAdmisiones = useMemo(() => {
         const { desde, hasta } = effectiveDateRange;
         return admisiones.filter(a => {
@@ -324,11 +290,10 @@ export default function GuardiaAdmisionesOcupacionPanel({
         });
     }, [ocupacionDiaria, effectiveDateRange]);
 
-    // Filas filtradas en la Planilla Principal Tipo Excel
     const filteredRows = useMemo(() => {
         return periodAdmisiones.filter(a => {
-            if (serieFilter === 'SOLO_I_DIRECCION' && !isSerieI(a)) return false;
-            if (serieFilter === 'SOLO_SR_OMITIDAS' && !isSerieSR(a)) return false;
+            if (serieFilter === 'SOLO_I' && !isSerieI(a)) return false;
+            if (serieFilter === 'SOLO_SR' && !isSerieSR(a)) return false;
 
             if (ubicacionFilter === 'SHOCK_ROOM' && a.regimen_ubicacion !== 'SHOCK_ROOM' && a.regimen_ubicacion !== 'MIXTO_SR_PISO') return false;
             if (ubicacionFilter === 'PISO' && a.regimen_ubicacion !== 'PISO_CLINICO' && a.regimen_ubicacion !== 'CRITICOS_UCI' && a.regimen_ubicacion !== 'MIXTO_SR_PISO') return false;
@@ -356,26 +321,25 @@ export default function GuardiaAdmisionesOcupacionPanel({
         });
     }, [periodAdmisiones, serieFilter, ubicacionFilter, procesoFilter, searchQuery]);
 
-    // Resumen numérico directo sobre las filas filtradas y sobre el período
     const totals = useMemo(() => {
         const countSerieI = periodAdmisiones.filter(isSerieI).length;
         const countSerieSR = periodAdmisiones.filter(isSerieSR).length;
-        const countOtras = periodAdmisiones.length - countSerieI - countSerieSR;
 
         let sumHoras = 0;
-        let sumDiasDireccion = 0;
         let sumDiasProporcionales = 0;
         let sumHorasSR = 0;
         let sumHorasPiso = 0;
+        let sumDiasPropSR = 0;
+        let sumDiasPropPiso = 0;
 
         for (const r of filteredRows) {
             if (!r.incluida_en_presupuesto) continue;
-            const h = Number(r.horas_presupuesto_total || 0);
-            sumHoras += h;
-            sumDiasDireccion += calcDiasFormulaDireccion(r.horas_brutas_salus);
+            sumHoras += Number(r.horas_presupuesto_total || 0);
             sumDiasProporcionales += Number(r.dias_proporcionales_total || 0);
             sumHorasSR += Number(r.horas_shock_room || 0);
             sumHorasPiso += Number(r.horas_piso || 0);
+            sumDiasPropSR += Number(r.dias_proporcionales_sr || 0);
+            sumDiasPropPiso += Number(r.dias_proporcionales_piso || 0);
         }
 
         const srRows = periodOcupacion.filter(o => o.tipo_unidad === 'SHOCK_ROOM_BOX');
@@ -406,14 +370,13 @@ export default function GuardiaAdmisionesOcupacionPanel({
             totalPeriodo: periodAdmisiones.length,
             countSerieI,
             countSerieSR,
-            countOtras,
             filteredCount: filteredRows.length,
             sumHoras: Math.round(sumHoras * 100) / 100,
             sumHorasSR: Math.round(sumHorasSR * 100) / 100,
             sumHorasPiso: Math.round(sumHorasPiso * 100) / 100,
-            sumDiasDireccion: Math.round(sumDiasDireccion * 100) / 100,
             sumDiasProporcionales: Math.round(sumDiasProporcionales * 100) / 100,
-            diferenciaDias: Math.round((sumDiasDireccion - sumDiasProporcionales) * 100) / 100,
+            sumDiasPropSR: Math.round(sumDiasPropSR * 100) / 100,
+            sumDiasPropPiso: Math.round(sumDiasPropPiso * 100) / 100,
             horasNetasBoxesSr: Math.round(horasNetasBoxesSr * 100) / 100,
             diasPropBoxesSr: Math.round(diasPropBoxesSr * 100) / 100,
             diasDispBoxesSr,
@@ -424,7 +387,6 @@ export default function GuardiaAdmisionesOcupacionPanel({
         };
     }, [periodAdmisiones, filteredRows, periodOcupacion, effectiveDateRange, boxesConfig]);
 
-    // Días con mayor rotación para la pestaña de Boxes 24h
     const highRotationDays = useMemo(() => {
         const byDay = new Map();
         for (const r of periodOcupacion) {
@@ -460,19 +422,16 @@ export default function GuardiaAdmisionesOcupacionPanel({
         });
     }, [periodOcupacion, selectedInspectDate]);
 
-    // Exportar Excel IDÉNTICO a las columnas de Dirección + Columnas de Conciliación y Proporción Real
     const handleExportExcel = async () => {
         try {
             const XLSX = await import('xlsx');
             const wb = XLSX.utils.book_new();
 
-            // Hoja 1: TODAS LAS ADMISIONES (Mismo formato que Dirección + Columnas Auditadas)
             const headers = [
                 'Fecha Ingreso',
                 'Mes/Año',
                 'N. Admisión',
                 'Serie Admisión',
-                '¿Estaba en Excel Dirección?',
                 'Documento',
                 'Paciente',
                 'Cliente',
@@ -486,81 +445,65 @@ export default function GuardiaAdmisionesOcupacionPanel({
                 'Recorrido Real de Camas (Historial)',
                 'Fecha Alta',
                 'Motivo Alta',
-                'Horas de Internación (SALUS)',
-                'Días s/Fórmula Dirección (Mín 1)',
-                'Días Proporcionales Reales (Horas ÷ 24)',
+                'Horas de Internación',
+                'Días Proporcionales (Horas ÷ 24)',
                 'Horas en Shock Room',
                 'Días Prop. Shock Room (Hs SR ÷ 24)',
                 'Horas en Piso Clínico',
                 'Días Prop. Piso (Hs Piso ÷ 24)',
-                'Incluida en Presupuesto',
-                'Diagnóstico de Auditoría'
+                'Válida para Ocupación',
+                'Estado de Auditoría'
             ];
 
-            const rowsToExport = filteredRows.map(a => {
-                const enDireccion = isSerieI(a) ? 'SÍ (Serie I)' : 'NO — OMITIDA POR DIRECCIÓN (Serie SR/Otra)';
-                const diasDir = a.incluida_en_presupuesto ? calcDiasFormulaDireccion(a.horas_brutas_salus) : 0;
-                return [
-                    formatSqlDateTime(a.fecha_ingreso),
-                    `${a.periodo}-01`,
-                    a.numero_admision || '',
-                    a.serie_admision || (isSerieSR(a) ? 'SHOCK ROOM' : 'INTERNADO'),
-                    enDireccion,
-                    a.dni || '',
-                    a.paciente || '',
-                    a.obra_social || '',
-                    a.dias_salus ?? '',
-                    a.proceso_salus || '',
-                    a.servicio_salus || '',
-                    a.doctor_cabecera || 'GARCIA, PAOLA GUADALUPE',
-                    a.nhc || '',
-                    a.edad_salus !== null && a.edad_salus !== undefined ? `${a.edad_salus}a` : '',
-                    a.habitacion_salus || 'SIN HABITACIÓN',
-                    formatRecorridoCamas(a.tramos_json),
-                    a.fecha_alta ? formatSqlDateTime(a.fecha_alta) : 'SIN ALTA (ABIERTA)',
-                    a.motivo_alta || '',
-                    Number(a.horas_brutas_salus || 0),
-                    diasDir,
-                    Number(a.dias_proporcionales_total || 0),
-                    Number(a.horas_shock_room || 0),
-                    Number(a.dias_proporcionales_sr || 0),
-                    Number(a.horas_piso || 0),
-                    Number(a.dias_proporcionales_piso || 0),
-                    a.incluida_en_presupuesto ? 'SI' : 'NO (EXCLUIDA)',
-                    a.inconsistencia_detalle || 'OK — Consistente'
-                ];
-            });
+            const rowsToExport = filteredRows.map(a => [
+                formatSqlDateTime(a.fecha_ingreso),
+                `${a.periodo}-01`,
+                a.numero_admision || '',
+                a.serie_admision || (isSerieSR(a) ? 'SHOCK ROOM' : 'INTERNADO'),
+                a.dni || '',
+                a.paciente || '',
+                a.obra_social || '',
+                a.dias_salus ?? '',
+                a.proceso_salus || '',
+                a.servicio_salus || '',
+                a.doctor_cabecera || 'GARCIA, PAOLA GUADALUPE',
+                a.nhc || '',
+                a.edad_salus !== null && a.edad_salus !== undefined ? `${a.edad_salus}a` : '',
+                a.habitacion_salus || 'SIN HABITACIÓN',
+                formatRecorridoCamas(a.tramos_json),
+                a.fecha_alta ? formatSqlDateTime(a.fecha_alta) : 'SIN ALTA (ABIERTA)',
+                a.motivo_alta || '',
+                Number(a.horas_brutas_salus || 0),
+                Number(a.dias_proporcionales_total || 0),
+                Number(a.horas_shock_room || 0),
+                Number(a.dias_proporcionales_sr || 0),
+                Number(a.horas_piso || 0),
+                Number(a.dias_proporcionales_piso || 0),
+                a.incluida_en_presupuesto ? 'SI' : 'NO (EXCLUIDA)',
+                cleanAuditDetail(a.inconsistencia_detalle)
+            ]);
 
             const wsAdm = XLSX.utils.aoa_to_sheet([headers, ...rowsToExport]);
             wsAdm['!cols'] = [
-                { wch: 20 }, { wch: 12 }, { wch: 13 }, { wch: 15 }, { wch: 34 },
-                { wch: 13 }, { wch: 30 }, { wch: 28 }, { wch: 12 }, { wch: 44 },
-                { wch: 20 }, { wch: 26 }, { wch: 10 }, { wch: 8 }, { wch: 22 },
-                { wch: 36 }, { wch: 20 }, { wch: 20 }, { wch: 22 }, { wch: 26 },
-                { wch: 28 }, { wch: 18 }, { wch: 24 }, { wch: 18 }, { wch: 22 },
-                { wch: 20 }, { wch: 60 }
+                { wch: 20 }, { wch: 12 }, { wch: 13 }, { wch: 15 }, { wch: 13 },
+                { wch: 30 }, { wch: 28 }, { wch: 12 }, { wch: 44 }, { wch: 20 },
+                { wch: 26 }, { wch: 10 }, { wch: 8 }, { wch: 22 }, { wch: 36 },
+                { wch: 20 }, { wch: 20 }, { wch: 20 }, { wch: 28 }, { wch: 18 },
+                { wch: 24 }, { wch: 18 }, { wch: 22 }, { wch: 20 }, { wch: 56 }
             ];
-            XLSX.utils.book_append_sheet(wb, wsAdm, '1_Todas_Las_Admisiones');
+            XLSX.utils.book_append_sheet(wb, wsAdm, '1_Admisiones_Guardia_Clinica');
 
-            // Hoja 2: Resumen Ejecutivo y Explicación de Diferencias con Dirección
             const resumenAoA = [
-                ['CONCILIACIÓN DE ADMISIONES GUARDIA CLÍNICA (DRA. PAOLA GARCÍA) — SALUS vs. EXCEL DIRECCIÓN'],
+                ['RESUMEN DE ADMISIONES Y OCUPACIÓN PROPORCIONAL — GUARDIA CLÍNICA (DRA. PAOLA GARCÍA)'],
                 ['Período Exportado:', effectiveDateRange.label],
                 ['Días Calendario del Período:', effectiveDateRange.diasCalendario],
                 [],
-                ['1. ¿QUÉ ADMISIONES FALTABAN EN EL EXCEL DE DIRECCIÓN?', 'CANTIDAD', 'EXPLICACIÓN'],
-                ['Total Admisiones Reales en SALUS (en el período)', totals.totalPeriodo, '100% de las admisiones no anuladas con Doctor = GARCIA, PAOLA GUADALUPE'],
-                ['Admisiones Serie I (I0...) — Las únicas que veía Dirección', totals.countSerieI, 'Dirección tenía filtrado únicamente el talonario/serie I (Internado)'],
-                ['Admisiones Serie SR (SR00...) — OMITIDAS en Excel Dirección', totals.countSerieSR, 'Pacientes reales atendidos en Shock Room (módulo 400109/420301) ingresados con serie SR'],
-                ['Otras Series (UCI / TI / Otros)', totals.countOtras, ' Casos puntuales de otras series'],
+                ['INDICADOR', 'VALOR', 'DETALLE'],
+                ['Total Admisiones del Período', totals.totalPeriodo, `Serie I (Internación): ${totals.countSerieI} · Serie SR (Shock Room): ${totals.countSerieSR}`],
+                ['Horas Reales de Internación (Selección)', totals.sumHoras, `${totals.sumHorasSR} hs en Boxes SR + ${totals.sumHorasPiso} hs en Camas de Piso`],
+                ['Días Proporcionales Totales (Horas ÷ 24)', totals.sumDiasProporcionales, `${totals.sumDiasPropSR} d en Shock Room + ${totals.sumDiasPropPiso} d en Piso`],
                 [],
-                ['2. COMPARATIVA DE DÍAS DE OCUPACIÓN (FILAS FILTRADAS)', 'VALOR', 'CRITERIO'],
-                ['Suma de Horas Reales (Válidas)', totals.sumHoras, `${totals.sumHorasSR} hs en Boxes SR + ${totals.sumHorasPiso} hs en Camas de Piso`],
-                ['Días según Fórmula Excel Dirección (Mínimo 1 día si < 24h)', totals.sumDiasDireccion, 'Infla cada estancia breve de 2 o 3 hs en Shock Room como 1,00 día entero'],
-                ['Días Proporcionales Reales (Horas ÷ 24)', totals.sumDiasProporcionales, '12 hs usadas de 24 hs = 0,50 días sin importar cuántos pacientes rotaron'],
-                ['Días Inflados Depurados', totals.diferenciaDias, 'Diferencia entre fórmula con piso mínimo 1 día vs. proporción exacta Hs/24'],
-                [],
-                ['3. OCUPACIÓN FÍSICA NETA DE LOS 3 BOXES DE SHOCK ROOM', 'HORAS NETAS', 'DÍAS PROP. (Hs/24)', 'DÍAS DISPONIBLES', '% OCUPACIÓN REAL', 'PACIENTES'],
+                ['OCUPACIÓN FÍSICA NETA DE LOS 3 BOXES DE SHOCK ROOM', 'HORAS NETAS', 'DÍAS PROP. (Hs/24)', 'DÍAS DISPONIBLES', '% OCUPACIÓN REAL', 'PACIENTES'],
                 ...totals.boxSummary.map(b => [
                     b.unidad,
                     b.horasNetas,
@@ -572,10 +515,9 @@ export default function GuardiaAdmisionesOcupacionPanel({
                 ['TOTAL 3 BOXES SHOCK ROOM', totals.horasNetasBoxesSr, totals.diasPropBoxesSr, totals.diasDispBoxesSr, `${totals.pctOcupBoxesSr}%`, '']
             ];
             const wsRes = XLSX.utils.aoa_to_sheet(resumenAoA);
-            wsRes['!cols'] = [{ wch: 56 }, { wch: 18 }, { wch: 62 }, { wch: 18 }, { wch: 18 }, { wch: 14 }];
-            XLSX.utils.book_append_sheet(wb, wsRes, '2_Conciliacion_Direccion');
+            wsRes['!cols'] = [{ wch: 52 }, { wch: 18 }, { wch: 50 }, { wch: 18 }, { wch: 18 }, { wch: 14 }];
+            XLSX.utils.book_append_sheet(wb, wsRes, '2_Resumen_Ocupacion');
 
-            // Hoja 3: Ocupación Diaria por Box
             const ocupHeaders = [
                 'Fecha', 'Unidad / Box', 'Pacientes en el Día', 'Horas Netas Ocupadas (Máx 24h)',
                 'Días Proporcionales Reales (Horas ÷ 24)', '% Ocupación del Box en el Día'
@@ -595,7 +537,7 @@ export default function GuardiaAdmisionesOcupacionPanel({
             XLSX.utils.book_append_sheet(wb, wsOcup, '3_Ocupacion_Diaria_Boxes');
 
             const tag = `${effectiveDateRange.desde}_a_${effectiveDateRange.hasta}`;
-            XLSX.writeFile(wb, `Admisiones_Guardia_Paola_Garcia_${tag}.xlsx`);
+            XLSX.writeFile(wb, `Admisiones_Guardia_Clinica_${tag}.xlsx`);
             addToast?.(`Excel descargado con ${rowsToExport.length} admisiones`, 'success');
         } catch (err) {
             console.error('Error exportando Excel:', err);
@@ -614,7 +556,7 @@ export default function GuardiaAdmisionesOcupacionPanel({
             }}>
                 <RefreshCw size={28} className="animate-spin" style={{ color: '#1E40AF', margin: '0 auto 12px auto' }} />
                 <div style={{ fontWeight: 700, color: '#0F172A' }}>
-                    Cargando padrón completo de admisiones de Dra. Paola García...
+                    Cargando padrón completo de admisiones de Guardia Clínica...
                 </div>
             </div>
         );
@@ -639,7 +581,7 @@ export default function GuardiaAdmisionesOcupacionPanel({
                             Planilla Maestra de Admisiones — Guardia Clínica (Cabecera: Dra. Paola García)
                         </h3>
                         <p style={{ margin: '3px 0 0 0', fontSize: '0.8rem', color: '#475569' }}>
-                            Período visualizado: <strong style={{ color: '#1E40AF' }}>{effectiveDateRange.label}</strong> · Incluye tanto talonario <strong>Serie I</strong> (el que veía Dirección) como <strong>Serie SR</strong> (Shock Room).
+                            Período visualizado: <strong style={{ color: '#1E40AF' }}>{effectiveDateRange.label}</strong> · Incluye admisiones de <strong>Serie I</strong> (Internación) y <strong>Serie SR</strong> (Shock Room).
                         </p>
                     </div>
 
@@ -690,7 +632,6 @@ export default function GuardiaAdmisionesOcupacionPanel({
                     </div>
                 </div>
 
-                {/* Botones rápidos de corte temporal + pestañas simples */}
                 <div style={{
                     display: 'flex',
                     justifyContent: 'space-between',
@@ -701,10 +642,9 @@ export default function GuardiaAdmisionesOcupacionPanel({
                     paddingTop: '12px'
                 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                        <span style={{ fontSize: '0.76rem', fontWeight: 800, color: '#334155' }}>Corte de Fechas:</span>
+                        <span style={{ fontSize: '0.76rem', fontWeight: 800, color: '#334155' }}>Período:</span>
                         {[
                             { id: 'telar', label: 'Filtro Superior del Tablero' },
-                            { id: 'corte_direccion', label: '🔍 Corte Excel Dirección (Nov 2025 – Jun 2026)' },
                             { id: 'anio_2026', label: 'Año 2026 Completo' },
                             { id: 'todo_2025_2026', label: 'Todo 2025–2026' }
                         ].map(btn => (
@@ -730,7 +670,7 @@ export default function GuardiaAdmisionesOcupacionPanel({
 
                     <div style={{ display: 'flex', background: '#F1F5F9', padding: '3px', borderRadius: '8px', gap: '4px' }}>
                         {[
-                            { id: 'planilla_excel', label: `📋 Planilla de Todas las Admisiones (${filteredRows.length})` },
+                            { id: 'planilla_excel', label: `📋 Planilla de Admisiones (${filteredRows.length})` },
                             { id: 'ocupacion_boxes', label: `📊 Ocupación por Box 24h (${totals.pctOcupBoxesSr}%)` },
                             { id: 'auditoria', label: `⚠️ Sin Habitación / Excluidas (${totals.sinHabCount + totals.excluidasCount})` }
                         ].map(t => (
@@ -757,7 +697,7 @@ export default function GuardiaAdmisionesOcupacionPanel({
                 </div>
             </div>
 
-            {/* ─── 4 TARJETAS CLARAS DE CONCILIACIÓN CONTRA EL EXCEL DE DIRECCIÓN ─── */}
+            {/* ─── 4 TARJETAS DE RESUMEN DEL PERÍODO ─── */}
             <div style={{
                 display: 'grid',
                 gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))',
@@ -771,7 +711,7 @@ export default function GuardiaAdmisionesOcupacionPanel({
                         {totals.totalPeriodo.toLocaleString('es-AR')}
                     </div>
                     <div style={{ fontSize: '0.74rem', color: '#334155', marginTop: '3px' }}>
-                        Serie I (Dirección): <strong>{totals.countSerieI}</strong> · Serie SR (Omitidas): <strong style={{ color: '#DC2626' }}>{totals.countSerieSR}</strong>
+                        Serie I (Internación): <strong>{totals.countSerieI}</strong> · Serie SR (Shock Room): <strong>{totals.countSerieSR}</strong>
                     </div>
                 </div>
 
@@ -795,7 +735,7 @@ export default function GuardiaAdmisionesOcupacionPanel({
                         {totals.sumDiasProporcionales.toLocaleString('es-AR')} días
                     </div>
                     <div style={{ fontSize: '0.73rem', color: '#1E3A8A', marginTop: '3px' }}>
-                        Fórmula Dirección (mín. 1d): <strong>{totals.sumDiasDireccion.toLocaleString('es-AR')} d</strong> (−{totals.diferenciaDias.toLocaleString('es-AR')} d inflados)
+                        SR: <strong>{totals.sumDiasPropSR.toLocaleString('es-AR')} d</strong> · Piso: <strong>{totals.sumDiasPropPiso.toLocaleString('es-AR')} d</strong> (12 hs = 0,50 d)
                     </div>
                 </div>
 
@@ -816,11 +756,10 @@ export default function GuardiaAdmisionesOcupacionPanel({
             </div>
 
             {/* ═══════════════════════════════════════════════════════════════════════════
-                VISTA 1 (PRINCIPAL): PLANILLA MAESTRA ESTILO EXCEL DE TODAS LAS ADMISIONES
+                VISTA 1: PLANILLA DE TODAS LAS ADMISIONES
                ═══════════════════════════════════════════════════════════════════════════ */}
             {viewTab === 'planilla_excel' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                    {/* Barra de filtros de columnas de la planilla */}
                     <div style={{
                         background: '#FFFFFF',
                         borderRadius: '10px',
@@ -839,8 +778,8 @@ export default function GuardiaAdmisionesOcupacionPanel({
                                 style={{ padding: '6px 10px', borderRadius: '6px', border: '1px solid #CBD5E1', fontSize: '0.78rem', fontWeight: 700, background: '#F8FAFC', color: '#0F172A' }}
                             >
                                 <option value="TODAS">Todas las Series ({totals.totalPeriodo})</option>
-                                <option value="SOLO_I_DIRECCION">Solo Serie I — Las que están en Excel Dirección ({totals.countSerieI})</option>
-                                <option value="SOLO_SR_OMITIDAS">Solo Serie SR — Shock Room omitidas por Dirección ({totals.countSerieSR})</option>
+                                <option value="SOLO_I">Solo Serie I — Internación ({totals.countSerieI})</option>
+                                <option value="SOLO_SR">Solo Serie SR — Shock Room ({totals.countSerieSR})</option>
                             </select>
 
                             <select
@@ -873,13 +812,12 @@ export default function GuardiaAdmisionesOcupacionPanel({
                                 type="text"
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
-                                placeholder="Buscar N° admisión (ej. I050089, SR000318), paciente, DNI..."
+                                placeholder="Buscar N° admisión, paciente, DNI, NHC..."
                                 style={{ width: '100%', padding: '6px 10px 6px 30px', borderRadius: '6px', border: '1px solid #CBD5E1', fontSize: '0.78rem' }}
                             />
                         </div>
                     </div>
 
-                    {/* Grilla estilo Excel con las mismas columnas de Dirección + Días Proporcionales */}
                     <div style={{
                         background: '#FFFFFF',
                         borderRadius: '10px',
@@ -893,7 +831,7 @@ export default function GuardiaAdmisionesOcupacionPanel({
                                     <tr>
                                         <th style={{ padding: '9px 10px', whiteSpace: 'nowrap', color: '#334155' }}>Fecha Ingreso</th>
                                         <th style={{ padding: '9px 10px', whiteSpace: 'nowrap', color: '#334155' }}>N. Admisión</th>
-                                        <th style={{ padding: '9px 10px', whiteSpace: 'nowrap', color: '#334155' }}>¿En Excel Dir.?</th>
+                                        <th style={{ padding: '9px 10px', whiteSpace: 'nowrap', color: '#334155' }}>Serie</th>
                                         <th style={{ padding: '9px 10px', whiteSpace: 'nowrap', color: '#334155' }}>Documento</th>
                                         <th style={{ padding: '9px 10px', whiteSpace: 'nowrap', color: '#334155' }}>Paciente</th>
                                         <th style={{ padding: '9px 10px', whiteSpace: 'nowrap', color: '#334155' }}>Cliente (Obra Social)</th>
@@ -903,22 +841,20 @@ export default function GuardiaAdmisionesOcupacionPanel({
                                         <th style={{ padding: '9px 10px', whiteSpace: 'nowrap', color: '#334155' }}>Habitación & Recorrido</th>
                                         <th style={{ padding: '9px 10px', whiteSpace: 'nowrap', color: '#334155' }}>Fecha Alta</th>
                                         <th style={{ padding: '9px 10px', whiteSpace: 'nowrap', textAlign: 'right', color: '#334155' }}>Horas</th>
-                                        <th style={{ padding: '9px 10px', whiteSpace: 'nowrap', textAlign: 'right', color: '#991B1B', background: '#FEF2F2' }}>Días s/Dir. (Mín 1)</th>
                                         <th style={{ padding: '9px 10px', whiteSpace: 'nowrap', textAlign: 'right', color: '#1E40AF', background: '#EFF6FF' }}>Días Prop. (Hs÷24)</th>
-                                        <th style={{ padding: '9px 10px', whiteSpace: 'nowrap', color: '#334155' }}>Auditoría</th>
+                                        <th style={{ padding: '9px 10px', whiteSpace: 'nowrap', color: '#334155' }}>Estado</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {filteredRows.length === 0 ? (
                                         <tr>
-                                            <td colSpan="15" style={{ padding: '32px', textAlign: 'center', color: '#64748B' }}>
+                                            <td colSpan="14" style={{ padding: '32px', textAlign: 'center', color: '#64748B' }}>
                                                 No hay admisiones para los filtros seleccionados.
                                             </td>
                                         </tr>
                                     ) : (
                                         filteredRows.slice(0, 500).map((a, idx) => {
-                                            const enDir = isSerieI(a);
-                                            const diasDir = a.incluida_en_presupuesto ? calcDiasFormulaDireccion(a.horas_brutas_salus) : 0;
+                                            const esSR = isSerieSR(a);
                                             const meta = INCONSISTENCIA_META[a.inconsistencia_codigo] || INCONSISTENCIA_META.OK;
                                             return (
                                                 <tr
@@ -937,7 +873,7 @@ export default function GuardiaAdmisionesOcupacionPanel({
                                                     <td style={{ padding: '7px 10px', whiteSpace: 'nowrap', fontFamily: 'monospace', fontSize: '0.73rem' }}>
                                                         {formatDateTimeShort(a.fecha_ingreso)}
                                                     </td>
-                                                    <td style={{ padding: '7px 10px', whiteSpace: 'nowrap', fontWeight: 800, color: enDir ? '#0F172A' : '#1E40AF' }}>
+                                                    <td style={{ padding: '7px 10px', whiteSpace: 'nowrap', fontWeight: 800, color: esSR ? '#1E40AF' : '#0F172A' }}>
                                                         {a.numero_admision}
                                                     </td>
                                                     <td style={{ padding: '7px 10px', whiteSpace: 'nowrap' }}>
@@ -946,10 +882,10 @@ export default function GuardiaAdmisionesOcupacionPanel({
                                                             borderRadius: '5px',
                                                             fontSize: '0.68rem',
                                                             fontWeight: 800,
-                                                            background: enDir ? '#E2E8F0' : '#FEF3C7',
-                                                            color: enDir ? '#334155' : '#92400E'
+                                                            background: esSR ? '#DBEAFE' : '#E2E8F0',
+                                                            color: esSR ? '#1E40AF' : '#334155'
                                                         }}>
-                                                            {enDir ? 'Sí (Serie I)' : 'Omitida (SR)'}
+                                                            {esSR ? 'Serie SR' : isSerieI(a) ? 'Serie I' : (a.serie_admision || 'Otra')}
                                                         </span>
                                                     </td>
                                                     <td style={{ padding: '7px 10px', whiteSpace: 'nowrap', color: '#475569' }}>
@@ -986,9 +922,6 @@ export default function GuardiaAdmisionesOcupacionPanel({
                                                     <td style={{ padding: '7px 10px', textAlign: 'right', fontWeight: 700, color: '#0F172A' }}>
                                                         {Number(a.horas_brutas_salus || 0).toFixed(2)}
                                                     </td>
-                                                    <td style={{ padding: '7px 10px', textAlign: 'right', fontWeight: 700, color: '#991B1B', background: 'rgba(254, 226, 226, 0.35)' }}>
-                                                        {diasDir}
-                                                    </td>
                                                     <td style={{ padding: '7px 10px', textAlign: 'right', fontWeight: 900, color: '#1E40AF', background: 'rgba(219, 234, 254, 0.45)' }}>
                                                         {Number(a.dias_proporcionales_total || 0).toFixed(2)}
                                                     </td>
@@ -1014,7 +947,7 @@ export default function GuardiaAdmisionesOcupacionPanel({
                         </div>
                         {filteredRows.length > 500 && (
                             <div style={{ padding: '8px 14px', background: '#F8FAFC', borderTop: '1px solid #E2E8F0', fontSize: '0.75rem', color: '#475569', textAlign: 'center' }}>
-                                Mostrando primeras 500 filas en pantalla para fluidez visual. Al hacer clic en <strong>"Descargar Excel Completo ({filteredRows.length} admisiones)"</strong> se exportan el 100% de las filas.
+                                Mostrando primeras 500 filas en pantalla. Con <strong>"Descargar Excel Completo ({filteredRows.length} admisiones)"</strong> se exportan el 100% de las filas.
                             </div>
                         )}
                     </div>
@@ -1058,7 +991,6 @@ export default function GuardiaAdmisionesOcupacionPanel({
                         </table>
                     </div>
 
-                    {/* Verificador visual de 24 hs de un día puntual */}
                     <div style={{ background: '#FFFFFF', borderRadius: '12px', border: '1px solid #BFDBFE', padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
                             <div>
@@ -1066,7 +998,7 @@ export default function GuardiaAdmisionesOcupacionPanel({
                                     Detalle Horario de un Día Puntual (00:00 a 24:00 hs)
                                 </h4>
                                 <span style={{ fontSize: '0.75rem', color: '#475569' }}>
-                                    Verificá cómo las horas de varios pacientes en el mismo día se suman y dividen por 24 sin superar jamás 1,00 día por box.
+                                    Las horas ocupadas en el día se suman y dividen por 24 (ej. 12 hs = 0,50 días), sin importar cuántos pacientes rotaron.
                                 </span>
                             </div>
                             <input
@@ -1118,10 +1050,10 @@ export default function GuardiaAdmisionesOcupacionPanel({
             {viewTab === 'auditoria' && (
                 <div style={{ background: '#FFFFFF', borderRadius: '10px', border: '1px solid #E2E8F0', padding: '16px 20px' }}>
                     <h4 style={{ margin: '0 0 8px 0', fontSize: '0.96rem', fontWeight: 800, color: '#0F172A' }}>
-                        Casos sin Habitación en SALUS o Excluidos por Inconsistencia Administrativa
+                        Admisiones sin Habitación en SALUS o Excluidas por Inconsistencia Administrativa
                     </h4>
                     <p style={{ margin: '0 0 14px 0', fontSize: '0.78rem', color: '#475569' }}>
-                        Nota clave: Los 4 casos que figuraban con habitación vacía en el Excel de Dirección (<code>I048472</code>, <code>I048891</code>, <code>I050089</code> e <code>I050935</code>) <strong>sí tuvieron habitación real</strong> en SALUS (Enfermería liberó la cama minutos antes del alta administrativa). Abajo se listan las admisiones que realmente nunca tuvieron habitación asignada o quedaron abiertas/suspendidas en SALUS:
+                        Listado de admisiones que no registran habitación asignada en SALUS o fueron excluidas del cálculo de ocupación por corresponder a internaciones suspendidas, chequeos ambulatorios o registros abiertos sin cierre administrativo.
                     </p>
                     <div style={{ overflowX: 'auto' }}>
                         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem', textAlign: 'left' }}>
@@ -1132,7 +1064,7 @@ export default function GuardiaAdmisionesOcupacionPanel({
                                     <th style={{ padding: '8px 10px' }}>Paciente</th>
                                     <th style={{ padding: '8px 10px' }}>Habitación SALUS</th>
                                     <th style={{ padding: '8px 10px' }}>Horas SALUS</th>
-                                    <th style={{ padding: '8px 10px' }}>Motivo Exacto</th>
+                                    <th style={{ padding: '8px 10px' }}>Diagnóstico</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -1147,7 +1079,7 @@ export default function GuardiaAdmisionesOcupacionPanel({
                                             <td style={{ padding: '8px 10px', fontWeight: 700 }}>{a.paciente} (NHC {a.nhc})</td>
                                             <td style={{ padding: '8px 10px', color: '#DC2626', fontWeight: 800 }}>{a.habitacion_salus || 'SIN HABITACIÓN'}</td>
                                             <td style={{ padding: '8px 10px', fontWeight: 700 }}>{a.horas_brutas_salus} hs</td>
-                                            <td style={{ padding: '8px 10px', color: '#334155' }}>{a.inconsistencia_detalle}</td>
+                                            <td style={{ padding: '8px 10px', color: '#334155' }}>{cleanAuditDetail(a.inconsistencia_detalle)}</td>
                                         </tr>
                                     ))}
                             </tbody>
@@ -1196,7 +1128,7 @@ export default function GuardiaAdmisionesOcupacionPanel({
                             <strong>Ingreso:</strong> {formatDateTimeShort(selectedAdmDetail.fecha_ingreso)} · <strong>Alta:</strong> {formatDateTimeShort(selectedAdmDetail.fecha_alta)}
                         </div>
                         <div style={{ fontSize: '0.8rem', color: '#1E40AF', fontWeight: 700 }}>
-                            Horas Totales: {selectedAdmDetail.horas_brutas_salus} hs → Días Proporcionales Reales: {selectedAdmDetail.dias_proporcionales_total} días (vs. {calcDiasFormulaDireccion(selectedAdmDetail.horas_brutas_salus)} días en fórmula Dirección)
+                            Horas Totales: {selectedAdmDetail.horas_brutas_salus} hs → Días Proporcionales Reales: {selectedAdmDetail.dias_proporcionales_total} días
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                             <strong style={{ fontSize: '0.78rem' }}>Recorrido Físico en Historial de Camas SALUS:</strong>

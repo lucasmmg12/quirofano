@@ -820,7 +820,7 @@ export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admis
                         fontSize: '0.78rem',
                         color: '#1E3A8A'
                     }}>
-                        ℹ️ <strong>Nota de Gobernanza:</strong> Esta vista muestra las fichas médicas del formulario <strong>(INT) ADMISION MEDICA CLINICA (Protocolo 557)</strong> utilizadas por el plantel clínico tanto en ingresos como en valoraciones de pase de terapia, interconsultas y cogestión sobre otros médicos de cabecera. Para auditar las <strong>Admisiones Hospitalarias reales de Guardia Clínica (Dra. Paola García) y la Ocupación Proporcional por Horas para Presupuesto</strong>, utilizá la primera pestaña <strong>"Admisiones Guardia Clínica (Dra. P. García)"</strong>.
+                        ℹ️ <strong>Nota de Gobernanza:</strong> Esta vista muestra las fichas médicas del formulario <strong>(INT) ADMISION MEDICA CLINICA (Protocolo 557)</strong> utilizadas por el plantel clínico tanto en ingresos como en valoraciones de pase de terapia, interconsultas y cogestión sobre otros médicos de cabecera. Para consultar las <strong>Admisiones Hospitalarias reales de Guardia Clínica (Dra. Paola García) y la Ocupación Proporcional por Horas</strong>, utilizá la primera pestaña <strong>"Admisiones Guardia Clínica (Dra. P. García)"</strong>.
                     </div>
                     {/* KPI Cards de Protocolo 557 */}
                     <div style={{
@@ -2958,7 +2958,7 @@ export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admis
                                     color: '#1E40AF',
                                     bg: '#EFF6FF',
                                     border: '#BFDBFE',
-                                    meaning: 'Padrón real de admisiones hospitalarias de TABLEAU_Admisiones con médico de cabecera Dra. Paola García, cruzado al minuto con el Historial de Camas para el armado del Presupuesto Gerencial.',
+                                    meaning: 'Padrón real de admisiones hospitalarias de TABLEAU_Admisiones con médico de cabecera Dra. Paola García, cruzado al minuto con el Historial de Camas de SALUS.',
                                     content: 'Mide la ocupación en forma estrictamente proporcional por horas (Horas Netas / 24 = Días Proporcionales, ej. 12 hs = 0,50 días sin importar cuántos pacientes rotaron), cronograma visual de 24 hs por Box SR y Bandeja de Auditoría de Inconsistencias SALUS (admisiones sin habitación, abiertas sin alta, suspendidas y desvíos de servicio).'
                                 },
                                 {

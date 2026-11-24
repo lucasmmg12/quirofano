@@ -967,7 +967,7 @@ export default function GuardiaClinicaDashboard({
             }}>
                 {[
                     { id: 'resumen', label: 'Tablero Principal (Demanda & KPIs)', icon: BarChart3 },
-                    { id: 'admisiones_paola', label: 'Admisiones Guardia & Ocupación (Presupuesto)', icon: Layers },
+                    { id: 'admisiones_paola', label: 'Admisiones Guardia & Ocupación', icon: Layers },
                     { id: 'triage', label: 'Triage & Severidad', icon: Stethoscope },
                     { id: 'tiempos', label: 'Tiempos de Espera & Extremos', icon: Clock },
                     { id: 'resolucion', label: 'Resolución, Destinos & Quirófano', icon: Activity },
