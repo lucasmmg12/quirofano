@@ -275,12 +275,16 @@ export async function syncComprasConsumoStock({ startYear = 2024 } = {}) {
                     m.idAlmacen AS id_almacen,
                     SUM(CASE WHEN m.tipo IN ('VES','VEA') AND m.Fecha >= DATEADD(day, -30, GETDATE()) THEN ABS(ISNULL(m.cantidadVenta, 0)) ELSE 0 END) AS consumo_30d,
                     SUM(CASE WHEN m.tipo IN ('VES','VEA') THEN ABS(ISNULL(m.cantidadVenta, 0)) ELSE 0 END) AS consumo_90d,
+                    SUM(CASE WHEN m.stock > 0 AND m.Fecha >= DATEADD(day, -30, GETDATE()) THEN m.stock ELSE 0 END) AS entradas_30d,
+                    SUM(CASE WHEN m.stock > 0 THEN m.stock ELSE 0 END) AS entradas_90d,
+                    SUM(CASE WHEN m.stock < 0 AND m.Fecha >= DATEADD(day, -30, GETDATE()) THEN ABS(m.stock) ELSE 0 END) AS salidas_30d,
+                    SUM(CASE WHEN m.stock < 0 THEN ABS(m.stock) ELSE 0 END) AS salidas_90d,
                     SUM(CASE WHEN m.tipo = 'REG' THEN ISNULL(m.stock, 0) ELSE 0 END) AS reg_90d_neto
                 FROM FM_Movimientos m WITH (NOLOCK)
                 INNER JOIN FM_Lotes l WITH (NOLOCK) ON l.id = m.IdLote
                 WHERE m.Fecha >= DATEADD(day, -90, GETDATE())
                   AND m.Fecha <= DATEADD(day, 1, GETDATE())
-                  AND m.tipo IN ('VES', 'VEA', 'REG')
+                  AND m.tipo IN ('COM', 'VES', 'VEA', 'TRA', 'REG')
                 GROUP BY l.idArticulo, m.idAlmacen
             `)
         ]);
@@ -300,11 +304,15 @@ export async function syncComprasConsumoStock({ startYear = 2024 } = {}) {
                 lotes_por_vencer_90d: Number(s.lotes_por_vencer_90d || 0),
                 consumo_30d: 0,
                 consumo_90d: 0,
+                entradas_30d: 0,
+                entradas_90d: 0,
+                salidas_30d: 0,
+                salidas_90d: 0,
                 reg_90d_neto: 0,
             });
         }
 
-        // Unir también artículos con consumo en los últimos 90 días aunque hoy tengan stock 0 (detecta QUIEBRES!)
+        // Unir también artículos con salidas/entradas en los últimos 90 días aunque hoy tengan stock 0 (detecta QUIEBRES!)
         for (const c of cons90Res.recordset) {
             const k = `${c.id_articulo}|${c.id_almacen}`;
             let entry = stockMap.get(k);
@@ -317,12 +325,20 @@ export async function syncComprasConsumoStock({ startYear = 2024 } = {}) {
                     lotes_por_vencer_90d: 0,
                     consumo_30d: 0,
                     consumo_90d: 0,
+                    entradas_30d: 0,
+                    entradas_90d: 0,
+                    salidas_30d: 0,
+                    salidas_90d: 0,
                     reg_90d_neto: 0,
                 };
                 stockMap.set(k, entry);
             }
             entry.consumo_30d = Number(c.consumo_30d || 0);
             entry.consumo_90d = Number(c.consumo_90d || 0);
+            entry.entradas_30d = Number(c.entradas_30d || 0);
+            entry.entradas_90d = Number(c.entradas_90d || 0);
+            entry.salidas_30d = Number(c.salidas_30d || 0);
+            entry.salidas_90d = Number(c.salidas_90d || 0);
             entry.reg_90d_neto = Number(c.reg_90d_neto || 0);
         }
 
@@ -333,7 +349,9 @@ export async function syncComprasConsumoStock({ startYear = 2024 } = {}) {
             const artInfo = artMap.get(item.id_articulo) || { codigo: String(item.id_articulo), nombre: `ARTÍCULO ${item.id_articulo}` };
             const cfg = cfgMap.get(`${item.id_articulo}|${item.id_almacen}`) || {};
             const precio = getPrecio(item.id_articulo);
-            const consumoDiario = item.consumo_90d / 90.0;
+            // Rotación real del almacén: usa Salidas Totales 90d (VES+VEA+TRA-+REG-)
+            const salidasEfectivas90d = Math.max(item.salidas_90d, item.consumo_90d);
+            const consumoDiario = salidasEfectivas90d / 90.0;
             const diasCob = consumoDiario > 0 ? Math.min(9999, Math.round((item.stock_actual / consumoDiario) * 10) / 10) : null;
 
             const stockMin = Number(cfg.StockMinimo || 0);
@@ -341,10 +359,10 @@ export async function syncComprasConsumoStock({ startYear = 2024 } = {}) {
             const puntoPed = Number(cfg.PuntoPedido || 0);
 
             let estado = 'OPTIMO';
-            if (item.stock_actual <= 0 && item.consumo_90d > 0) estado = 'QUIEBRE';
+            if (item.stock_actual <= 0 && salidasEfectivas90d > 0) estado = 'QUIEBRE';
             else if (diasCob !== null && diasCob < 7) estado = 'CRITICO';
             else if ((diasCob !== null && diasCob < 15) || (stockMin > 0 && item.stock_actual <= stockMin)) estado = 'REPONER';
-            else if (item.stock_actual > 0 && item.consumo_90d <= 0) estado = 'SIN_MOVIMIENTO';
+            else if (item.stock_actual > 0 && salidasEfectivas90d <= 0 && item.entradas_90d <= 0) estado = 'SIN_MOVIMIENTO';
             else if (diasCob !== null && diasCob > 90) estado = 'SOBRESTOCK';
 
             // Sugerencia de compra para llevar a 30 días de cobertura (o stock_maximo)
@@ -369,6 +387,10 @@ export async function syncComprasConsumoStock({ startYear = 2024 } = {}) {
                 valor_stock: Math.round(item.stock_actual * precio * 100) / 100,
                 consumo_30d: Math.round(item.consumo_30d * 100) / 100,
                 consumo_90d: Math.round(item.consumo_90d * 100) / 100,
+                entradas_30d: Math.round(item.entradas_30d * 100) / 100,
+                entradas_90d: Math.round(item.entradas_90d * 100) / 100,
+                salidas_30d: Math.round(item.salidas_30d * 100) / 100,
+                salidas_90d: Math.round(item.salidas_90d * 100) / 100,
                 consumo_diario_prom: Math.round(consumoDiario * 10000) / 10000,
                 dias_cobertura: diasCob,
                 sugerencia_compra: sugerencia,

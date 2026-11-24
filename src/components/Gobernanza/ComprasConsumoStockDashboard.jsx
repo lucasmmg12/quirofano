@@ -483,9 +483,12 @@ export default function ComprasConsumoStockDashboard({
                 'Grupo': s.grupo_almacen,
                 'Estado': ESTADO_META[s.estado_stock]?.label || s.estado_stock,
                 'Stock Actual': s.stock_actual,
-                'Consumo 30d': s.consumo_30d,
-                'Consumo 90d': s.consumo_90d,
-                'Días Cobertura': s.dias_cobertura ?? 'Sin consumo',
+                'Entradas 30d': s.entradas_30d ?? 0,
+                'Salidas 30d': s.salidas_30d ?? s.consumo_30d ?? 0,
+                'Entradas 90d': s.entradas_90d ?? 0,
+                'Salidas 90d': s.salidas_90d ?? s.consumo_90d ?? 0,
+                'Consumo Pacientes 30d (VES/VEA)': s.consumo_30d ?? 0,
+                'Días Cobertura': s.dias_cobertura ?? 'Sin salidas',
                 'Stock Mínimo': s.stock_minimo,
                 'Sugerencia Compra': s.sugerencia_compra,
                 'Último Precio Compra ($)': s.ultimo_precio_compra,
@@ -953,7 +956,14 @@ export default function ComprasConsumoStockDashboard({
                                         {sectorArticulos.map((a, idx) => (
                                             <tr key={a.id_articulo} style={{ borderBottom: '1px solid #F1F5F9', background: idx % 2 ? '#F8FAFC' : '#FFFFFF' }}>
                                                 <td style={{ padding: '7px 10px', fontWeight: 600, color: '#0F172A' }}>{a.articulo}</td>
-                                                <td style={{ padding: '7px 6px', textAlign: 'right', color: '#64748B' }}>{fmtNum(a.unidades_pedidas)}</td>
+                                                <td style={{ padding: '7px 6px', textAlign: 'right', color: '#64748B' }}>
+                                                    {fmtNum(a.unidades_pedidas)}
+                                                    {Number(a.unidades_pedidas) > 0 && Number(a.unidades_derivadas) >= Number(a.unidades_pedidas) * 5 && (
+                                                        <span title="El sector solicita en bultos/cajas y Depósito entrega en unidades sueltas" style={{ display: 'block', fontSize: '0.6rem', color: '#B45309', fontWeight: 700 }}>
+                                                            (bulto→unid)
+                                                        </span>
+                                                    )}
+                                                </td>
                                                 <td style={{ padding: '7px 6px', textAlign: 'right', fontWeight: 800, color: '#0284C7' }}>{fmtNum(a.unidades_derivadas)}</td>
                                                 <td style={{ padding: '7px 10px', textAlign: 'right', fontWeight: 700, color: '#003B73' }}>{fmtARS(a.importe_derivado)}</td>
                                             </tr>
@@ -1296,7 +1306,9 @@ export default function ComprasConsumoStockDashboard({
                                         <th style={{ padding: '8px 8px', textAlign: 'left' }}>Almacén</th>
                                         <th style={{ padding: '8px 8px', textAlign: 'center' }}>Estado</th>
                                         <th style={{ padding: '8px 8px', textAlign: 'right' }}>Stock Actual</th>
-                                        <th style={{ padding: '8px 8px', textAlign: 'right' }}>Consumo 30d</th>
+                                        <th style={{ padding: '8px 8px', textAlign: 'right', color: '#047857' }}>Entradas 30d</th>
+                                        <th style={{ padding: '8px 8px', textAlign: 'right', color: '#0369A1' }}>Salidas 30d</th>
+                                        <th style={{ padding: '8px 8px', textAlign: 'right', color: '#475569' }}>Salidas 90d</th>
                                         <th style={{ padding: '8px 8px', textAlign: 'right' }}>Cobertura</th>
                                         <th style={{ padding: '8px 8px', textAlign: 'right' }}>Sugerencia Compra</th>
                                         <th style={{ padding: '8px 10px', textAlign: 'right' }}>Valor Stock ($)</th>
@@ -1315,7 +1327,15 @@ export default function ComprasConsumoStockDashboard({
                                                     </span>
                                                 </td>
                                                 <td style={{ padding: '7px 8px', textAlign: 'right', fontWeight: 800, color: s.stock_actual <= 0 ? '#B91C1C' : '#0F172A' }}>{fmtNum(s.stock_actual)}</td>
-                                                <td style={{ padding: '7px 8px', textAlign: 'right', color: '#475569' }}>{fmtNum(s.consumo_30d)}</td>
+                                                <td style={{ padding: '7px 8px', textAlign: 'right', color: (s.entradas_30d || 0) > 0 ? '#047857' : '#CBD5E1', fontWeight: (s.entradas_30d || 0) > 0 ? 700 : 400 }}>
+                                                    {(s.entradas_30d || 0) > 0 ? `+${fmtNum(s.entradas_30d)}` : '0'}
+                                                </td>
+                                                <td style={{ padding: '7px 8px', textAlign: 'right', color: (s.salidas_30d || 0) > 0 ? '#0369A1' : '#CBD5E1', fontWeight: (s.salidas_30d || 0) > 0 ? 700 : 400 }}>
+                                                    {fmtNum(s.salidas_30d ?? s.consumo_30d ?? 0)}
+                                                </td>
+                                                <td style={{ padding: '7px 8px', textAlign: 'right', color: '#475569' }}>
+                                                    {fmtNum(s.salidas_90d ?? s.consumo_90d ?? 0)}
+                                                </td>
                                                 <td style={{ padding: '7px 8px', textAlign: 'right', fontWeight: 700, color: meta.color }}>
                                                     {s.dias_cobertura !== null ? `${fmtNum(s.dias_cobertura, 1)} d` : '—'}
                                                 </td>
