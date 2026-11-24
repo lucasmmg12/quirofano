@@ -45,11 +45,34 @@ export function invalidateMessageCache(phone) {
     if (phone) _msgCache.delete(phone);
 }
 
-/** Agrega un mensaje a la caché existente sin invalidarla (para mensajes RealTime) */
+/** Agrega o fusiona un mensaje en la caché existente sin invalidarla (para mensajes RealTime y optimistas) */
 export function appendToMessageCache(phone, message) {
     const entry = _msgCache.get(phone);
-    if (!entry) return;
-    entry.messages = [...entry.messages, message];
+    if (!entry || !message) return;
+    const msgRealId = message.realId ? String(message.realId) : null;
+    const msgId = message.id ? String(message.id) : null;
+    const existingIdx = entry.messages.findIndex(m =>
+        (msgRealId && m.realId && String(m.realId) === msgRealId) ||
+        (msgId && m.id && String(m.id) === msgId)
+    );
+    if (existingIdx >= 0) {
+        const prev = entry.messages[existingIdx];
+        const merged = {
+            ...prev,
+            ...message,
+            quotedMessage: message.quotedMessage || prev.quotedMessage || message.rawPayload?.quoted_message || prev.rawPayload?.quoted_message || null,
+            reactions: (Array.isArray(message.reactions) && message.reactions.length > 0) ? message.reactions : (prev.reactions || []),
+            isDeleted: Boolean(message.isDeleted || prev.isDeleted),
+            orderAnalysis: message.orderAnalysis || prev.orderAnalysis || null,
+            audioTranscription: message.audioTranscription || prev.audioTranscription || null,
+            audioUnderstanding: message.audioUnderstanding || prev.audioUnderstanding || null
+        };
+        const next = [...entry.messages];
+        next[existingIdx] = merged;
+        entry.messages = next;
+    } else {
+        entry.messages = [...entry.messages, message];
+    }
     entry.fetchedAt = Date.now(); // Refrescar TTL
 }
 
@@ -1489,8 +1512,18 @@ export async function sendContactCenterMessage({
     if (!isNote && normalizedPhone) {
         try {
             // Si hay un mensaje citado, agregamos cita textual limpia para que el paciente la visualice en su WhatsApp
+            const rawQuotedText = String(quotedMessage?.text || '').trim();
+            const cleanQuotedText = /^\[(image|foto)\]$/i.test(rawQuotedText)
+                ? '📷 Foto'
+                : /^\[(audio|voice)\]$/i.test(rawQuotedText)
+                    ? '🎤 Nota de voz'
+                    : /^\[sticker\]$/i.test(rawQuotedText)
+                        ? '🏷️ Sticker'
+                        : /^\[document\]$/i.test(rawQuotedText)
+                            ? '📎 Documento'
+                            : rawQuotedText;
             const textForWhatsApp = (quotedMessage && !mediaUrl)
-                ? `> 💬 *${quotedMessage.senderName || 'Mensaje'}:* "${(quotedMessage.text || '').slice(0, 80).replace(/\n/g, ' ')}"\n\n${finalContent}`
+                ? `> 💬 *${quotedMessage.senderName || 'Mensaje'}:* "${cleanQuotedText.slice(0, 80).replace(/\n/g, ' ')}"\n\n${finalContent}`
                 : finalContent;
 
             await sendWhatsAppMessage({
@@ -2783,7 +2816,8 @@ export function subscribeToContactCenterRealtime({ onNewMessage, onConversationC
 
     const dispatchMessage = (rawMsg, eventType = 'INSERT') => {
         if (isDisposed || !rawMsg) return;
-        const msg = rawMsg.rp_bot !== undefined || rawMsg.rp_agent !== undefined
+        const isSlimRow = 'rp_quote' in rawMsg || 'rp_bot' in rawMsg || 'rp_agent' in rawMsg || 'rp_reactions' in rawMsg;
+        const msg = isSlimRow
             ? rehydrateSlimMessage(rawMsg)
             : rawMsg;
 

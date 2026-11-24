@@ -21,7 +21,8 @@ import {
     transferChatToAgent, closeConversationWithResolution,
     bulkCloseConversationsSilent, autoArchiveInactiveBotConversations,
     subscribeToContactCenterRealtime, playContactCenterChime,
-    isClosedOrArchived, toggleMessageReaction, appendToMessageCache
+    isClosedOrArchived, toggleMessageReaction, appendToMessageCache,
+    normalizeMessage
 } from '../../services/contactCenterService';
 import { normalizeArgentinePhone } from '../../services/builderbotApi';
 import { supabase } from '../../lib/supabase';
@@ -329,8 +330,9 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                     return a.length >= 8 && b.length >= 8 && a.slice(-8) === b.slice(-8);
                 };
 
-                // Si es un UPDATE de mensaje (ej: resultado de análisis IA de orden médica)
+                // Si es un UPDATE de mensaje (ej: resultado de análisis IA de orden médica, transcripción, reacciones o borrado)
                 if (eventType === 'UPDATE') {
+                    const normalizedUpdated = normalizeMessage(newMsg);
                     setChats(prevChats => {
                         const chatIdx = prevChats.findIndex(c => matchesPhone(c.phone, normPhone));
                         if (chatIdx < 0) return prevChats;
@@ -339,8 +341,15 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                             if (m.realId === newMsg.id || m.id === 'real_' + newMsg.id) {
                                 return {
                                     ...m,
-                                    orderAnalysis: newMsg.raw_payload?.order_analysis || m.orderAnalysis,
-                                    rawPayload: newMsg.raw_payload || m.rawPayload
+                                    quotedMessage: normalizedUpdated?.quotedMessage || m.quotedMessage || null,
+                                    reactions: (Array.isArray(normalizedUpdated?.reactions) && normalizedUpdated.reactions.length > 0)
+                                        ? normalizedUpdated.reactions
+                                        : (m.reactions || []),
+                                    isDeleted: Boolean(normalizedUpdated?.isDeleted || m.isDeleted),
+                                    orderAnalysis: normalizedUpdated?.orderAnalysis || m.orderAnalysis || null,
+                                    audioTranscription: normalizedUpdated?.audioTranscription || m.audioTranscription || null,
+                                    audioUnderstanding: normalizedUpdated?.audioUnderstanding || m.audioUnderstanding || null,
+                                    rawPayload: normalizedUpdated?.rawPayload || newMsg.raw_payload || m.rawPayload
                                 };
                             }
                             return m;
@@ -361,14 +370,8 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                     }
                 }
 
-                // Sanitizar payload para que no retenga binarios pesados en memoria
-                const sanitizedRaw = newMsg.raw_payload ? {
-                    order_analysis: newMsg.raw_payload.order_analysis,
-                    audio_transcription: newMsg.raw_payload.audio_transcription || newMsg.raw_payload.transcription,
-                    audio_understanding: newMsg.raw_payload.audio_understanding,
-                    agent: newMsg.raw_payload.agent,
-                    bot: newMsg.raw_payload.bot
-                } : null;
+                // Normalizar con el formateador canónico para preservar siempre quotedMessage, reacciones, autoría y transcripciones
+                const normalizedLiveMsg = normalizeMessage(newMsg);
 
                 // Inserción optimista sin esperar el re-fetch completo
                 setChats(prevChats => {
@@ -376,7 +379,13 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                     const now = new Date();
                     const timeStr = now.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
 
-                    const formattedMsg = {
+                    const formattedMsg = normalizedLiveMsg ? {
+                        ...normalizedLiveMsg,
+                        id: normalizedLiveMsg.id || ('real_' + (newMsg.id || Date.now())),
+                        realId: newMsg.id,
+                        created_at: newMsg.created_at || normalizedLiveMsg.created_at || now.toISOString(),
+                        timestamp: normalizedLiveMsg.timestamp || timeStr
+                    } : {
                         id: 'real_' + (newMsg.id || Date.now()),
                         realId: newMsg.id,
                         sender: isIncoming ? 'patient' : (newMsg.direction === 'note' ? 'note' : 'agent'),
@@ -384,9 +393,12 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                         type: newMsg.media_type || 'text',
                         text: newMsg.content || '',
                         mediaUrl: newMsg.media_url || null,
+                        quotedMessage: newMsg.raw_payload?.quoted_message || newMsg.raw_payload?.quotedMessage || null,
+                        reactions: Array.isArray(newMsg.raw_payload?.reactions) ? newMsg.raw_payload.reactions : [],
+                        isDeleted: Boolean(newMsg.raw_payload?.is_deleted || newMsg.raw_payload?.revoked),
                         orderAnalysis: newMsg.raw_payload?.order_analysis || null,
-                        rawPayload: sanitizedRaw,
-                        created_at: newMsg.created_at || new Date().toISOString(),
+                        rawPayload: newMsg.raw_payload || null,
+                        created_at: newMsg.created_at || now.toISOString(),
                         timestamp: timeStr
                     };
 
@@ -419,9 +431,25 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
 
                         let nextMsgs;
                         if (matchingIndex >= 0) {
-                            // Reemplazar mensaje optimista por el confirmado con realId
+                            // Fusionar preservando metadatos enriquecidos locales (ej: quotedMessage, fileName, reacciones)
+                            const prevMatched = currentMsgs[matchingIndex];
                             nextMsgs = [...currentMsgs];
-                            nextMsgs[matchingIndex] = formattedMsg;
+                            nextMsgs[matchingIndex] = {
+                                ...prevMatched,
+                                ...formattedMsg,
+                                quotedMessage: formattedMsg.quotedMessage || prevMatched.quotedMessage || null,
+                                reactions: (Array.isArray(formattedMsg.reactions) && formattedMsg.reactions.length > 0)
+                                    ? formattedMsg.reactions
+                                    : (prevMatched.reactions || []),
+                                fileName: formattedMsg.fileName || prevMatched.fileName || null,
+                                rawPayload: (prevMatched.rawPayload || formattedMsg.rawPayload)
+                                    ? {
+                                        ...(prevMatched.rawPayload || {}),
+                                        ...(formattedMsg.rawPayload || {}),
+                                        quoted_message: formattedMsg.rawPayload?.quoted_message || prevMatched.rawPayload?.quoted_message || formattedMsg.quotedMessage || prevMatched.quotedMessage || undefined
+                                    }
+                                    : null
+                            };
                         } else {
                             // Mensaje nuevo
                             nextMsgs = [...currentMsgs, formattedMsg];

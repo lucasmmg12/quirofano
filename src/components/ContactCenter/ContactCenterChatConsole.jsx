@@ -2350,22 +2350,54 @@ export default function ContactCenterChatConsole({
     };
 
 
-    // Helper para fusionar y ordenar cronológicamente mensajes sin duplicados
+    // Helper para fusionar y ordenar cronológicamente mensajes sin duplicados, preservando metadatos enriquecidos (citas, reacciones, IA)
     const mergeAndSortMessages = useCallback((listA = [], listB = []) => {
         const combined = [...(Array.isArray(listA) ? listA : []), ...(Array.isArray(listB) ? listB : [])];
         if (combined.length <= 1) return combined;
-        const seenRealIds = new Set();
-        const seenIds = new Set();
+        const indexByRealId = new Map();
+        const indexById = new Map();
         const unique = [];
+
+        const mergeEnriched = (prev, incoming) => ({
+            ...prev,
+            ...incoming,
+            quotedMessage: incoming.quotedMessage || prev.quotedMessage || incoming.rawPayload?.quoted_message || prev.rawPayload?.quoted_message || null,
+            reactions: (Array.isArray(incoming.reactions) && incoming.reactions.length > 0)
+                ? incoming.reactions
+                : (prev.reactions || []),
+            isDeleted: Boolean(incoming.isDeleted || prev.isDeleted),
+            orderAnalysis: incoming.orderAnalysis || prev.orderAnalysis || null,
+            audioTranscription: incoming.audioTranscription || prev.audioTranscription || null,
+            audioUnderstanding: incoming.audioUnderstanding || prev.audioUnderstanding || null,
+            fileName: incoming.fileName || prev.fileName || null,
+            rawPayload: (prev.rawPayload || incoming.rawPayload)
+                ? {
+                    ...(prev.rawPayload || {}),
+                    ...(incoming.rawPayload || {}),
+                    quoted_message: incoming.rawPayload?.quoted_message || prev.rawPayload?.quoted_message || incoming.quotedMessage || prev.quotedMessage || undefined
+                }
+                : null
+        });
+
         for (const m of combined) {
             if (!m) continue;
             const rId = m.realId ? String(m.realId) : null;
             const mId = m.id ? String(m.id) : null;
-            if (rId && seenRealIds.has(rId)) continue;
-            if (mId && seenIds.has(mId)) continue;
-            if (rId) seenRealIds.add(rId);
-            if (mId) seenIds.add(mId);
+            const existingIdx = (rId && indexByRealId.has(rId))
+                ? indexByRealId.get(rId)
+                : ((mId && indexById.has(mId)) ? indexById.get(mId) : -1);
+
+            if (existingIdx >= 0) {
+                unique[existingIdx] = mergeEnriched(unique[existingIdx], m);
+                if (rId) indexByRealId.set(rId, existingIdx);
+                if (mId) indexById.set(mId, existingIdx);
+                continue;
+            }
+
+            const newIdx = unique.length;
             unique.push(m);
+            if (rId) indexByRealId.set(rId, newIdx);
+            if (mId) indexById.set(mId, newIdx);
         }
         return unique.sort((a, b) => {
             const ta = a.created_at ? new Date(a.created_at).getTime() : 0;
@@ -2502,7 +2534,7 @@ export default function ContactCenterChatConsole({
     };
 
     // Control de desplazamiento y sincronización OnLive en memoria:
-    // Mantener loadedMessagesByPhone sincronizado con nuevos mensajes entrantes/salientes y hacer scroll al último
+    // Mantener loadedMessagesByPhone sincronizado con nuevos mensajes entrantes/salientes y metadatos enriquecidos (citas, reacciones, transcripciones)
     useEffect(() => {
         if (selectedChat?.phone && Array.isArray(selectedChat.messages) && selectedChat.messages.length > 0) {
             const normPhone = normalizeArgentinePhone(selectedChat.phone) || selectedChat.phone;
@@ -2510,12 +2542,24 @@ export default function ContactCenterChatConsole({
                 const existing = prev[normPhone];
                 if (!existing || existing.length === 0) return prev;
                 const merged = mergeAndSortMessages(existing, selectedChat.messages);
-                if (merged.length === existing.length) return prev;
+                if (merged.length === existing.length) {
+                    const hasMetadataDiff = merged.some((m, i) => {
+                        const ex = existing[i];
+                        if (!ex || ex.id !== m.id) return true;
+                        if (Boolean(m.quotedMessage) !== Boolean(ex.quotedMessage)) return true;
+                        if ((m.reactions?.length || 0) !== (ex.reactions?.length || 0)) return true;
+                        if (Boolean(m.isDeleted) !== Boolean(ex.isDeleted)) return true;
+                        if (Boolean(m.orderAnalysis) !== Boolean(ex.orderAnalysis)) return true;
+                        if (Boolean(m.audioTranscription) !== Boolean(ex.audioTranscription)) return true;
+                        return false;
+                    });
+                    if (!hasMetadataDiff) return prev;
+                }
                 return { ...prev, [normPhone]: merged };
             });
         }
         scrollToBottomInstant();
-    }, [selectedChat?.id, lastMsgId, selectedChat?.messages?.length, mergeAndSortMessages, scrollToBottomInstant]);
+    }, [selectedChat?.id, lastMsgId, selectedChat?.messages, mergeAndSortMessages, scrollToBottomInstant]);
 
     // =========================================================================
     // HISTORIAL 360° — CARGA LAZY BAJO DEMANDA
@@ -4016,8 +4060,10 @@ export default function ContactCenterChatConsole({
                 isPrivateNote,
                 uploaded.publicUrl,
                 'audio',
-                audioFile.name
+                audioFile.name,
+                replyingToMessage
             );
+            setReplyingToMessage(null);
         } catch (err) {
             console.error('Error subiendo audio:', err);
             setUploadError('Error al subir o enviar la nota de voz');
@@ -6674,6 +6720,7 @@ export default function ContactCenterChatConsole({
 
                                     {/* Burbuja de Mensaje con Tag de Autoría */}
                                     <div 
+                                        id={msg.id ? `cc-msg-${msg.id}` : undefined}
                                         style={{
                                             position: 'relative',
                                             background: isNote ? '#FFFBEB' : (isPatient ? '#FFFFFF' : '#EFF6FF'),
@@ -6689,7 +6736,8 @@ export default function ContactCenterChatConsole({
                                             boxSizing: 'border-box',
                                             wordBreak: 'break-word',
                                             overflowWrap: 'anywhere',
-                                            userSelect: 'text'
+                                            userSelect: 'text',
+                                            transition: 'box-shadow 0.25s ease, border-color 0.25s ease'
                                         }}>
 
                                         {/* AVISO DE AUDITORÍA: MENSAJE ELIMINADO POR EL REMITENTE EN WHATSAPP */}
@@ -6714,25 +6762,56 @@ export default function ContactCenterChatConsole({
 
                                         {/* PREVIEW DE MENSAJE CITADO (ESTILO WHATSAPP) */}
                                         {(() => {
-                                            const q = msg.quotedMessage || msg.rawPayload?.quoted_message;
+                                            const q = msg.quotedMessage || msg.rawPayload?.quoted_message || msg.rawPayload?.quotedMessage;
                                             if (!q) return null;
+                                            const rawQText = String(q.text || '').trim();
+                                            const cleanQText = (!rawQText || /^\[(image|foto)\]$/i.test(rawQText))
+                                                ? (q.type === 'image' || /^\[(image|foto)\]$/i.test(rawQText) ? '📷 Foto médica' : '')
+                                                : /^\[(audio|voice)\]$/i.test(rawQText)
+                                                    ? '🎤 Nota de voz'
+                                                    : /^\[sticker\]$/i.test(rawQText)
+                                                        ? '🏷️ Sticker'
+                                                        : /^\[video\]$/i.test(rawQText)
+                                                            ? '🎥 Video'
+                                                            : /^\[document\]$/i.test(rawQText)
+                                                                ? '📎 Documento adjunto'
+                                                                : rawQText;
+                                            const displayQText = cleanQText || (q.type === 'image' ? '📷 Foto médica' : q.type === 'audio' ? '🎤 Nota de voz' : q.type === 'sticker' ? '🏷️ Sticker' : '📎 Archivo adjunto');
                                             return (
-                                                <div style={{
-                                                    background: isPatient ? 'rgba(0, 0, 0, 0.04)' : 'rgba(2, 132, 199, 0.08)',
-                                                    borderLeft: `3.5px solid ${isPatient ? '#0284C7' : '#0369A1'}`,
-                                                    borderRadius: '6px',
-                                                    padding: '5px 9px',
-                                                    marginBottom: '8px',
-                                                    maxWidth: '460px',
-                                                    width: '100%',
-                                                    minWidth: 0,
-                                                    boxSizing: 'border-box',
-                                                    overflow: 'hidden'
-                                                }}>
+                                                <div
+                                                    onClick={(e) => {
+                                                        if (!q.id) return;
+                                                        e.stopPropagation();
+                                                        const targetEl = document.getElementById(`cc-msg-${q.id}`);
+                                                        if (targetEl) {
+                                                            targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                                            const prevShadow = targetEl.style.boxShadow;
+                                                            targetEl.style.boxShadow = '0 0 0 3px rgba(2, 132, 199, 0.45)';
+                                                            setTimeout(() => {
+                                                                targetEl.style.boxShadow = prevShadow;
+                                                            }, 1600);
+                                                        }
+                                                    }}
+                                                    title={q.id ? 'Clic para ir al mensaje citado' : undefined}
+                                                    style={{
+                                                        background: isPatient ? '#F1F5F9' : '#E0F2FE',
+                                                        border: `1px solid ${isPatient ? '#E2E8F0' : '#BAE6FD'}`,
+                                                        borderLeft: `4px solid ${q.isPatient === false ? '#059669' : '#0284C7'}`,
+                                                        borderRadius: '8px',
+                                                        padding: '6px 10px',
+                                                        marginBottom: '8px',
+                                                        maxWidth: '460px',
+                                                        width: '100%',
+                                                        minWidth: 0,
+                                                        boxSizing: 'border-box',
+                                                        overflow: 'hidden',
+                                                        cursor: q.id ? 'pointer' : 'default'
+                                                    }}
+                                                >
                                                     <div style={{
                                                         fontWeight: 800,
-                                                        color: isPatient ? '#0284C7' : '#0369A1',
-                                                        fontSize: '0.68rem',
+                                                        color: q.isPatient === false ? '#047857' : '#0369A1',
+                                                        fontSize: '0.70rem',
                                                         marginBottom: '2px',
                                                         display: 'flex',
                                                         alignItems: 'center',
@@ -6747,8 +6826,8 @@ export default function ContactCenterChatConsole({
                                                         </span>
                                                     </div>
                                                     <div style={{
-                                                        color: '#475569',
-                                                        fontSize: '0.74rem',
+                                                        color: '#334155',
+                                                        fontSize: '0.75rem',
                                                         lineHeight: 1.35,
                                                         display: '-webkit-box',
                                                         WebkitLineClamp: 2,
@@ -6758,7 +6837,7 @@ export default function ContactCenterChatConsole({
                                                         wordBreak: 'break-word',
                                                         overflowWrap: 'anywhere'
                                                     }}>
-                                                        {q.text || (q.type === 'image' ? '📷 Foto' : q.type === 'audio' ? '🎤 Audio' : q.type === 'sticker' ? '🏷️ Sticker' : '📎 Archivo')}
+                                                        {displayQText}
                                                     </div>
                                                 </div>
                                             );
@@ -7575,10 +7654,20 @@ Fecha de solicitud: ${msg.orderAnalysis.fecha_solicitud || 'No especificada'}`;
                                                     type="button"
                                                     onClick={(e) => {
                                                         e.stopPropagation();
+                                                        const rawTxt = String(msg.text || msg.caption || '').trim();
+                                                        const cleanReplyText = (!rawTxt || /^\[(image|foto)\]$/i.test(rawTxt))
+                                                            ? (msg.type === 'image' || /^\[(image|foto)\]$/i.test(rawTxt) ? '📷 Foto médica' : (msg.type === 'audio' ? '🎤 Nota de voz' : msg.type === 'sticker' ? '🏷️ Sticker' : '📎 Adjunto'))
+                                                            : /^\[(audio|voice)\]$/i.test(rawTxt)
+                                                                ? '🎤 Nota de voz'
+                                                                : /^\[sticker\]$/i.test(rawTxt)
+                                                                    ? '🏷️ Sticker'
+                                                                    : /^\[document\]$/i.test(rawTxt)
+                                                                        ? '📎 Documento adjunto'
+                                                                        : rawTxt;
                                                         setReplyingToMessage({
                                                             id: msg.id,
                                                             senderName: msg.senderName,
-                                                            text: msg.text || msg.caption || (msg.type === 'audio' ? 'Nota de voz' : msg.type === 'image' ? 'Foto médica' : msg.type === 'sticker' ? 'Sticker' : 'Adjunto'),
+                                                            text: cleanReplyText,
                                                             type: msg.type,
                                                             isPatient
                                                         });

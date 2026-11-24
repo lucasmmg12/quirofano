@@ -32,6 +32,7 @@ import GuardiaConversionTimelineModal from './GuardiaConversionTimelineModal';
 import GuardiaPuertaMedicoProgressionModal from './GuardiaPuertaMedicoProgressionModal';
 import QuirofanoDashboard from './QuirofanoDashboard';
 import GuardiaInternadoPanel from './GuardiaInternadoPanel';
+import GuardiaAdmisionesOcupacionPanel from './GuardiaAdmisionesOcupacionPanel';
 import AgenteEpicrisisPanel from './AgenteEpicrisisPanel';
 import './Gobernanza.css';
 
@@ -966,11 +967,12 @@ export default function GuardiaClinicaDashboard({
             }}>
                 {[
                     { id: 'resumen', label: 'Tablero Principal (Demanda & KPIs)', icon: BarChart3 },
+                    { id: 'admisiones_paola', label: 'Admisiones Guardia & Ocupación (Presupuesto)', icon: Layers },
                     { id: 'triage', label: 'Triage & Severidad', icon: Stethoscope },
                     { id: 'tiempos', label: 'Tiempos de Espera & Extremos', icon: Clock },
                     { id: 'resolucion', label: 'Resolución, Destinos & Quirófano', icon: Activity },
                     { id: 'calidad', label: 'Calidad & Seguridad (72 Horas)', icon: ShieldCheck },
-                    { id: 'internado', label: 'Internado & Piso', icon: Bed }
+                    { id: 'internado', label: 'Internado, Valoraciones & Interconsultas', icon: Bed }
                 ].map(tab => {
                     const Icon = tab.icon;
                     const isActive = activeDashboardTab === tab.id;
@@ -1005,6 +1007,15 @@ export default function GuardiaClinicaDashboard({
 
             
             {/* ─── CONTENIDO CONDICIONAL POR PESTAÑAS TÉCNICAS ─── */}
+            {activeDashboardTab === 'admisiones_paola' && (
+                <GuardiaAdmisionesOcupacionPanel
+                    addToast={addToast}
+                    selectedPeriodoProp={selectedPeriodo}
+                    fechaDesde={fechaDesde}
+                    fechaHasta={fechaHasta}
+                />
+            )}
+
             {activeDashboardTab === 'internado' && (
                 <GuardiaInternadoPanel
                     addToast={addToast}
@@ -2288,15 +2299,15 @@ export default function GuardiaClinicaDashboard({
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
                             <div>
                                 <h4 style={{ margin: 0, fontSize: '0.92rem', fontWeight: 800, color: '#0D3B66', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                    <span>🏥</span> Admisiones Médicas Clínicas: Destinos Asistenciales & Reinternaciones
+                                    <span>📝</span> Valoraciones Clínicas & Cogestión (Protocolo 557): Destinos & Reinternaciones
                                 </h4>
                                 <span style={{ fontSize: '0.74rem', color: '#64748B' }}>
-                                    Basado en <strong>(INT) ADMISION MEDICA CLINICA</strong> (Dra. Paola García y Equipo Clínico) · Período {formatPeriodoLabel(selectedPeriodo)}
+                                    Basado en fichas médicas <strong>(INT) ADMISION MEDICA CLINICA</strong> (Valoraciones e Interconsultas del Equipo Clínico) · Período {formatPeriodoLabel(selectedPeriodo)}
                                 </span>
                             </div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                                 <span style={{ fontSize: '0.75rem', fontWeight: 800, background: '#EFF6FF', color: '#1D4ED8', padding: '4px 10px', borderRadius: '8px', border: '1px solid #BFDBFE' }}>
-                                    Total: {currentAdmisiones?.total_admisiones_clinicas || 0} admisiones
+                                    Total: {currentAdmisiones?.total_admisiones_clinicas || 0} fichas 557
                                 </span>
                                 <button
                                     onClick={() => setActiveDashboardTab('internado')}

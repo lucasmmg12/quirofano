@@ -7,9 +7,10 @@ import {
     HeartPulse, Pill, ClipboardList, AlertTriangle, HelpCircle
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import GuardiaAdmisionesOcupacionPanel from './GuardiaAdmisionesOcupacionPanel';
 
-export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admisiones_557', selectedPeriodoProp, fechaDesde, fechaHasta, onOpenEpicrisisIa }) {
-    const [subTab, setSubTab] = useState(initialSubTab); // 'admisiones_557' | 'seguimiento' | 'traumatologia' | 'interconsultas'
+export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admisiones_paola', selectedPeriodoProp, fechaDesde, fechaHasta, onOpenEpicrisisIa }) {
+    const [subTab, setSubTab] = useState(initialSubTab); // 'admisiones_paola' | 'admisiones_557' | 'seguimiento' | 'traumatologia' | 'interconsultas'
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [data, setData] = useState({ admisiones_clinicas: [], interconsultas_en_557: [], traumatologia: [], interconsultas: [], stats: null });
@@ -585,6 +586,27 @@ export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admis
                     }}>
                         <button
                             type="button"
+                            onClick={() => setSubTab('admisiones_paola')}
+                            style={{
+                                padding: '8px 14px',
+                                borderRadius: '6px',
+                                border: 'none',
+                                background: subTab === 'admisiones_paola' ? '#1E40AF' : 'transparent',
+                                color: subTab === 'admisiones_paola' ? '#FFFFFF' : '#1E40AF',
+                                fontWeight: subTab === 'admisiones_paola' ? 700 : 500,
+                                fontSize: '0.84rem',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '7px',
+                                transition: 'all 0.15s ease'
+                            }}
+                        >
+                            <span>🏥</span> Admisiones Guardia Clínica (Dra. P. García)
+                        </button>
+
+                        <button
+                            type="button"
                             onClick={() => setSubTab('admisiones_557')}
                             style={{
                                 padding: '8px 14px',
@@ -601,7 +623,7 @@ export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admis
                                 transition: 'all 0.15s ease'
                             }}
                         >
-                            <span>📋</span> Admisiones
+                            <span>📝</span> Valoraciones & Cogestión (Prot. 557)
                         </button>
 
                         <button
@@ -724,7 +746,8 @@ export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admis
                     </button>
                 </div>
 
-                {/* Acciones de Exportación Excel */}
+                {/* Acciones de Exportación Excel (para vistas de Protocolo 557, Seguimiento, Trauma e Interconsultas) */}
+                {subTab !== 'admisiones_paola' && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                     <button
                         type="button"
@@ -772,11 +795,33 @@ export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admis
                         Excel Completo (4 hojas)
                     </button>
                 </div>
+                )}
             </div>
 
-            {/* ─── TAB NUEVA PRINCIPAL: ADMISIÓN CLÍNICA MÉDICA (PROTOCOLO SALUS 557) ─── */}
+            {/* ─── TAB 1: ADMISIONES REALES DE GUARDIA CLÍNICA & OCUPACIÓN PROPORCIONAL (DRA. PAOLA GARCÍA) ─── */}
+            {subTab === 'admisiones_paola' && (
+                <GuardiaAdmisionesOcupacionPanel
+                    addToast={addToast}
+                    selectedPeriodoProp={selectedPeriodoProp}
+                    fechaDesde={fechaDesde}
+                    fechaHasta={fechaHasta}
+                    onOpenFicha557ById={openPatientFicha557}
+                />
+            )}
+
+            {/* ─── TAB 2: VALORACIONES CLÍNICAS & COGESTIÓN (PROTOCOLO SALUS 557) ─── */}
             {subTab === 'admisiones_557' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                    <div style={{
+                        background: '#EFF6FF',
+                        border: '1px solid #BFDBFE',
+                        borderRadius: '10px',
+                        padding: '10px 14px',
+                        fontSize: '0.78rem',
+                        color: '#1E3A8A'
+                    }}>
+                        ℹ️ <strong>Nota de Gobernanza:</strong> Esta vista muestra las fichas médicas del formulario <strong>(INT) ADMISION MEDICA CLINICA (Protocolo 557)</strong> utilizadas por el plantel clínico tanto en ingresos como en valoraciones de pase de terapia, interconsultas y cogestión sobre otros médicos de cabecera. Para auditar las <strong>Admisiones Hospitalarias reales de Guardia Clínica (Dra. Paola García) y la Ocupación Proporcional por Horas para Presupuesto</strong>, utilizá la primera pestaña <strong>"Admisiones Guardia Clínica (Dra. P. García)"</strong>.
+                    </div>
                     {/* KPI Cards de Protocolo 557 */}
                     <div style={{
                         display: 'grid',
@@ -796,7 +841,7 @@ export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admis
                             }}
                         >
                             <span style={{ fontSize: '0.72rem', color: '#64748B', fontWeight: 700, textTransform: 'uppercase' }}>
-                                Total Admisiones Clínicas
+                                Total Valoraciones (Prot. 557)
                             </span>
                             <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#1E40AF', marginTop: '4px' }}>
                                 {filteredAdmisiones557.length}
@@ -2908,13 +2953,22 @@ export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admis
                         <div style={{ padding: '20px 22px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '12px', background: '#F8FAFC' }}>
                             {[
                                 {
-                                    icon: '📋',
-                                    title: '1. Admisiones',
+                                    icon: '🏥',
+                                    title: '1. Admisiones Guardia Clínica (Dra. Paola García) & Ocupación Proporcional',
                                     color: '#1E40AF',
                                     bg: '#EFF6FF',
                                     border: '#BFDBFE',
-                                    meaning: 'Muestra los ingresos clínicos reales evaluados con el formulario SALUS (INT) ADMISION MEDICA CLINICA (Protocolo 557), contando 1 registro por internación (excluye clics en blanco e interconsultas de cogestión en piso).',
-                                    content: 'Tarjetas clicables por sector (Shock Room, Internado Piso Clínico, UCI / Terapia Intermedia y Reconsultas/Reingresos ≤ 72 hs), filtros por profesional y tabla nominal con acceso a la Ficha 557 completa (motivo de consulta, AEA, APP y signos vitales).'
+                                    meaning: 'Padrón real de admisiones hospitalarias de TABLEAU_Admisiones con médico de cabecera Dra. Paola García, cruzado al minuto con el Historial de Camas para el armado del Presupuesto Gerencial.',
+                                    content: 'Mide la ocupación en forma estrictamente proporcional por horas (Horas Netas / 24 = Días Proporcionales, ej. 12 hs = 0,50 días sin importar cuántos pacientes rotaron), cronograma visual de 24 hs por Box SR y Bandeja de Auditoría de Inconsistencias SALUS (admisiones sin habitación, abiertas sin alta, suspendidas y desvíos de servicio).'
+                                },
+                                {
+                                    icon: '📝',
+                                    title: '2. Valoraciones & Cogestión Clínica (Protocolo 557)',
+                                    color: '#0369A1',
+                                    bg: '#F0F9FF',
+                                    border: '#BAE6FD',
+                                    meaning: 'Muestra las fichas médicas cargadas en el formulario SALUS (INT) ADMISION MEDICA CLINICA (Protocolo 557), utilizadas para valoraciones clínicas de ingreso, pases desde UCI/Terapia y cogestión sobre otras especialidades.',
+                                    content: 'Tarjetas clicables por sector (Shock Room, Internado Piso Clínico, UCI / Terapia Intermedia y Reconsultas/Reingresos ≤ 72 hs), filtros por profesional y acceso a la Ficha 557 completa (motivo de consulta, AEA, APP y signos vitales).'
                                 },
                                 {
                                     icon: '🩺',

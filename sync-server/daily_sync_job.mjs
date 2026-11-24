@@ -28,6 +28,7 @@ import { syncGuardiaIndicadores } from './sync_guardia_indicadores.mjs';
 import { syncGuardiaFranjasYAdmisiones } from './sync_guardia_franjas_admisiones.mjs';
 import { syncCirugiasConversion } from './sync_guardia_cirugias_conversion.mjs';
 import { syncGuardiaInternado } from './sync_guardia_internado.mjs';
+import { syncGuardiaAdmisionesPaola } from './sync_guardia_admisiones_paola.mjs';
 import { getDxIAnalytics, getDxICasosNominales } from './sync_dxi.mjs';
 import { syncInternacionGobernanza } from './sync_internacion_gobernanza.mjs';
 import { syncComprasConsumoStock } from './sync_compras_consumo_stock.mjs';
@@ -544,7 +545,8 @@ export async function runDailySync({ skipDoctors = false } = {}) {
         await syncGuardiaFranjasYAdmisiones({ fastSync: true });
         await syncCirugiasConversion(null, { fastSync: true });
         await syncGuardiaInternado();
-        log('Paso 10 completado: Indicadores de Guardia, Internado & Piso y Conversión QX actualizados.');
+        await syncGuardiaAdmisionesPaola({ startYear: 2025 });
+        log('Paso 10 completado: Indicadores de Guardia, Admisiones Dra. Paola García (Ocupación Proporcional), Internado & Piso y Conversión QX actualizados.');
     } catch (eGuardia) {
         log(`⚠️ Error no bloqueante en Paso 10 (Guardia): ${eGuardia.message}`);
     }

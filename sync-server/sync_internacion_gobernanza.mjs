@@ -54,6 +54,10 @@ export function mapSectorYSubsector(rawServicio, rawHabitacion = '', rawNumAdm =
 
     if (!s && !h) return null;
     if (EXCLUDED_SERVICES.has(s)) return null;
+    // Excluir Boxes físicos de Shock Room / Guardia aunque traigan Servicio = 'INTERNACION CLINICA'
+    if (h.startsWith('BOX') && (h.includes('SR') || h.includes('SHOCK') || h.includes('GUARDIA'))) {
+        return null;
+    }
 
     if (s.includes('NEONATOLOG') || h.includes('CUNA')) {
         return { sector: 'NEONATOLOGIA', subsector: '' };
@@ -255,6 +259,7 @@ export async function syncInternacionGobernanza({ startYear = 2021, nominalStart
             SELECT
                 h.idadmision,
                 h.NombreHabitacion,
+                h.NombreCama,
                 h.fechaInicio,
                 h.fechaFin,
                 h.HOSP_Servicio
@@ -348,14 +353,21 @@ export async function syncInternacionGobernanza({ startYear = 2021, nominalStart
                     .map(t => {
                         const tStart = parseDate(t.fechaInicio);
                         const tEnd = parseDate(t.fechaFin) || fAlta;
-                        const tMap = mapSectorYSubsector(t.HOSP_Servicio || r.Servicio, t.NombreHabitacion, r.numero_admision);
+                        const fullHab = t.NombreCama ? `${t.NombreHabitacion || ''}-${t.NombreCama}` : (t.NombreHabitacion || '');
+                        const tMap = mapSectorYSubsector(t.HOSP_Servicio || r.Servicio, fullHab, r.numero_admision);
                         return tStart && tMap && tMap.sector !== 'HOSPITAL DE DIA'
                             ? { tStart, tEnd, sector: tMap.sector, subsector: tMap.subsector }
                             : null;
                     })
                     .filter(Boolean);
 
-                if (validTramos.length > 0 && (mapped.sector === 'PEDIATRIA' || mapped.sector === 'UCI' || mapped.sector === 'TERAPIA INTERMEDIA')) {
+                const hasShockRoomTramo = (tramos || []).some(t => {
+                    const tc = normalizeText(t.NombreCama);
+                    const th = normalizeText(t.NombreHabitacion);
+                    return tc === 'SR' || (th.startsWith('BOX') && (th.includes('SR') || th.includes('SHOCK') || th.includes('GUARDIA')));
+                });
+
+                if (validTramos.length > 0 && (mapped.sector === 'PEDIATRIA' || mapped.sector === 'UCI' || mapped.sector === 'TERAPIA INTERMEDIA' || hasShockRoomTramo)) {
                     for (const t of validTramos) {
                         const porMes = prorratearDiasCamaPorMes(t.tStart, t.tEnd, now);
                         for (const [ym, dVal] of porMes.entries()) {
