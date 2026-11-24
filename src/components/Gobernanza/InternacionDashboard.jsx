@@ -142,6 +142,30 @@ function getDaysInMonth(year, month) {
     return new Date(year, month, 0).getDate();
 }
 
+function exportMatrixToExcel(title, rowsByYear, years, decimals = 1, suffix = '') {
+    const validYears = years.filter(y => rowsByYear[y] && Object.values(rowsByYear[y]).some(v => v > 0));
+    if (validYears.length === 0) return;
+    const rows = validYears.map(yr => {
+        const r = rowsByYear[yr] || {};
+        const obj = { 'Año': yr };
+        let sum = 0;
+        let cnt = 0;
+        for (let m = 1; m <= 12; m++) {
+            const v = Number(r[m] || 0);
+            obj[MESES_CORTO[m - 1].toUpperCase()] = v > 0 ? Number(v.toFixed(decimals)) : 0;
+            if (v > 0) { sum += v; cnt++; }
+        }
+        obj['TOTAL'] = Number(sum.toFixed(decimals));
+        obj['PROMEDIO MENSUAL'] = cnt > 0 ? Number((sum / cnt).toFixed(decimals)) : 0;
+        return obj;
+    });
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Datos');
+    const safeName = String(title || 'Internacion').replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑ_-]+/g, '_').slice(0, 50);
+    XLSX.writeFile(wb, `${safeName}.xlsx`);
+}
+
 // ─── SUBCOMPONENTE: TABLA MATRICIAL MULTIANUAL (AÑO x MES) ───
 function MatrixTable({
     title,
@@ -154,8 +178,31 @@ function MatrixTable({
     highlightMonth = null,
     colorScaleOccupancy = false,
     subtitle = null,
+    onCellClick = null, // ({ anio, mes, value }) => void
 }) {
     const validYears = years.filter(y => rowsByYear[y] && Object.values(rowsByYear[y]).some(v => v > 0));
+    const [selectedYears, setSelectedYears] = useState(null); // null = todos los validYears
+
+    const visibleYears = useMemo(() => {
+        if (!selectedYears || selectedYears.length === 0) return validYears;
+        const filtered = validYears.filter(y => selectedYears.includes(y));
+        return filtered.length > 0 ? filtered : validYears;
+    }, [validYears, selectedYears]);
+
+    const handleToggleYear = (yr) => {
+        setSelectedYears(prev => {
+            if (!prev || prev.length === validYears.length) {
+                return [yr];
+            }
+            if (prev.includes(yr)) {
+                const next = prev.filter(y => y !== yr);
+                return next.length === 0 ? null : next;
+            }
+            const next = [...prev, yr];
+            return next.length >= validYears.length ? null : next;
+        });
+    };
+
     if (validYears.length === 0) {
         return (
             <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '10px', padding: '16px' }}>
@@ -181,10 +228,56 @@ function MatrixTable({
                 alignItems: 'center',
                 justifyContent: 'space-between',
                 gap: '8px',
+                flexWrap: 'wrap',
             }}>
                 <div>
                     <div style={{ fontSize: '0.84rem', fontWeight: 800, color: '#003B73' }}>{title}</div>
                     {subtitle && <div style={{ fontSize: '0.7rem', color: '#64748B' }}>{subtitle}</div>}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                    {selectedYears && (
+                        <button
+                            type="button"
+                            onClick={() => setSelectedYears(null)}
+                            style={{
+                                padding: '3px 8px',
+                                borderRadius: '6px',
+                                border: '1px solid #CBD5E1',
+                                background: '#FFFFFF',
+                                color: '#334155',
+                                fontSize: '0.68rem',
+                                fontWeight: 700,
+                                cursor: 'pointer',
+                            }}
+                        >
+                            Ver todos ({validYears.length})
+                        </button>
+                    )}
+                    {onCellClick && (
+                        <span style={{ fontSize: '0.66rem', color: '#64748B', fontStyle: 'italic' }}>
+                            Clic en un número para ver pacientes
+                        </span>
+                    )}
+                    <button
+                        type="button"
+                        onClick={() => exportMatrixToExcel(title, rowsByYear, visibleYears, decimals, suffix)}
+                        title="Exportar esta tabla a Excel"
+                        style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            padding: '4px 9px',
+                            borderRadius: '6px',
+                            border: '1px solid #10B981',
+                            background: '#ECFDF5',
+                            color: '#047857',
+                            fontSize: '0.7rem',
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                        }}
+                    >
+                        <FileSpreadsheet size={12} /> Excel
+                    </button>
                 </div>
             </div>
             <div style={{ overflowX: 'auto' }}>
@@ -217,7 +310,7 @@ function MatrixTable({
                         </tr>
                     </thead>
                     <tbody>
-                        {validYears.map((yr, rIdx) => {
+                        {visibleYears.map((yr, rIdx) => {
                             const row = rowsByYear[yr] || {};
                             let total = 0;
                             for (let m = 1; m <= 12; m++) total += (row[m] || 0);
@@ -229,7 +322,18 @@ function MatrixTable({
                                         borderBottom: '1px solid #F1F5F9',
                                     }}
                                 >
-                                    <td style={{ padding: '7px 10px', fontWeight: 800, color: YEAR_COLORS[yr] || '#0F172A' }}>
+                                    <td
+                                        onClick={() => handleToggleYear(yr)}
+                                        title="Clic para aislar / comparar este año"
+                                        style={{
+                                            padding: '7px 10px',
+                                            fontWeight: 800,
+                                            color: YEAR_COLORS[yr] || '#0F172A',
+                                            cursor: 'pointer',
+                                            textDecoration: 'underline',
+                                            textDecorationStyle: 'dotted',
+                                        }}
+                                    >
                                         {yr}
                                     </td>
                                     {Array.from({ length: 12 }, (_, i) => i + 1).map(m => {
@@ -242,9 +346,12 @@ function MatrixTable({
                                             else if (val >= 85) { cellBg = '#FEF3C7'; cellColor = '#B45309'; }
                                             else if (val >= 65) { cellBg = '#ECFDF5'; cellColor = '#047857'; }
                                         }
+                                        const clickable = Boolean(onCellClick && val > 0);
                                         return (
                                             <td
                                                 key={m}
+                                                onClick={() => clickable && onCellClick({ anio: yr, mes: m, value: val })}
+                                                title={clickable ? `Ver detalle nominal de ${MESES_LARGO[m - 1]} ${yr}` : undefined}
                                                 style={{
                                                     padding: '7px 6px',
                                                     textAlign: 'right',
@@ -252,14 +359,29 @@ function MatrixTable({
                                                     color: isCellTelar ? '#003B73' : cellColor,
                                                     background: cellBg,
                                                     borderRadius: isCellTelar ? '4px' : 0,
+                                                    cursor: clickable ? 'pointer' : 'default',
+                                                    transition: 'background 0.12s ease',
                                                 }}
+                                                onMouseEnter={(e) => { if (clickable && !isCellTelar) e.currentTarget.style.background = '#EFF6FF'; }}
+                                                onMouseLeave={(e) => { if (clickable && !isCellTelar) e.currentTarget.style.background = cellBg; }}
                                             >
                                                 {val > 0 ? `${fmtNum(val, decimals)}${suffix}` : ''}
                                             </td>
                                         );
                                     })}
                                     {showTotal && (
-                                        <td style={{ padding: '7px 10px', textAlign: 'right', fontWeight: 800, color: '#003B73', background: '#F1F5F9' }}>
+                                        <td
+                                            onClick={() => onCellClick && total > 0 && onCellClick({ anio: yr, mes: null, value: total })}
+                                            title={onCellClick ? `Ver detalle anual de ${yr}` : undefined}
+                                            style={{
+                                                padding: '7px 10px',
+                                                textAlign: 'right',
+                                                fontWeight: 800,
+                                                color: '#003B73',
+                                                background: '#F1F5F9',
+                                                cursor: onCellClick && total > 0 ? 'pointer' : 'default',
+                                            }}
+                                        >
                                             {fmtNum(total, decimals)}{suffix}
                                         </td>
                                     )}
@@ -282,35 +404,84 @@ function MultiYearLineAndAvg({
     unitLabel = '',
     highlightMonth = null,
     height = 280,
+    onDrillDown = null, // ({ anio, mes }) => void
 }) {
-    const activeYears = years.filter(y => rowsByYear[y] && Object.values(rowsByYear[y]).some(v => v > 0));
+    const activeYears = useMemo(
+        () => years.filter(y => rowsByYear[y] && Object.values(rowsByYear[y]).some(v => v > 0)),
+        [years, rowsByYear]
+    );
+
+    // null = todos activos; array = solo los años elegidos por el usuario
+    const [selectedYears, setSelectedYears] = useState(null);
+
+    const visibleYears = useMemo(() => {
+        if (!selectedYears || selectedYears.length === 0) return activeYears;
+        const f = activeYears.filter(y => selectedYears.includes(y));
+        return f.length > 0 ? f : activeYears;
+    }, [activeYears, selectedYears]);
+
+    // Al tocar un año:
+    // - Si están todos activos -> deja SOLO ese año ("que se quede")
+    // - Si ya hay un subconjunto y tocás uno apagado -> lo AGREGA ("o se agregue")
+    // - Si tocás uno encendido del subconjunto -> lo quita (si era el último, vuelven todos)
+    const handleToggleYear = (yr) => {
+        setSelectedYears(prev => {
+            if (!prev || prev.length === activeYears.length) {
+                return [yr];
+            }
+            if (prev.includes(yr)) {
+                const next = prev.filter(y => y !== yr);
+                return next.length === 0 ? null : next;
+            }
+            const next = [...prev, yr].sort((a, b) => a - b);
+            return next.length >= activeYears.length ? null : next;
+        });
+    };
 
     const lineData = useMemo(() => {
         return MESES_LARGO.map((mesNombre, idx) => {
             const m = idx + 1;
-            const pt = { mes: MESES_CORTO[idx], mesLargo: mesNombre };
-            activeYears.forEach(yr => {
+            const pt = { mes: MESES_CORTO[idx], mesNum: m, mesLargo: mesNombre };
+            visibleYears.forEach(yr => {
                 const v = rowsByYear[yr]?.[m];
                 if (v !== undefined && v > 0) pt[String(yr)] = Number(v.toFixed(decimals));
             });
             return pt;
         });
-    }, [rowsByYear, activeYears, decimals]);
+    }, [rowsByYear, visibleYears, decimals]);
 
     const avgData = useMemo(() => {
         return activeYears.map(yr => {
             const vals = Object.values(rowsByYear[yr] || {}).filter(v => v > 0);
             const avg = vals.length > 0 ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
+            const isSelected = visibleYears.includes(yr);
             return {
+                yrNum: yr,
                 anio: String(yr),
                 promedio: Number(avg.toFixed(decimals)),
                 color: YEAR_COLORS[yr] || '#0284C7',
+                isSelected,
             };
         });
-    }, [rowsByYear, activeYears, decimals]);
+    }, [rowsByYear, activeYears, visibleYears, decimals]);
+
+    const handleExportAvgExcel = () => {
+        const rows = avgData
+            .filter(d => d.isSelected)
+            .map(d => ({
+                'Año': d.yrNum,
+                'Promedio Mensual': d.promedio,
+                'Unidad': unitLabel.trim() || 'Días Cama / Ingresos',
+            }));
+        const ws = XLSX.utils.json_to_sheet(rows);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'Promedio Anual');
+        const safeName = String(title || 'Promedio').replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑ_-]+/g, '_').slice(0, 45);
+        XLSX.writeFile(wb, `${safeName}_PromedioAnual.xlsx`);
+    };
 
     return (
-        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 3fr) minmax(220px, 1fr)', gap: '16px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 3fr) minmax(240px, 1fr)', gap: '16px' }}>
             {/* Líneas mensuales */}
             <div style={{
                 background: '#FFFFFF',
@@ -319,12 +490,141 @@ function MultiYearLineAndAvg({
                 padding: '14px 16px',
                 boxShadow: '0 1px 2px rgba(15,23,42,0.04)',
             }}>
-                <div style={{ fontSize: '0.86rem', fontWeight: 800, color: '#003B73', marginBottom: '10px' }}>
-                    {title}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '10px' }}>
+                    <div style={{ fontSize: '0.86rem', fontWeight: 800, color: '#003B73' }}>
+                        {title}
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                        {onDrillDown && (
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    const targetYear = visibleYears[visibleYears.length - 1] || 2026;
+                                    onDrillDown({ anio: targetYear, mes: highlightMonth || null });
+                                }}
+                                style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '4px',
+                                    padding: '4px 9px',
+                                    borderRadius: '6px',
+                                    border: '1px solid #BFDBFE',
+                                    background: '#EFF6FF',
+                                    color: '#1E40AF',
+                                    fontSize: '0.7rem',
+                                    fontWeight: 700,
+                                    cursor: 'pointer',
+                                }}
+                            >
+                                <Users size={12} /> Ver Detalle
+                            </button>
+                        )}
+                        <button
+                            type="button"
+                            onClick={() => exportMatrixToExcel(title, rowsByYear, visibleYears, decimals, unitLabel)}
+                            title="Exportar datos de los años seleccionados a Excel"
+                            style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                padding: '4px 9px',
+                                borderRadius: '6px',
+                                border: '1px solid #10B981',
+                                background: '#ECFDF5',
+                                color: '#047857',
+                                fontSize: '0.7rem',
+                                fontWeight: 700,
+                                cursor: 'pointer',
+                            }}
+                        >
+                            <FileSpreadsheet size={12} /> Excel
+                        </button>
+                    </div>
                 </div>
+
+                {/* Selector interactivo de años (tocá un año para dejarlo o agregarlo) */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginBottom: '10px' }}>
+                    <span style={{ fontSize: '0.7rem', fontWeight: 700, color: '#64748B' }}>Años:</span>
+                    {activeYears.map(yr => {
+                        const isOn = visibleYears.includes(yr);
+                        const color = YEAR_COLORS[yr] || '#0284C7';
+                        return (
+                            <button
+                                key={yr}
+                                type="button"
+                                onClick={() => handleToggleYear(yr)}
+                                title={
+                                    !selectedYears
+                                        ? `Clic para dejar solo ${yr}`
+                                        : isOn
+                                            ? `Clic para quitar ${yr}`
+                                            : `Clic para agregar ${yr}`
+                                }
+                                style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '5px',
+                                    padding: '3px 9px',
+                                    borderRadius: '999px',
+                                    border: `1.5px solid ${isOn ? color : '#CBD5E1'}`,
+                                    background: isOn ? `${color}15` : '#F8FAFC',
+                                    color: isOn ? color : '#94A3B8',
+                                    fontSize: '0.72rem',
+                                    fontWeight: isOn ? 800 : 600,
+                                    cursor: 'pointer',
+                                    opacity: isOn ? 1 : 0.65,
+                                    transition: 'all 0.15s ease',
+                                }}
+                            >
+                                <span style={{
+                                    width: '8px',
+                                    height: '8px',
+                                    borderRadius: '50%',
+                                    background: isOn ? color : '#CBD5E1',
+                                }} />
+                                {yr}
+                            </button>
+                        );
+                    })}
+                    {selectedYears && (
+                        <button
+                            type="button"
+                            onClick={() => setSelectedYears(null)}
+                            style={{
+                                padding: '3px 8px',
+                                borderRadius: '999px',
+                                border: '1px solid #CBD5E1',
+                                background: '#FFFFFF',
+                                color: '#334155',
+                                fontSize: '0.7rem',
+                                fontWeight: 700,
+                                cursor: 'pointer',
+                            }}
+                        >
+                            Mostrar todos
+                        </button>
+                    )}
+                    {onDrillDown && (
+                        <span style={{ fontSize: '0.67rem', color: '#94A3B8', marginLeft: 'auto' }}>
+                            Clic en un punto del gráfico para ver pacientes del mes
+                        </span>
+                    )}
+                </div>
+
                 <div style={{ width: '100%', height }}>
                     <ResponsiveContainer>
-                        <LineChart data={lineData} margin={{ top: 10, right: 16, left: 0, bottom: 4 }}>
+                        <LineChart
+                            data={lineData}
+                            margin={{ top: 10, right: 16, left: 0, bottom: 4 }}
+                            onClick={(state) => {
+                                if (!onDrillDown || !state || !state.activePayload || !state.activePayload.length) return;
+                                const payload = state.activePayload[0]?.payload;
+                                const targetYear = visibleYears[visibleYears.length - 1];
+                                if (payload?.mesNum && targetYear) {
+                                    onDrillDown({ anio: targetYear, mes: payload.mesNum });
+                                }
+                            }}
+                        >
                             <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" vertical={false} />
                             <XAxis dataKey="mes" tick={{ fontSize: 11, fill: '#64748B' }} />
                             <YAxis tick={{ fontSize: 11, fill: '#64748B' }} width={46} />
@@ -332,7 +632,6 @@ function MultiYearLineAndAvg({
                                 formatter={(value, name) => [`${fmtNum(value, decimals)}${unitLabel}`, `Año ${name}`]}
                                 contentStyle={{ borderRadius: '8px', border: '1px solid #E2E8F0', fontSize: '0.78rem' }}
                             />
-                            <Legend wrapperStyle={{ fontSize: '0.75rem' }} />
                             {highlightMonth && (
                                 <ReferenceLine
                                     x={MESES_CORTO[highlightMonth - 1]}
@@ -341,15 +640,23 @@ function MultiYearLineAndAvg({
                                     strokeWidth={1.5}
                                 />
                             )}
-                            {activeYears.map(yr => (
+                            {visibleYears.map(yr => (
                                 <Line
                                     key={yr}
                                     type="monotone"
                                     dataKey={String(yr)}
                                     stroke={YEAR_COLORS[yr] || '#0284C7'}
-                                    strokeWidth={yr === 2026 ? 2.8 : 1.8}
-                                    dot={{ r: yr === 2026 ? 3.5 : 2.5 }}
-                                    activeDot={{ r: 5 }}
+                                    strokeWidth={yr === 2026 ? 2.8 : 2}
+                                    dot={{ r: yr === 2026 ? 4 : 3, cursor: onDrillDown ? 'pointer' : 'default' }}
+                                    activeDot={{
+                                        r: 6,
+                                        cursor: onDrillDown ? 'pointer' : 'default',
+                                        onClick: (_e, dotPayload) => {
+                                            if (onDrillDown && dotPayload?.payload?.mesNum) {
+                                                onDrillDown({ anio: yr, mes: dotPayload.payload.mesNum });
+                                            }
+                                        },
+                                    }}
                                     connectNulls
                                 />
                             ))}
@@ -365,11 +672,40 @@ function MultiYearLineAndAvg({
                 borderRadius: '10px',
                 padding: '14px 16px',
                 boxShadow: '0 1px 2px rgba(15,23,42,0.04)',
+                display: 'flex',
+                flexDirection: 'column',
             }}>
-                <div style={{ fontSize: '0.86rem', fontWeight: 800, color: '#003B73', marginBottom: '10px' }}>
-                    Promedio Anual
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                    <div>
+                        <div style={{ fontSize: '0.86rem', fontWeight: 800, color: '#003B73' }}>
+                            Promedio Anual
+                        </div>
+                        <div style={{ fontSize: '0.67rem', color: '#64748B' }}>
+                            Tocá una barra para filtrar el año
+                        </div>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={handleExportAvgExcel}
+                        title="Exportar promedios anuales a Excel"
+                        style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            padding: '3px 8px',
+                            borderRadius: '6px',
+                            border: '1px solid #10B981',
+                            background: '#ECFDF5',
+                            color: '#047857',
+                            fontSize: '0.68rem',
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                        }}
+                    >
+                        <FileSpreadsheet size={11} /> Excel
+                    </button>
                 </div>
-                <div style={{ width: '100%', height }}>
+                <div style={{ width: '100%', height, flex: 1 }}>
                     <ResponsiveContainer>
                         <BarChart data={avgData} margin={{ top: 18, right: 8, left: -12, bottom: 4 }}>
                             <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" vertical={false} />
@@ -379,9 +715,21 @@ function MultiYearLineAndAvg({
                                 formatter={(value) => [`${fmtNum(value, decimals)}${unitLabel}`, 'Promedio mensual']}
                                 contentStyle={{ borderRadius: '8px', border: '1px solid #E2E8F0', fontSize: '0.78rem' }}
                             />
-                            <Bar dataKey="promedio" radius={[6, 6, 0, 0]} maxBarSize={42}>
+                            <Bar
+                                dataKey="promedio"
+                                radius={[6, 6, 0, 0]}
+                                maxBarSize={42}
+                                onClick={(entry) => {
+                                    if (entry?.yrNum) handleToggleYear(entry.yrNum);
+                                }}
+                                style={{ cursor: 'pointer' }}
+                            >
                                 {avgData.map((entry) => (
-                                    <Cell key={entry.anio} fill={entry.color} />
+                                    <Cell
+                                        key={entry.anio}
+                                        fill={entry.color}
+                                        fillOpacity={entry.isSelected ? 1 : 0.22}
+                                    />
                                 ))}
                                 <LabelList
                                     dataKey="promedio"
@@ -455,11 +803,119 @@ export default function InternacionDashboard({
     const [camasConfig, setCamasConfig] = useState([]);
     const [inquilinos, setInquilinos] = useState([]);
 
-    // Modales de configuración (Dotación de Camas / Nómina de Inquilinos)
+    // Modales de configuración (Dotación de Camas / Nómina de Inquilinos) y Drill-Down Nominal
     const [showCamasModal, setShowCamasModal] = useState(false);
     const [showInquilinosModal, setShowInquilinosModal] = useState(false);
     const [newInquilinoName, setNewInquilinoName] = useState('');
     const [savingConfig, setSavingConfig] = useState(false);
+    const [drilldownModal, setDrilldownModal] = useState(null); // { title, sector, subsector, metricType, anio, mes, esHierro, loading, rows, search }
+
+    // ─── DRILL-DOWN NOMINAL ON-DEMAND POR SECTOR / MES / AÑO ───
+    const openDrillDown = useCallback(async ({ title, sector, subsector = null, metricType = 'dias_cama', anio, mes = null, esHierro = null }) => {
+        if (!sector || !anio) return;
+        const mesLabel = mes ? `${MESES_LARGO[mes - 1]} ${anio}` : `Año ${anio}`;
+        const fullTitle = `${title} — ${mesLabel.charAt(0).toUpperCase() + mesLabel.slice(1)}`;
+
+        setDrilldownModal({
+            title: fullTitle,
+            sector,
+            subsector,
+            metricType,
+            anio,
+            mes,
+            esHierro,
+            loading: true,
+            rows: [],
+            search: '',
+        });
+
+        try {
+            const mStart = mes ? String(mes).padStart(2, '0') : '01';
+            const mEnd = mes ? String(mes).padStart(2, '0') : '12';
+            const lastDay = mes ? getDaysInMonth(anio, mes) : 31;
+            const dDesde = `${anio}-${mStart}-01`;
+            const dHasta = `${anio}-${mEnd}-${String(lastDay).padStart(2, '0')}`;
+            const desdeIso = `${dDesde}T00:00:00-03:00`;
+            const hastaIso = `${dHasta}T23:59:59-03:00`;
+
+            let all = [];
+            let from = 0;
+            const PAGE = 1000;
+            while (true) {
+                let q = supabase
+                    .from('gob_internacion_admisiones')
+                    .select('*')
+                    .eq('sector_arreglado', sector);
+
+                if (subsector) q = q.eq('subsector', subsector);
+                if (filterCliente) q = q.eq('cliente', filterCliente);
+                if (filterEspecialidad) q = q.eq('especialidad', filterEspecialidad);
+                if (esHierro === false) q = q.eq('es_hierro', false);
+                if (esHierro === true) q = q.eq('es_hierro', true);
+
+                if (metricType === 'ingresos' || sector === 'HOSPITAL DE DIA') {
+                    q = q.gte('fecha_ingreso', desdeIso).lte('fecha_ingreso', hastaIso);
+                } else if (metricType === 'egresos') {
+                    q = q.gte('fecha_alta', desdeIso).lte('fecha_alta', hastaIso);
+                } else {
+                    q = q.lte('fecha_ingreso', hastaIso).or(`fecha_alta.is.null,fecha_alta.gte.${desdeIso}`);
+                }
+
+                const { data, error } = await q.order('fecha_ingreso', { ascending: false }).range(from, from + PAGE - 1);
+                if (error) throw error;
+                if (!data || data.length === 0) break;
+                all = all.concat(data);
+                if (data.length < PAGE || all.length >= 5000) break;
+                from += PAGE;
+            }
+
+            const enriched = all
+                .map(r => {
+                    const valorVentana = sector === 'HOSPITAL DE DIA'
+                        ? Number(r.horas_ocupacion || 0)
+                        : calcDiasCamaEnVentana(r.fecha_ingreso, r.fecha_alta, dDesde, dHasta, r.habitacion);
+                    return { ...r, _valor_ventana: valorVentana };
+                })
+                .filter(r => {
+                    if (metricType === 'ingresos' || metricType === 'egresos' || sector === 'HOSPITAL DE DIA') return true;
+                    return r._valor_ventana > 0;
+                });
+
+            setDrilldownModal(prev => prev ? { ...prev, loading: false, rows: enriched } : null);
+        } catch (err) {
+            console.error('[InternacionDashboard] Error en drilldown:', err);
+            addToast?.('Error cargando detalle nominal de pacientes', 'error');
+            setDrilldownModal(prev => prev ? { ...prev, loading: false } : null);
+        }
+    }, [filterCliente, filterEspecialidad, addToast]);
+
+    const handleExportDrilldownExcel = useCallback(() => {
+        if (!drilldownModal || !drilldownModal.rows.length) return;
+        const isHdd = drilldownModal.sector === 'HOSPITAL DE DIA';
+        const exportRows = drilldownModal.rows.map(r => ({
+            'Recorte': drilldownModal.title,
+            'Admisión': r.numero_admision || '',
+            'Paciente': r.paciente || '',
+            'NHC': r.nhc || '',
+            'DNI': r.nif || '',
+            'Sector': r.sector_arreglado || '',
+            'Subsector': r.subsector || '',
+            'Habitación': r.habitacion || 'SIN HAB.',
+            'Ingreso': fmtDateTimeAR(r.fecha_ingreso),
+            'Alta': fmtDateTimeAR(r.fecha_alta),
+            'Obra Social': r.cliente || '',
+            'Médico Responsable': r.doctor || '',
+            'Especialidad': r.especialidad || '',
+            'Proceso': r.proceso || '',
+            [isHdd ? 'Horas HdD' : 'Días Cama (Período)']: r._valor_ventana,
+        }));
+        const ws = XLSX.utils.json_to_sheet(exportRows);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'Detalle Nominal');
+        const safeName = String(drilldownModal.title).replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑ_-]+/g, '_').slice(0, 55);
+        XLSX.writeFile(wb, `${safeName}.xlsx`);
+        addToast?.(`Excel descargado con ${exportRows.length} registros`, 'success');
+    }, [drilldownModal, addToast]);
 
     // 1. Cargar metadatos (clientes, especialidades, camas_config, inquilinos)
     const loadMetadata = useCallback(async () => {
@@ -1244,6 +1700,7 @@ export default function InternacionDashboard({
                         years={years22}
                         decimals={1}
                         highlightMonth={telarYMD.m}
+                        onDrillDown={({ anio, mes }) => openDrillDown({ title: 'Terapia Neonatal (Días Cama)', sector: 'NEONATOLOGIA', metricType: 'dias_cama', anio, mes })}
                     />
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(460px, 1fr))', gap: '16px' }}>
                         <MatrixTable
@@ -1254,6 +1711,7 @@ export default function InternacionDashboard({
                             showTotal
                             highlightYear={telarYMD.y}
                             highlightMonth={telarYMD.m}
+                            onCellClick={({ anio, mes }) => openDrillDown({ title: 'Ingresos - Neonatología', sector: 'NEONATOLOGIA', metricType: 'ingresos', anio, mes })}
                         />
                         <MatrixTable
                             title="Egresos - Neo"
@@ -1262,6 +1720,7 @@ export default function InternacionDashboard({
                             decimals={0}
                             highlightYear={telarYMD.y}
                             highlightMonth={telarYMD.m}
+                            onCellClick={({ anio, mes }) => openDrillDown({ title: 'Egresos - Neonatología', sector: 'NEONATOLOGIA', metricType: 'egresos', anio, mes })}
                         />
                     </div>
                 </div>
@@ -1287,6 +1746,7 @@ export default function InternacionDashboard({
                         decimals={1}
                         highlightMonth={telarYMD.m}
                         height={240}
+                        onDrillDown={({ anio, mes }) => openDrillDown({ title: 'Pediatría PISO (Días Cama)', sector: 'PEDIATRIA', subsector: 'PISO', metricType: 'dias_cama', anio, mes })}
                     />
                     <MultiYearLineAndAvg
                         title="Días Cama — TERAPIA Pediátrica (UTIP)"
@@ -1295,6 +1755,7 @@ export default function InternacionDashboard({
                         decimals={1}
                         highlightMonth={telarYMD.m}
                         height={240}
+                        onDrillDown={({ anio, mes }) => openDrillDown({ title: 'Pediatría UTIP (Días Cama)', sector: 'PEDIATRIA', subsector: 'TERAPIA', metricType: 'dias_cama', anio, mes })}
                     />
                 </div>
             )}
@@ -1318,6 +1779,7 @@ export default function InternacionDashboard({
                         years={yearsAll}
                         decimals={0}
                         highlightMonth={telarYMD.m}
+                        onDrillDown={({ anio, mes }) => openDrillDown({ title: 'Ingresos - Internado Adultos', sector: 'INTERNADO', metricType: 'ingresos', anio, mes })}
                     />
                     <MatrixTable
                         title="Días Cama — Internado Adultos"
@@ -1327,6 +1789,7 @@ export default function InternacionDashboard({
                         showTotal
                         highlightYear={telarYMD.y}
                         highlightMonth={telarYMD.m}
+                        onCellClick={({ anio, mes }) => openDrillDown({ title: 'Días Cama - Internado Adultos', sector: 'INTERNADO', metricType: 'dias_cama', anio, mes })}
                     />
                 </div>
             )}
@@ -1345,12 +1808,12 @@ export default function InternacionDashboard({
                         </button>
                     </div>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(460px, 1fr))', gap: '14px' }}>
-                        <MatrixTable title="Ingresos - UCI" rowsByYear={matrices.uciIng} years={years25} decimals={0} highlightYear={telarYMD.y} highlightMonth={telarYMD.m} />
-                        <MatrixTable title="Ingresos - Terapia Intermedia" rowsByYear={matrices.tiIng} years={years25} decimals={0} highlightYear={telarYMD.y} highlightMonth={telarYMD.m} />
-                        <MatrixTable title="Egresos - UCI" rowsByYear={matrices.uciEgr} years={years25} decimals={0} highlightYear={telarYMD.y} highlightMonth={telarYMD.m} />
-                        <MatrixTable title="Egresos - Terapia Intermedia" rowsByYear={matrices.tiEgr} years={years25} decimals={0} highlightYear={telarYMD.y} highlightMonth={telarYMD.m} />
-                        <MatrixTable title="Días Cama UCI" rowsByYear={matrices.uciDias} years={years25} decimals={1} highlightYear={telarYMD.y} highlightMonth={telarYMD.m} />
-                        <MatrixTable title="Días Cama Terapia Intermedia" rowsByYear={matrices.tiDias} years={years25} decimals={1} highlightYear={telarYMD.y} highlightMonth={telarYMD.m} />
+                        <MatrixTable title="Ingresos - UCI" rowsByYear={matrices.uciIng} years={years25} decimals={0} highlightYear={telarYMD.y} highlightMonth={telarYMD.m} onCellClick={({ anio, mes }) => openDrillDown({ title: 'Ingresos - UCI', sector: 'UCI', metricType: 'ingresos', anio, mes })} />
+                        <MatrixTable title="Ingresos - Terapia Intermedia" rowsByYear={matrices.tiIng} years={years25} decimals={0} highlightYear={telarYMD.y} highlightMonth={telarYMD.m} onCellClick={({ anio, mes }) => openDrillDown({ title: 'Ingresos - Terapia Intermedia', sector: 'TERAPIA INTERMEDIA', metricType: 'ingresos', anio, mes })} />
+                        <MatrixTable title="Egresos - UCI" rowsByYear={matrices.uciEgr} years={years25} decimals={0} highlightYear={telarYMD.y} highlightMonth={telarYMD.m} onCellClick={({ anio, mes }) => openDrillDown({ title: 'Egresos - UCI', sector: 'UCI', metricType: 'egresos', anio, mes })} />
+                        <MatrixTable title="Egresos - Terapia Intermedia" rowsByYear={matrices.tiEgr} years={years25} decimals={0} highlightYear={telarYMD.y} highlightMonth={telarYMD.m} onCellClick={({ anio, mes }) => openDrillDown({ title: 'Egresos - Terapia Intermedia', sector: 'TERAPIA INTERMEDIA', metricType: 'egresos', anio, mes })} />
+                        <MatrixTable title="Días Cama UCI" rowsByYear={matrices.uciDias} years={years25} decimals={1} highlightYear={telarYMD.y} highlightMonth={telarYMD.m} onCellClick={({ anio, mes }) => openDrillDown({ title: 'Días Cama - UCI', sector: 'UCI', metricType: 'dias_cama', anio, mes })} />
+                        <MatrixTable title="Días Cama Terapia Intermedia" rowsByYear={matrices.tiDias} years={years25} decimals={1} highlightYear={telarYMD.y} highlightMonth={telarYMD.m} onCellClick={({ anio, mes }) => openDrillDown({ title: 'Días Cama - Terapia Intermedia', sector: 'TERAPIA INTERMEDIA', metricType: 'dias_cama', anio, mes })} />
                     </div>
                 </div>
             )}
@@ -1375,6 +1838,7 @@ export default function InternacionDashboard({
                         decimals={1}
                         unitLabel=" hs"
                         highlightMonth={telarYMD.m}
+                        onDrillDown={({ anio, mes }) => openDrillDown({ title: 'Hospital de Día (Horas c/Hierro)', sector: 'HOSPITAL DE DIA', metricType: 'horas', anio, mes })}
                     />
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(460px, 1fr))', gap: '16px' }}>
                         <MatrixTable
@@ -1385,6 +1849,7 @@ export default function InternacionDashboard({
                             showTotal
                             highlightYear={telarYMD.y}
                             highlightMonth={telarYMD.m}
+                            onCellClick={({ anio, mes }) => openDrillDown({ title: 'Ingresos - HdD (s/Hierro)', sector: 'HOSPITAL DE DIA', metricType: 'ingresos', esHierro: false, anio, mes })}
                         />
                         <MatrixTable
                             title="Horas de ocupación - HdD (C/ colocación de Hierro)"
@@ -1393,6 +1858,7 @@ export default function InternacionDashboard({
                             decimals={1}
                             highlightYear={telarYMD.y}
                             highlightMonth={telarYMD.m}
+                            onCellClick={({ anio, mes }) => openDrillDown({ title: 'Horas - HdD (c/Hierro)', sector: 'HOSPITAL DE DIA', metricType: 'horas', anio, mes })}
                         />
                     </div>
                 </div>
@@ -1451,31 +1917,31 @@ export default function InternacionDashboard({
 
                     {tablaSubTab === 'dias_cama' && (
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(520px, 1fr))', gap: '16px' }}>
-                            <MatrixTable title="Internado — Días Cama" rowsByYear={matrices.intDias} years={years22} decimals={1} highlightYear={telarYMD.y} highlightMonth={telarYMD.m} />
+                            <MatrixTable title="Internado — Días Cama" rowsByYear={matrices.intDias} years={years22} decimals={1} highlightYear={telarYMD.y} highlightMonth={telarYMD.m} onCellClick={({ anio, mes }) => openDrillDown({ title: 'Internado — Días Cama', sector: 'INTERNADO', metricType: 'dias_cama', anio, mes })} />
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                                <MatrixTable title="Pediatría — PISO (Días Cama)" rowsByYear={matrices.pedPisoDias} years={years22} decimals={1} highlightYear={telarYMD.y} highlightMonth={telarYMD.m} />
-                                <MatrixTable title="Pediatría — TERAPIA / UTIP (Días Cama)" rowsByYear={matrices.pedTerDias} years={years22} decimals={1} highlightYear={telarYMD.y} highlightMonth={telarYMD.m} />
+                                <MatrixTable title="Pediatría — PISO (Días Cama)" rowsByYear={matrices.pedPisoDias} years={years22} decimals={1} highlightYear={telarYMD.y} highlightMonth={telarYMD.m} onCellClick={({ anio, mes }) => openDrillDown({ title: 'Pediatría — PISO (Días Cama)', sector: 'PEDIATRIA', subsector: 'PISO', metricType: 'dias_cama', anio, mes })} />
+                                <MatrixTable title="Pediatría — TERAPIA / UTIP (Días Cama)" rowsByYear={matrices.pedTerDias} years={years22} decimals={1} highlightYear={telarYMD.y} highlightMonth={telarYMD.m} onCellClick={({ anio, mes }) => openDrillDown({ title: 'Pediatría — UTIP (Días Cama)', sector: 'PEDIATRIA', subsector: 'TERAPIA', metricType: 'dias_cama', anio, mes })} />
                             </div>
-                            <MatrixTable title="Neonatología — Días Cama" rowsByYear={matrices.neoDias} years={years22} decimals={1} highlightYear={telarYMD.y} highlightMonth={telarYMD.m} />
-                            <MatrixTable title="Horas de ocupación - HdD (C/ colocación de Hierro)" rowsByYear={matrices.hddHorasConHierro} years={years22} decimals={1} highlightYear={telarYMD.y} highlightMonth={telarYMD.m} />
+                            <MatrixTable title="Neonatología — Días Cama" rowsByYear={matrices.neoDias} years={years22} decimals={1} highlightYear={telarYMD.y} highlightMonth={telarYMD.m} onCellClick={({ anio, mes }) => openDrillDown({ title: 'Neonatología — Días Cama', sector: 'NEONATOLOGIA', metricType: 'dias_cama', anio, mes })} />
+                            <MatrixTable title="Horas de ocupación - HdD (C/ colocación de Hierro)" rowsByYear={matrices.hddHorasConHierro} years={years22} decimals={1} highlightYear={telarYMD.y} highlightMonth={telarYMD.m} onCellClick={({ anio, mes }) => openDrillDown({ title: 'Horas de ocupación - HdD', sector: 'HOSPITAL DE DIA', metricType: 'horas', anio, mes })} />
                         </div>
                     )}
 
                     {tablaSubTab === 'ingresos' && (
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(520px, 1fr))', gap: '16px' }}>
-                            <MatrixTable title="Ingresos - Internado" rowsByYear={matrices.intIng} years={years22} decimals={0} showTotal highlightYear={telarYMD.y} highlightMonth={telarYMD.m} />
-                            <MatrixTable title="Ingresos - Pediatría" rowsByYear={matrices.pedIng} years={years22} decimals={0} showTotal highlightYear={telarYMD.y} highlightMonth={telarYMD.m} />
-                            <MatrixTable title="Ingresos - Neo" rowsByYear={matrices.neoIng} years={yearsAll} decimals={0} showTotal highlightYear={telarYMD.y} highlightMonth={telarYMD.m} />
-                            <MatrixTable title="Ingresos - HdD (s/colocación Hierro)" rowsByYear={matrices.hddIngSinHierro} years={years22} decimals={0} showTotal highlightYear={telarYMD.y} highlightMonth={telarYMD.m} />
+                            <MatrixTable title="Ingresos - Internado" rowsByYear={matrices.intIng} years={years22} decimals={0} showTotal highlightYear={telarYMD.y} highlightMonth={telarYMD.m} onCellClick={({ anio, mes }) => openDrillDown({ title: 'Ingresos - Internado', sector: 'INTERNADO', metricType: 'ingresos', anio, mes })} />
+                            <MatrixTable title="Ingresos - Pediatría" rowsByYear={matrices.pedIng} years={years22} decimals={0} showTotal highlightYear={telarYMD.y} highlightMonth={telarYMD.m} onCellClick={({ anio, mes }) => openDrillDown({ title: 'Ingresos - Pediatría', sector: 'PEDIATRIA', metricType: 'ingresos', anio, mes })} />
+                            <MatrixTable title="Ingresos - Neo" rowsByYear={matrices.neoIng} years={yearsAll} decimals={0} showTotal highlightYear={telarYMD.y} highlightMonth={telarYMD.m} onCellClick={({ anio, mes }) => openDrillDown({ title: 'Ingresos - Neonatología', sector: 'NEONATOLOGIA', metricType: 'ingresos', anio, mes })} />
+                            <MatrixTable title="Ingresos - HdD (s/colocación Hierro)" rowsByYear={matrices.hddIngSinHierro} years={years22} decimals={0} showTotal highlightYear={telarYMD.y} highlightMonth={telarYMD.m} onCellClick={({ anio, mes }) => openDrillDown({ title: 'Ingresos - HdD (s/Hierro)', sector: 'HOSPITAL DE DIA', metricType: 'ingresos', esHierro: false, anio, mes })} />
                         </div>
                     )}
 
                     {tablaSubTab === 'ocupacion' && (
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(520px, 1fr))', gap: '16px' }}>
-                            <MatrixTable title="% Ocupación — Internado" rowsByYear={ocupacionMatrices.internado} years={years22} decimals={1} suffix="%" colorScaleOccupancy highlightYear={telarYMD.y} highlightMonth={telarYMD.m} />
-                            <MatrixTable title="% Ocupación — Horas HdD (C/ colocación de Hierro)" rowsByYear={ocupacionMatrices.hdd} years={years22} decimals={1} suffix="%" colorScaleOccupancy highlightYear={telarYMD.y} highlightMonth={telarYMD.m} />
-                            <MatrixTable title="% Ocupación — Neonatología" rowsByYear={ocupacionMatrices.neonatologia} years={years22} decimals={1} suffix="%" colorScaleOccupancy highlightYear={telarYMD.y} highlightMonth={telarYMD.m} />
-                            <MatrixTable title="% Ocupación — UCI Adultos" rowsByYear={ocupacionMatrices.uci} years={years25} decimals={1} suffix="%" colorScaleOccupancy highlightYear={telarYMD.y} highlightMonth={telarYMD.m} />
+                            <MatrixTable title="% Ocupación — Internado" rowsByYear={ocupacionMatrices.internado} years={years22} decimals={1} suffix="%" colorScaleOccupancy highlightYear={telarYMD.y} highlightMonth={telarYMD.m} onCellClick={({ anio, mes }) => openDrillDown({ title: '% Ocupación — Internado', sector: 'INTERNADO', metricType: 'dias_cama', anio, mes })} />
+                            <MatrixTable title="% Ocupación — Horas HdD (C/ colocación de Hierro)" rowsByYear={ocupacionMatrices.hdd} years={years22} decimals={1} suffix="%" colorScaleOccupancy highlightYear={telarYMD.y} highlightMonth={telarYMD.m} onCellClick={({ anio, mes }) => openDrillDown({ title: '% Ocupación — HdD', sector: 'HOSPITAL DE DIA', metricType: 'horas', anio, mes })} />
+                            <MatrixTable title="% Ocupación — Neonatología" rowsByYear={ocupacionMatrices.neonatologia} years={years22} decimals={1} suffix="%" colorScaleOccupancy highlightYear={telarYMD.y} highlightMonth={telarYMD.m} onCellClick={({ anio, mes }) => openDrillDown({ title: '% Ocupación — Neonatología', sector: 'NEONATOLOGIA', metricType: 'dias_cama', anio, mes })} />
+                            <MatrixTable title="% Ocupación — UCI Adultos" rowsByYear={ocupacionMatrices.uci} years={years25} decimals={1} suffix="%" colorScaleOccupancy highlightYear={telarYMD.y} highlightMonth={telarYMD.m} onCellClick={({ anio, mes }) => openDrillDown({ title: '% Ocupación — UCI Adultos', sector: 'UCI', metricType: 'dias_cama', anio, mes })} />
                         </div>
                     )}
                 </div>
@@ -1900,6 +2366,224 @@ export default function InternacionDashboard({
                     </div>
                 </div>
             )}
+
+            {/* ═══ MODAL DE DRILL-DOWN NOMINAL (DETALLE DE CADA MES / AÑO / SECTOR) ═══ */}
+            {drilldownModal && (() => {
+                const isHdd = drilldownModal.sector === 'HOSPITAL DE DIA';
+                const q = (drilldownModal.search || '').trim().toLowerCase();
+                const filteredModalRows = drilldownModal.rows.filter(r => {
+                    if (!q) return true;
+                    const hay = `${r.paciente || ''} ${r.nhc || ''} ${r.nif || ''} ${r.numero_admision || ''} ${r.cliente || ''} ${r.doctor || ''} ${r.habitacion || ''} ${r.especialidad || ''}`.toLowerCase();
+                    return hay.includes(q);
+                });
+                const totalVal = filteredModalRows.reduce((acc, r) => acc + Number(r._valor_ventana || 0), 0);
+                const avgVal = filteredModalRows.length > 0 ? totalVal / filteredModalRows.length : 0;
+
+                return (
+                    <div
+                        onClick={() => setDrilldownModal(null)}
+                        style={{
+                            position: 'fixed',
+                            inset: 0,
+                            background: 'rgba(15, 23, 42, 0.65)',
+                            backdropFilter: 'blur(2px)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            zIndex: 9999,
+                            padding: '16px',
+                        }}
+                    >
+                        <div
+                            onClick={e => e.stopPropagation()}
+                            style={{
+                                background: '#FFFFFF',
+                                borderRadius: '14px',
+                                width: '100%',
+                                maxWidth: '1060px',
+                                maxHeight: '88vh',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                overflow: 'hidden',
+                                boxShadow: '0 25px 50px -12px rgba(0,0,0,0.28)',
+                                border: '1px solid #E2E8F0',
+                            }}
+                        >
+                            {/* Header */}
+                            <div style={{
+                                padding: '16px 20px',
+                                background: '#F8FAFC',
+                                borderBottom: '1px solid #E2E8F0',
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center',
+                                gap: '12px',
+                                flexWrap: 'wrap',
+                            }}>
+                                <div>
+                                    <h3 style={{ margin: 0, fontSize: '1.02rem', fontWeight: 800, color: '#003B73' }}>
+                                        {drilldownModal.title}
+                                    </h3>
+                                    <div style={{ fontSize: '0.74rem', color: '#64748B', marginTop: '2px' }}>
+                                        Detalle nominal auditado desde SALUS
+                                        {filterCliente ? ` · Obra Social: ${filterCliente}` : ''}
+                                        {filterEspecialidad ? ` · Especialidad: ${filterEspecialidad}` : ''}
+                                    </div>
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <button
+                                        type="button"
+                                        disabled={drilldownModal.loading || filteredModalRows.length === 0}
+                                        onClick={handleExportDrilldownExcel}
+                                        style={{
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: '6px',
+                                            padding: '7px 12px',
+                                            borderRadius: '8px',
+                                            border: 'none',
+                                            background: '#10B981',
+                                            color: '#FFFFFF',
+                                            fontSize: '0.76rem',
+                                            fontWeight: 700,
+                                            cursor: drilldownModal.loading ? 'wait' : 'pointer',
+                                            opacity: filteredModalRows.length === 0 ? 0.5 : 1,
+                                        }}
+                                    >
+                                        <FileSpreadsheet size={14} /> Exportar Excel ({filteredModalRows.length})
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setDrilldownModal(null)}
+                                        style={{
+                                            width: '32px',
+                                            height: '32px',
+                                            borderRadius: '8px',
+                                            border: '1px solid #CBD5E1',
+                                            background: '#FFFFFF',
+                                            color: '#475569',
+                                            cursor: 'pointer',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                        }}
+                                    >
+                                        <X size={16} />
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* KPIs + Buscador */}
+                            <div style={{
+                                padding: '12px 20px',
+                                borderBottom: '1px solid #E2E8F0',
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center',
+                                gap: '12px',
+                                flexWrap: 'wrap',
+                                background: '#FFFFFF',
+                            }}>
+                                <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', fontSize: '0.78rem' }}>
+                                    <div>
+                                        <span style={{ color: '#64748B' }}>Admisiones: </span>
+                                        <strong style={{ color: '#003B73' }}>{fmtNum(filteredModalRows.length)}</strong>
+                                    </div>
+                                    <div>
+                                        <span style={{ color: '#64748B' }}>{isHdd ? 'Horas Totales: ' : 'Días Cama (Período): '}</span>
+                                        <strong style={{ color: '#0284C7' }}>{fmtNum(totalVal, 1)}{isHdd ? ' hs' : ' d'}</strong>
+                                    </div>
+                                    <div>
+                                        <span style={{ color: '#64748B' }}>Promedio: </span>
+                                        <strong style={{ color: '#0F172A' }}>{fmtNum(avgVal, 2)}{isHdd ? ' hs/adm' : ' d/adm'}</strong>
+                                    </div>
+                                </div>
+                                <div style={{ position: 'relative', minWidth: '250px' }}>
+                                    <Search size={14} color="#94A3B8" style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)' }} />
+                                    <input
+                                        type="text"
+                                        value={drilldownModal.search}
+                                        onChange={e => setDrilldownModal(prev => prev ? { ...prev, search: e.target.value } : null)}
+                                        placeholder="Buscar paciente, NHC, médico, habitación..."
+                                        style={{
+                                            width: '100%',
+                                            padding: '6px 10px 6px 30px',
+                                            borderRadius: '8px',
+                                            border: '1px solid #CBD5E1',
+                                            fontSize: '0.76rem',
+                                        }}
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Tabla nominal */}
+                            <div style={{ flex: 1, overflowY: 'auto' }}>
+                                {drilldownModal.loading ? (
+                                    <div style={{ padding: '48px', textAlign: 'center', color: '#64748B', fontSize: '0.84rem' }}>
+                                        <RefreshCw size={22} className="animate-spin" style={{ margin: '0 auto 8px', color: '#0284C7' }} />
+                                        Cargando detalle nominal desde SALUS...
+                                    </div>
+                                ) : filteredModalRows.length === 0 ? (
+                                    <div style={{ padding: '40px', textAlign: 'center', color: '#94A3B8', fontSize: '0.82rem' }}>
+                                        No se encontraron admisiones para este recorte.
+                                    </div>
+                                ) : (
+                                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.74rem', fontVariantNumeric: 'tabular-nums' }}>
+                                        <thead style={{ position: 'sticky', top: 0, background: '#F8FAFC', zIndex: 1 }}>
+                                            <tr style={{ borderBottom: '1px solid #E2E8F0', textAlign: 'left', color: '#475569' }}>
+                                                <th style={{ padding: '8px 12px' }}>Admisión</th>
+                                                <th style={{ padding: '8px 10px' }}>Paciente</th>
+                                                <th style={{ padding: '8px 10px' }}>Habitación</th>
+                                                <th style={{ padding: '8px 10px' }}>Ingreso → Alta</th>
+                                                <th style={{ padding: '8px 10px' }}>Obra Social</th>
+                                                <th style={{ padding: '8px 10px' }}>Médico / Esp.</th>
+                                                <th style={{ padding: '8px 12px', textAlign: 'right' }}>{isHdd ? 'Horas' : 'Días Cama'}</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {filteredModalRows.slice(0, 500).map((r, idx) => (
+                                                <tr key={r.id_admision || idx} style={{ borderBottom: '1px solid #F1F5F9', background: idx % 2 === 1 ? '#F8FAFC' : '#FFFFFF' }}>
+                                                    <td style={{ padding: '7px 12px', fontWeight: 700, color: '#003B73', whiteSpace: 'nowrap' }}>
+                                                        {r.numero_admision || '—'}
+                                                    </td>
+                                                    <td style={{ padding: '7px 10px' }}>
+                                                        <div style={{ fontWeight: 700, color: '#0F172A' }}>{r.paciente}</div>
+                                                        <div style={{ fontSize: '0.67rem', color: '#64748B' }}>NHC {r.nhc || '—'} · DNI {r.nif || '—'}</div>
+                                                    </td>
+                                                    <td style={{ padding: '7px 10px', fontWeight: 700, color: r.habitacion ? '#1E40AF' : '#94A3B8', whiteSpace: 'nowrap' }}>
+                                                        {r.habitacion || 'SIN HAB.'}
+                                                    </td>
+                                                    <td style={{ padding: '7px 10px', whiteSpace: 'nowrap', color: '#334155' }}>
+                                                        <div>{fmtDateTimeAR(r.fecha_ingreso)}</div>
+                                                        <div style={{ fontSize: '0.68rem', color: r.fecha_alta ? '#64748B' : '#059669', fontWeight: r.fecha_alta ? 400 : 700 }}>
+                                                            → {fmtDateTimeAR(r.fecha_alta)}
+                                                        </div>
+                                                    </td>
+                                                    <td style={{ padding: '7px 10px', color: '#334155', maxWidth: '170px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.cliente}>
+                                                        {r.cliente}
+                                                    </td>
+                                                    <td style={{ padding: '7px 10px' }}>
+                                                        <div style={{ fontWeight: 600, color: '#0F172A' }}>{r.doctor}</div>
+                                                        <div style={{ fontSize: '0.67rem', color: '#64748B' }}>{r.especialidad}</div>
+                                                    </td>
+                                                    <td style={{ padding: '7px 12px', textAlign: 'right', fontWeight: 800, color: '#0284C7', whiteSpace: 'nowrap' }}>
+                                                        {fmtNum(r._valor_ventana, 1)}{isHdd ? ' hs' : ' d'}
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                )}
+                                {filteredModalRows.length > 500 && (
+                                    <div style={{ padding: '8px', textAlign: 'center', fontSize: '0.72rem', color: '#64748B', background: '#F8FAFC', borderTop: '1px solid #E2E8F0' }}>
+                                        Mostrando primeros 500 registros. Usá <strong>Exportar Excel ({filteredModalRows.length})</strong> para bajar la nómina completa.
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                );
+            })()}
         </div>
     );
 }
