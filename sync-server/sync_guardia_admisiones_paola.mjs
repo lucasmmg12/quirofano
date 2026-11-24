@@ -183,6 +183,10 @@ export async function syncGuardiaAdmisionesPaola({ startYear = 2025 } = {}) {
             SELECT
                 a.idAdmision AS id_admision,
                 LTRIM(RTRIM(a.[Número admisión])) AS numero_admision,
+                LTRIM(RTRIM(a.[Serie Admisión])) AS serie_admision,
+                a.Dias AS dias_salus,
+                a.Edad AS edad_salus,
+                LTRIM(RTRIM(a.Procedencia)) AS procedencia_salus,
                 LTRIM(RTRIM(a.Paciente)) AS paciente,
                 LTRIM(RTRIM(CAST(a.NHC AS VARCHAR(50)))) AS nhc,
                 LTRIM(RTRIM(CAST(a.NIF AS VARCHAR(50)))) AS dni,
@@ -555,6 +559,10 @@ export async function syncGuardiaAdmisionesPaola({ startYear = 2025 } = {}) {
             processedAdmissions.push({
                 id_admision: idAdm,
                 numero_admision: r.numero_admision || null,
+                serie_admision: r.serie_admision || (numAdmNorm.startsWith('SR') ? 'SHOCK ROOM' : numAdmNorm.startsWith('I') ? 'INTERNADO' : 'OTRA'),
+                dias_salus: r.dias_salus !== null && r.dias_salus !== undefined ? Number(r.dias_salus) : null,
+                edad_salus: r.edad_salus !== null && r.edad_salus !== undefined ? Number(r.edad_salus) : null,
+                procedencia_salus: r.procedencia_salus || null,
                 paciente: r.paciente || 'SIN NOMBRE',
                 nhc: r.nhc || null,
                 dni: r.dni || null,

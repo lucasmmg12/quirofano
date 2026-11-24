@@ -1,64 +1,55 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
-    Bed, Search, RefreshCw, Calendar, CheckCircle2, AlertTriangle,
-    Download, ShieldAlert, Activity, Clock, FileSpreadsheet, Eye,
-    BarChart3, Sliders, Info, Layers, ArrowRight, X, Check
+    Search, RefreshCw, FileSpreadsheet, Clock, Sliders, X, AlertTriangle, CheckCircle2, Info
 } from 'lucide-react';
 import {
     ResponsiveContainer, ComposedChart, Bar, Line, XAxis, YAxis,
-    CartesianGrid, Tooltip as RechartsTooltip, Legend, ReferenceLine
+    CartesianGrid, Tooltip as RechartsTooltip, Legend
 } from 'recharts';
 import { supabase } from '../../lib/supabase';
 
 const INCONSISTENCIA_META = {
     OK: {
-        label: 'Consistente',
+        label: 'OK (Consistente)',
         badgeBg: '#DCFCE7',
         badgeColor: '#166534',
-        border: '#86EFAC',
-        shortDesc: 'Habitación, horario y servicio consistentes'
+        border: '#86EFAC'
     },
     SIN_HABITACION_CON_ATENCION: {
         label: 'Sin Habitación (Con Atención Real)',
         badgeBg: '#FEF3C7',
         badgeColor: '#92400E',
-        border: '#FCD34D',
-        shortDesc: 'Atención comprobada en HC / Módulo 400109 sin asignar Box físico antes del alta'
+        border: '#FCD34D'
     },
     INTERNACION_SUSPENDIDA: {
-        label: 'Internación Suspendida (< 1h)',
+        label: 'Excluida: Internación Suspendida (<1h)',
         badgeBg: '#FFEDD5',
         badgeColor: '#9A3412',
-        border: '#FDBA74',
-        shortDesc: 'Admisión abortada en recepción sin ocupar cama (excluida del presupuesto)'
+        border: '#FDBA74'
     },
     ABIERTA_OLVIDADA_SIN_ALTA: {
-        label: 'Abierta sin Alta Administrativa',
+        label: 'Excluida: Abierta sin Alta SALUS',
         badgeBg: '#FEE2E2',
         badgeColor: '#991B1B',
-        border: '#FCA5A5',
-        shortDesc: 'Admisión olvidada abierta en SALUS (> 48h en SR/Sin cama); excluida para no inflar horas'
+        border: '#FCA5A5'
     },
     SERVICIO_INCORRECTO_CHEQUEO: {
-        label: 'Error de Servicio (CHEQUEO)',
+        label: 'Excluida: Error Servicio CHEQUEO',
         badgeBg: '#FEE2E2',
         badgeColor: '#991B1B',
-        border: '#FCA5A5',
-        shortDesc: 'Circuito ambulatorio de Chequeo Preventivo imputado por error (excluido)'
+        border: '#FCA5A5'
     },
     SERVICIO_MAL_IMPUTADO_SR: {
-        label: 'Box SR con Servicio Piso',
+        label: 'Box SR (Cargada como Internación Clínica)',
         badgeBg: '#E0F2FE',
         badgeColor: '#075985',
-        border: '#7DD3FC',
-        shortDesc: 'Estancia física en BOX SR cargada como INTERNACION CLINICA (reclasificada a SR)'
+        border: '#7DD3FC'
     },
     SOLAPAMIENTO_HORARIO_BOX: {
-        label: 'Solapamiento Horario en Box',
+        label: 'OK (Solapamiento deduplicado en Box)',
         badgeBg: '#EDE9FE',
         badgeColor: '#5B21B6',
-        border: '#C4B5FD',
-        shortDesc: 'Superposición administrativa de minutos en el mismo box (deduplicada en ocupación neta)'
+        border: '#C4B5FD'
     }
 };
 
@@ -72,8 +63,21 @@ function formatDateDMY(ymd) {
     return `${d}/${m}/${y}`;
 }
 
+function formatSqlDateTime(isoStr) {
+    if (!isoStr) return '';
+    const d = new Date(isoStr);
+    if (isNaN(d.getTime())) return String(isoStr).slice(0, 19);
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    const hh = String(d.getHours()).padStart(2, '0');
+    const mi = String(d.getMinutes()).padStart(2, '0');
+    const ss = String(d.getSeconds()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd} ${hh}:${mi}:${ss}`;
+}
+
 function formatDateTimeShort(isoStr) {
-    if (!isoStr) return 'Sin alta (Abierta)';
+    if (!isoStr) return 'SIN ALTA (ABIERTA)';
     const d = new Date(isoStr);
     if (isNaN(d.getTime())) return String(isoStr).slice(0, 16);
     const dd = String(d.getDate()).padStart(2, '0');
@@ -94,6 +98,35 @@ function countCalendarDaysInclusive(startStr, endStr) {
     return Math.floor((t2 - t1) / 86400000) + 1;
 }
 
+/**
+ * Fórmula que aplica actualmente la planilla de Dirección:
+ * Si Horas/24 < 1 -> pone 1 día entero; si Horas >= 24 -> redondea Horas/24 a 2 decimales.
+ */
+function calcDiasFormulaDireccion(horas) {
+    const h = Number(horas || 0);
+    if (h <= 0) return 0;
+    if (h < 24) return 1;
+    return Math.round((h / 24) * 100) / 100;
+}
+
+function isSerieI(adm) {
+    const n = String(adm.numero_admision || '').trim().toUpperCase();
+    return n.startsWith('I');
+}
+
+function isSerieSR(adm) {
+    const n = String(adm.numero_admision || '').trim().toUpperCase();
+    return n.startsWith('SR');
+}
+
+function formatRecorridoCamas(tramos) {
+    if (!Array.isArray(tramos) || tramos.length === 0) return '-';
+    const parts = tramos
+        .filter(t => t.unidad && t.unidad !== 'SIN_HABITACION')
+        .map(t => `${t.unidad} (${Number(t.horas || 0).toFixed(1)}h)`);
+    return parts.length ? parts.join(' → ') : 'SIN CAMA EN HISTORIAL';
+}
+
 export default function GuardiaAdmisionesOcupacionPanel({
     addToast,
     selectedPeriodoProp,
@@ -101,20 +134,33 @@ export default function GuardiaAdmisionesOcupacionPanel({
     fechaHasta,
     onOpenFicha557ById
 }) {
-    const [viewTab, setViewTab] = useState('presupuesto'); // 'presupuesto' | 'auditoria' | 'padron'
+    // Vista principal por defecto: LA PLANILLA COMPLETA DE ADMISIONES (formato Excel comparable con Dirección)
+    const [viewTab, setViewTab] = useState('planilla_excel'); // 'planilla_excel' | 'ocupacion_boxes' | 'auditoria'
     const [loading, setLoading] = useState(true);
     const [syncing, setSyncing] = useState(false);
     const [admisiones, setAdmisiones] = useState([]);
     const [ocupacionDiaria, setOcupacionDiaria] = useState([]);
     const [boxesConfig, setBoxesConfig] = useState(3);
-    const [savingBoxes, setSavingBoxes] = useState(false);
 
-    // Filtros e inspector interactivo
-    const [selectedInspectDate, setSelectedInspectDate] = useState('');
-    const [inconsistenciaFilter, setInconsistenciaFilter] = useState('TODAS_OBSERVADAS');
-    const [regimenFilter, setRegimenFilter] = useState('TODOS');
+    // Override local de rango para que el usuario pueda ver con 1 clic "Corte Dirección (Nov 2025 - Jun 2026)" o "Año 2026" o usar el filtro superior del Telar
+    const [rangeMode, setRangeMode] = useState('telar'); // 'telar' | 'corte_direccion' | 'anio_2026' | 'todo_2025_2026' | 'custom_local'
+    const [customDesde, setCustomDesde] = useState('2025-11-01');
+    const [customHasta, setCustomHasta] = useState('2026-06-30');
+
+    // Filtros de la planilla tipo Excel
+    const [serieFilter, setSerieFilter] = useState('TODAS'); // 'TODAS' | 'SOLO_I_DIRECCION' | 'SOLO_SR_OMITIDAS'
+    const [ubicacionFilter, setUbicacionFilter] = useState('TODAS'); // 'TODAS' | 'SHOCK_ROOM' | 'PISO' | 'SIN_HABITACION' | 'EXCLUIDAS'
+    const [procesoFilter, setProcesoFilter] = useState('TODOS'); // 'TODOS' | '400109' | '420301' | 'SIN_PROCESO'
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedAdmDetail, setSelectedAdmDetail] = useState(null);
+    const [selectedInspectDate, setSelectedInspectDate] = useState('');
+
+    // Si el usuario cambia las fechas arriba en la barra del Telar, volver automáticamente a 'telar'
+    useEffect(() => {
+        if (fechaDesde && fechaHasta) {
+            setRangeMode('telar');
+        }
+    }, [fechaDesde, fechaHasta, selectedPeriodoProp]);
 
     const fetchAllRows = async (table, orderCol) => {
         const pageSize = 1000;
@@ -153,8 +199,8 @@ export default function GuardiaAdmisionesOcupacionPanel({
                 setBoxesConfig(Number(cfgRes.data.camas_operativas) || 3);
             }
         } catch (err) {
-            console.error('Error cargando Admisiones y Ocupación de Guardia Clínica:', err);
-            addToast?.('Error al cargar admisiones y ocupación proporcional de Guardia Clínica', 'error');
+            console.error('Error cargando Admisiones de Guardia Clínica:', err);
+            addToast?.('Error al cargar admisiones de Guardia Clínica', 'error');
         } finally {
             setLoading(false);
         }
@@ -176,47 +222,60 @@ export default function GuardiaAdmisionesOcupacionPanel({
                 body: JSON.stringify({ startYear: 2025 })
             });
             if (res.ok) {
-                addToast?.('Admisiones y ocupación proporcional sincronizadas en vivo desde SALUS', 'success');
+                addToast?.('Padrón de admisiones sincronizado en vivo desde SALUS', 'success');
                 await loadData();
             } else {
                 await loadData();
-                addToast?.('Datos actualizados desde la base consolidada de Supabase', 'info');
+                addToast?.('Datos recargados desde Supabase', 'info');
             }
         } catch (_) {
             await loadData();
-            addToast?.('Datos recargados desde Supabase (servidor local SALUS no disponible en este equipo)', 'info');
+            addToast?.('Datos recargados desde Supabase', 'info');
         } finally {
             setSyncing(false);
         }
     };
 
-    const handleSaveBoxesConfig = async (newBoxes) => {
-        const val = Math.max(1, Math.min(15, Number(newBoxes) || 3));
-        setBoxesConfig(val);
-        setSavingBoxes(true);
-        try {
-            await supabase.from('gob_internacion_camas_config').upsert({
-                sector: 'SHOCK ROOM',
-                subsector: 'GUARDIA CLINICA',
-                anio: 2026,
-                camas_operativas: val,
-                horas_mes_hdd: val * 24 * 30,
-                updated_at: new Date().toISOString()
-            }, { onConflict: 'sector,subsector,anio' });
-        } catch (e) {
-            console.warn('No se pudo persistir camas_operativas SR:', e);
-        } finally {
-            setSavingBoxes(false);
-        }
-    };
-
-    // Determinar rango efectivo de fechas conectado al Telar superior
+    // Rango efectivo activo
     const effectiveDateRange = useMemo(() => {
         const todayStr = new Date().toISOString().slice(0, 10);
-        // Buscar la última fecha real cargada para no diluir meses futuros aún no transcurridos
         const maxDataDate = ocupacionDiaria.length > 0 ? ocupacionDiaria[0].fecha : todayStr;
         const capEnd = maxDataDate < todayStr ? todayStr : maxDataDate;
 
+        if (rangeMode === 'corte_direccion') {
+            return {
+                desde: '2025-11-01',
+                hasta: '2026-06-30',
+                diasCalendario: countCalendarDaysInclusive('2025-11-01', '2026-06-30'),
+                label: 'Corte Planilla Dirección (01/11/2025 al 30/06/2026)'
+            };
+        }
+        if (rangeMode === 'anio_2026') {
+            return {
+                desde: '2026-01-01',
+                hasta: capEnd,
+                diasCalendario: countCalendarDaysInclusive('2026-01-01', capEnd),
+                label: `Año 2026 Completo (01/01/2026 al ${formatDateDMY(capEnd)})`
+            };
+        }
+        if (rangeMode === 'todo_2025_2026') {
+            return {
+                desde: '2025-01-01',
+                hasta: capEnd,
+                diasCalendario: countCalendarDaysInclusive('2025-01-01', capEnd),
+                label: `Histórico Completo 2025–2026 (01/01/2025 al ${formatDateDMY(capEnd)})`
+            };
+        }
+        if (rangeMode === 'custom_local') {
+            return {
+                desde: customDesde,
+                hasta: customHasta,
+                diasCalendario: countCalendarDaysInclusive(customDesde, customHasta),
+                label: `${formatDateDMY(customDesde)} al ${formatDateDMY(customHasta)}`
+            };
+        }
+
+        // Default 'telar'
         if (fechaDesde && fechaHasta) {
             const endEffective = fechaHasta > capEnd ? capEnd : fechaHasta;
             const safeEnd = endEffective >= fechaDesde ? endEffective : fechaHasta;
@@ -227,19 +286,6 @@ export default function GuardiaAdmisionesOcupacionPanel({
                 label: `${formatDateDMY(fechaDesde)} al ${formatDateDMY(safeEnd)}`
             };
         }
-
-        if (selectedPeriodoProp && selectedPeriodoProp.includes('ANUAL')) {
-            const y = selectedPeriodoProp.split('-')[0] || '2026';
-            const dDesde = `${y}-01-01`;
-            const dHasta = `${y}-12-31` > capEnd && capEnd.startsWith(y) ? capEnd : `${y}-12-31`;
-            return {
-                desde: dDesde,
-                hasta: dHasta,
-                diasCalendario: countCalendarDaysInclusive(dDesde, dHasta),
-                label: `Acumulado ${y} (${formatDateDMY(dDesde)} al ${formatDateDMY(dHasta)})`
-            };
-        }
-
         if (selectedPeriodoProp && /^\d{4}-\d{2}$/.test(selectedPeriodoProp)) {
             const [y, m] = selectedPeriodoProp.split('-').map(Number);
             const lastDay = new Date(y, m, 0).getDate();
@@ -253,18 +299,15 @@ export default function GuardiaAdmisionesOcupacionPanel({
                 label: `${formatDateDMY(dDesde)} al ${formatDateDMY(dHasta)}`
             };
         }
-
-        const dDesde = '2026-01-01';
-        const dHasta = capEnd >= dDesde ? capEnd : '2026-12-31';
         return {
-            desde: dDesde,
-            hasta: dHasta,
-            diasCalendario: countCalendarDaysInclusive(dDesde, dHasta),
-            label: `${formatDateDMY(dDesde)} al ${formatDateDMY(dHasta)}`
+            desde: '2026-01-01',
+            hasta: capEnd,
+            diasCalendario: countCalendarDaysInclusive('2026-01-01', capEnd),
+            label: `01/01/2026 al ${formatDateDMY(capEnd)}`
         };
-    }, [fechaDesde, fechaHasta, selectedPeriodoProp, ocupacionDiaria]);
+    }, [rangeMode, customDesde, customHasta, fechaDesde, fechaHasta, selectedPeriodoProp, ocupacionDiaria]);
 
-    // Filtrar admisiones y ocupación diaria según el rango activo
+    // Admisiones del rango de fechas seleccionado
     const periodAdmisiones = useMemo(() => {
         const { desde, hasta } = effectiveDateRange;
         return admisiones.filter(a => {
@@ -281,279 +324,22 @@ export default function GuardiaAdmisionesOcupacionPanel({
         });
     }, [ocupacionDiaria, effectiveDateRange]);
 
-    // Días con mayor rotación en Boxes de Shock Room para el inspector visual de 24 horas
-    const highRotationDays = useMemo(() => {
-        const byDay = new Map();
-        for (const r of periodOcupacion) {
-            if (r.tipo_unidad !== 'SHOCK_ROOM_BOX') continue;
-            const prev = byDay.get(r.fecha) || {
-                fecha: r.fecha,
-                pacientesBoxes: 0,
-                maxPacEnUnBox: 0,
-                horasNetasTotal: 0,
-                diasPropTotal: 0,
-                diasTradTotal: 0
-            };
-            prev.pacientesBoxes += Number(r.pacientes_distintos || 0);
-            prev.maxPacEnUnBox = Math.max(prev.maxPacEnUnBox, Number(r.pacientes_distintos || 0));
-            prev.horasNetasTotal += Number(r.horas_netas_ocupadas || 0);
-            prev.diasPropTotal += Number(r.dias_proporcionales || 0);
-            prev.diasTradTotal += Number(r.dias_conteo_tradicional || 0);
-            byDay.set(r.fecha, prev);
-        }
-        return Array.from(byDay.values()).sort(
-            (a, b) => (b.maxPacEnUnBox - a.maxPacEnUnBox) || (b.pacientesBoxes - a.pacientesBoxes) || b.fecha.localeCompare(a.fecha)
-        );
-    }, [periodOcupacion]);
-
-    useEffect(() => {
-        if (!highRotationDays.length) {
-            setSelectedInspectDate('');
-            return;
-        }
-        const exists = highRotationDays.some(d => d.fecha === selectedInspectDate);
-        if (!exists) {
-            setSelectedInspectDate(highRotationDays[0].fecha);
-        }
-    }, [highRotationDays]);
-
-    // Métricas ejecutivas proporcionales para Gerencia y Presupuesto
-    const kpis = useMemo(() => {
-        const diasCal = effectiveDateRange.diasCalendario || 1;
-        const horasDisponiblesSr = boxesConfig * 24 * diasCal;
-        const diasDisponiblesSr = boxesConfig * diasCal; // 1 box x 24h = 1.00 día disponible
-
-        const srRows = periodOcupacion.filter(o => o.tipo_unidad === 'SHOCK_ROOM_BOX');
-        const sinBoxRows = periodOcupacion.filter(o => o.tipo_unidad === 'SIN_BOX_AUDITADO');
-        const pisoRows = periodOcupacion.filter(o => o.tipo_unidad === 'PISO_CLINICO');
-
-        const horasNetasSr = srRows.reduce((s, r) => s + Number(r.horas_netas_ocupadas || 0), 0);
-        const horasBrutasSr = srRows.reduce((s, r) => s + Number(r.horas_brutas_pacientes || 0), 0);
-        const minSolapadosSr = srRows.reduce((s, r) => s + Number(r.minutos_solapados || 0), 0);
-
-        // REGLA PROPORCIONAL EXACTA: Días = Horas Netas / 24 (ej. 12 hs = 0.50 días sin importar cant. pacientes)
-        const diasProporcionalesSr = horasNetasSr / 24;
-        const pctOcupacionSr = horasDisponiblesSr > 0 ? (horasNetasSr / horasDisponiblesSr) * 100 : 0;
-
-        // Conteo tradicional distorsionado en los boxes (1 paciente en el día = 1 día)
-        const diasTradicionalesSr = srRows.reduce((s, r) => s + Number(r.dias_conteo_tradicional || 0), 0);
-        const diasFantasmaDepurados = Math.max(0, diasTradicionalesSr - diasProporcionalesSr);
-        const eventosMultiRotacion = srRows.filter(r => Number(r.pacientes_distintos || 0) >= 2).length;
-
-        const horasSinBox = sinBoxRows.reduce((s, r) => s + Number(r.horas_netas_ocupadas || 0), 0);
-        const diasPropSinBox = horasSinBox / 24;
-
-        const horasPiso = pisoRows.reduce((s, r) => s + Number(r.horas_netas_ocupadas || 0), 0);
-        const diasPropPiso = horasPiso / 24;
-
-        // Si sumamos las horas reales sin box asignado a la carga de Shock Room (escenario integrado)
-        const diasPropSrConSinBox = (horasNetasSr + horasSinBox) / 24;
-        const pctOcupacionSrConSinBox = horasDisponiblesSr > 0 ? ((horasNetasSr + horasSinBox) / horasDisponiblesSr) * 100 : 0;
-
-        const validas = periodAdmisiones.filter(a => a.incluida_en_presupuesto);
-        const excluidas = periodAdmisiones.filter(a => !a.incluida_en_presupuesto);
-        const soloSr = validas.filter(a => a.regimen_ubicacion === 'SHOCK_ROOM');
-        const mixtoSrPiso = validas.filter(a => a.regimen_ubicacion === 'MIXTO_SR_PISO');
-        const soloPiso = validas.filter(a => a.regimen_ubicacion === 'PISO_CLINICO' || a.regimen_ubicacion === 'CRITICOS_UCI');
-        const sinHabConAtencion = periodAdmisiones.filter(a => a.inconsistencia_codigo === 'SIN_HABITACION_CON_ATENCION');
-
-        // Desglose por cada Box físico
-        const boxSummary = ['BOX 1-SR', 'BOX 2-SR', 'BOX 3-SR'].map(boxName => {
-            const rows = srRows.filter(r => r.unidad === boxName);
-            const hNet = rows.reduce((s, r) => s + Number(r.horas_netas_ocupadas || 0), 0);
-            const dProp = hNet / 24;
-            const dDisp = diasCal; // 1 box * diasCal
-            const pacSum = rows.reduce((s, r) => s + Number(r.pacientes_distintos || 0), 0);
-            const multiDays = rows.filter(r => Number(r.pacientes_distintos || 0) >= 2).length;
-            return {
-                unidad: boxName,
-                horasNetas: Math.round(hNet * 100) / 100,
-                horasDisponibles: diasCal * 24,
-                diasProporcionales: Math.round(dProp * 100) / 100,
-                diasDisponibles: dDisp,
-                pctOcupacion: dDisp > 0 ? Math.round((dProp / dDisp) * 1000) / 10 : 0,
-                rotacionesPacientes: pacSum,
-                diasConMultiplesPacientes: multiDays,
-                horasPromedioPorDia: Math.round((hNet / diasCal) * 100) / 100
-            };
-        });
-
-        // Conteo de inconsistencias por código
-        const inconsistenciasCount = {
-            SIN_HABITACION_CON_ATENCION: 0,
-            ABIERTA_OLVIDADA_SIN_ALTA: 0,
-            INTERNACION_SUSPENDIDA: 0,
-            SERVICIO_INCORRECTO_CHEQUEO: 0,
-            SERVICIO_MAL_IMPUTADO_SR: 0,
-            SOLAPAMIENTO_HORARIO_BOX: 0
-        };
-        for (const a of periodAdmisiones) {
-            if (a.tiene_inconsistencia && inconsistenciasCount[a.inconsistencia_codigo] !== undefined) {
-                inconsistenciasCount[a.inconsistencia_codigo]++;
-            }
-        }
-        const anomaliasCriticasYAdvertencias =
-            inconsistenciasCount.SIN_HABITACION_CON_ATENCION +
-            inconsistenciasCount.ABIERTA_OLVIDADA_SIN_ALTA +
-            inconsistenciasCount.INTERNACION_SUSPENDIDA +
-            inconsistenciasCount.SERVICIO_INCORRECTO_CHEQUEO;
-
-        return {
-            diasCal,
-            horasDisponiblesSr,
-            diasDisponiblesSr,
-            horasNetasSr: Math.round(horasNetasSr * 100) / 100,
-            horasBrutasSr: Math.round(horasBrutasSr * 100) / 100,
-            minSolapadosSr: Math.round(minSolapadosSr * 10) / 10,
-            diasProporcionalesSr: Math.round(diasProporcionalesSr * 100) / 100,
-            pctOcupacionSr: Math.round(pctOcupacionSr * 100) / 100,
-            diasTradicionalesSr,
-            diasFantasmaDepurados: Math.round(diasFantasmaDepurados * 100) / 100,
-            eventosMultiRotacion,
-            horasSinBox: Math.round(horasSinBox * 100) / 100,
-            diasPropSinBox: Math.round(diasPropSinBox * 100) / 100,
-            diasPropSrConSinBox: Math.round(diasPropSrConSinBox * 100) / 100,
-            pctOcupacionSrConSinBox: Math.round(pctOcupacionSrConSinBox * 100) / 100,
-            horasPiso: Math.round(horasPiso * 100) / 100,
-            diasPropPiso: Math.round(diasPropPiso * 100) / 100,
-            totalAdmisiones: periodAdmisiones.length,
-            validasCount: validas.length,
-            excluidasCount: excluidas.length,
-            soloSrCount: soloSr.length,
-            mixtoSrPisoCount: mixtoSrPiso.length,
-            soloPisoCount: soloPiso.length,
-            sinHabConAtencionCount: sinHabConAtencion.length,
-            boxSummary,
-            inconsistenciasCount,
-            anomaliasCriticasYAdvertencias
-        };
-    }, [periodAdmisiones, periodOcupacion, effectiveDateRange, boxesConfig]);
-
-    // Serie evolutiva (mensual si el período > 45 días, o diaria si es <= 45 días)
-    const chartData = useMemo(() => {
-        const isDailyMode = effectiveDateRange.diasCalendario <= 45;
-        const srRows = periodOcupacion.filter(o => o.tipo_unidad === 'SHOCK_ROOM_BOX');
-        const map = new Map();
-
-        for (const r of srRows) {
-            const key = isDailyMode ? r.fecha : r.periodo;
-            const prev = map.get(key) || {
-                key,
-                horasNetas: 0,
-                diasProp: 0,
-                diasTradicional: 0,
-                pacientes: 0
-            };
-            prev.horasNetas += Number(r.horas_netas_ocupadas || 0);
-            prev.diasProp += Number(r.dias_proporcionales || 0);
-            prev.diasTradicional += Number(r.dias_conteo_tradicional || 0);
-            prev.pacientes += Number(r.pacientes_distintos || 0);
-            map.set(key, prev);
-        }
-
-        const mesesCortos = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
-
-        return Array.from(map.values())
-            .sort((a, b) => a.key.localeCompare(b.key))
-            .map(item => {
-                let diasCapacidad = boxesConfig;
-                let label = item.key;
-                if (isDailyMode) {
-                    const [, m, d] = item.key.split('-');
-                    label = `${d}/${m}`;
-                    diasCapacidad = boxesConfig;
-                } else {
-                    const [y, m] = item.key.split('-').map(Number);
-                    const maxDaysInMonth = new Date(y, m, 0).getDate();
-                    // Si es el último mes del rango, respetar la fecha tope
-                    const monthStart = `${item.key}-01`;
-                    const monthEnd = `${item.key}-${String(maxDaysInMonth).padStart(2, '0')}`;
-                    const effStart = monthStart < effectiveDateRange.desde ? effectiveDateRange.desde : monthStart;
-                    const effEnd = monthEnd > effectiveDateRange.hasta ? effectiveDateRange.hasta : monthEnd;
-                    const dCount = countCalendarDaysInclusive(effStart, effEnd);
-                    diasCapacidad = boxesConfig * dCount;
-                    label = `${mesesCortos[(m || 1) - 1]} ${String(y).slice(2)}`;
-                }
-
-                const dProp = Math.round((item.horasNetas / 24) * 100) / 100;
-                const pct = diasCapacidad > 0 ? Math.round((dProp / diasCapacidad) * 1000) / 10 : 0;
-
-                return {
-                    key: item.key,
-                    label,
-                    horasNetas: Math.round(item.horasNetas * 10) / 10,
-                    diasProporcionales: dProp,
-                    diasTradicionales: item.diasTradicional,
-                    diasDisponibles: diasCapacidad,
-                    pctOcupacion: pct,
-                    pacientes: item.pacientes
-                };
-            });
-    }, [periodOcupacion, effectiveDateRange, boxesConfig]);
-
-    // Detalle del día seleccionado para la Franja Visual de 24 Horas por Box
-    const inspectDayBoxes = useMemo(() => {
-        if (!selectedInspectDate) return [];
-        const dayRows = periodOcupacion.filter(
-            o => o.fecha === selectedInspectDate && o.tipo_unidad === 'SHOCK_ROOM_BOX'
-        );
-        return ['BOX 1-SR', 'BOX 2-SR', 'BOX 3-SR'].map(boxName => {
-            const found = dayRows.find(r => r.unidad === boxName);
-            const horasNetas = Number(found?.horas_netas_ocupadas || 0);
-            const diasProp = Math.round((horasNetas / 24) * 1000) / 1000;
-            const tramos = Array.isArray(found?.detalle_tramos_dia) ? found.detalle_tramos_dia : [];
-            return {
-                unidad: boxName,
-                horasNetas: Math.round(horasNetas * 100) / 100,
-                horasLibres: Math.max(0, Math.round((24 - horasNetas) * 100) / 100),
-                diasProporcionales: diasProp,
-                pctOcupacion: Math.round((horasNetas / 24) * 1000) / 10,
-                pacientesCount: Number(found?.pacientes_distintos || 0),
-                minSolapados: Number(found?.minutos_solapados || 0),
-                tramos
-            };
-        });
-    }, [periodOcupacion, selectedInspectDate]);
-
-    // Filtrado para Bandeja de Auditoría de Inconsistencias
-    const filteredInconsistencias = useMemo(() => {
+    // Filas filtradas en la Planilla Principal Tipo Excel
+    const filteredRows = useMemo(() => {
         return periodAdmisiones.filter(a => {
-            if (!a.tiene_inconsistencia) return false;
-            if (inconsistenciaFilter === 'CRITICAS_SIN_HAB') {
-                return [
-                    'SIN_HABITACION_CON_ATENCION',
-                    'ABIERTA_OLVIDADA_SIN_ALTA',
-                    'INTERNACION_SUSPENDIDA',
-                    'SERVICIO_INCORRECTO_CHEQUEO'
-                ].includes(a.inconsistencia_codigo);
-            }
-            if (inconsistenciaFilter !== 'TODAS_OBSERVADAS' && a.inconsistencia_codigo !== inconsistenciaFilter) {
-                return false;
-            }
-            if (searchQuery.trim()) {
-                const q = searchQuery.toLowerCase();
-                const match =
-                    String(a.paciente || '').toLowerCase().includes(q) ||
-                    String(a.numero_admision || '').toLowerCase().includes(q) ||
-                    String(a.nhc || '').toLowerCase().includes(q) ||
-                    String(a.dni || '').toLowerCase().includes(q);
-                if (!match) return false;
-            }
-            return true;
-        });
-    }, [periodAdmisiones, inconsistenciaFilter, searchQuery]);
+            if (serieFilter === 'SOLO_I_DIRECCION' && !isSerieI(a)) return false;
+            if (serieFilter === 'SOLO_SR_OMITIDAS' && !isSerieSR(a)) return false;
 
-    // Filtrado para Padrón Nominal Completo
-    const filteredPadron = useMemo(() => {
-        return periodAdmisiones.filter(a => {
-            if (regimenFilter === 'SOLO_VALIDAS' && !a.incluida_en_presupuesto) return false;
-            if (regimenFilter === 'SOLO_EXCLUIDAS' && a.incluida_en_presupuesto) return false;
-            if (
-                ['SHOCK_ROOM', 'MIXTO_SR_PISO', 'PISO_CLINICO', 'SIN_HABITACION'].includes(regimenFilter) &&
-                a.regimen_ubicacion !== regimenFilter
-            ) {
-                return false;
-            }
+            if (ubicacionFilter === 'SHOCK_ROOM' && a.regimen_ubicacion !== 'SHOCK_ROOM' && a.regimen_ubicacion !== 'MIXTO_SR_PISO') return false;
+            if (ubicacionFilter === 'PISO' && a.regimen_ubicacion !== 'PISO_CLINICO' && a.regimen_ubicacion !== 'CRITICOS_UCI' && a.regimen_ubicacion !== 'MIXTO_SR_PISO') return false;
+            if (ubicacionFilter === 'SIN_HABITACION' && a.habitacion_salus) return false;
+            if (ubicacionFilter === 'EXCLUIDAS' && a.incluida_en_presupuesto) return false;
+
+            const proc = String(a.proceso_salus || '');
+            if (procesoFilter === '400109' && !proc.includes('400109')) return false;
+            if (procesoFilter === '420301' && !proc.includes('420301')) return false;
+            if (procesoFilter === 'SIN_PROCESO' && proc.trim() !== '') return false;
+
             if (searchQuery.trim()) {
                 const q = searchQuery.toLowerCase();
                 const match =
@@ -562,157 +348,258 @@ export default function GuardiaAdmisionesOcupacionPanel({
                     String(a.nhc || '').toLowerCase().includes(q) ||
                     String(a.dni || '').toLowerCase().includes(q) ||
                     String(a.habitacion_salus || '').toLowerCase().includes(q) ||
-                    String(a.obra_social || '').toLowerCase().includes(q);
+                    String(a.obra_social || '').toLowerCase().includes(q) ||
+                    String(a.servicio_salus || '').toLowerCase().includes(q);
                 if (!match) return false;
             }
             return true;
         });
-    }, [periodAdmisiones, regimenFilter, searchQuery]);
+    }, [periodAdmisiones, serieFilter, ubicacionFilter, procesoFilter, searchQuery]);
 
-    // Exportador Excel Presupuestario Multi-Hoja para Gerencia
+    // Resumen numérico directo sobre las filas filtradas y sobre el período
+    const totals = useMemo(() => {
+        const countSerieI = periodAdmisiones.filter(isSerieI).length;
+        const countSerieSR = periodAdmisiones.filter(isSerieSR).length;
+        const countOtras = periodAdmisiones.length - countSerieI - countSerieSR;
+
+        let sumHoras = 0;
+        let sumDiasDireccion = 0;
+        let sumDiasProporcionales = 0;
+        let sumHorasSR = 0;
+        let sumHorasPiso = 0;
+
+        for (const r of filteredRows) {
+            if (!r.incluida_en_presupuesto) continue;
+            const h = Number(r.horas_presupuesto_total || 0);
+            sumHoras += h;
+            sumDiasDireccion += calcDiasFormulaDireccion(r.horas_brutas_salus);
+            sumDiasProporcionales += Number(r.dias_proporcionales_total || 0);
+            sumHorasSR += Number(r.horas_shock_room || 0);
+            sumHorasPiso += Number(r.horas_piso || 0);
+        }
+
+        const srRows = periodOcupacion.filter(o => o.tipo_unidad === 'SHOCK_ROOM_BOX');
+        const horasNetasBoxesSr = srRows.reduce((s, o) => s + Number(o.horas_netas_ocupadas || 0), 0);
+        const diasPropBoxesSr = horasNetasBoxesSr / 24;
+        const diasDispBoxesSr = boxesConfig * effectiveDateRange.diasCalendario;
+        const pctOcupBoxesSr = diasDispBoxesSr > 0 ? (diasPropBoxesSr / diasDispBoxesSr) * 100 : 0;
+
+        const sinHabCount = periodAdmisiones.filter(a => !a.habitacion_salus).length;
+        const excluidasCount = periodAdmisiones.filter(a => !a.incluida_en_presupuesto).length;
+
+        const boxSummary = ['BOX 1-SR', 'BOX 2-SR', 'BOX 3-SR'].map(boxName => {
+            const bRows = srRows.filter(r => r.unidad === boxName);
+            const hNet = bRows.reduce((s, r) => s + Number(r.horas_netas_ocupadas || 0), 0);
+            const dProp = hNet / 24;
+            const pacs = bRows.reduce((s, r) => s + Number(r.pacientes_distintos || 0), 0);
+            return {
+                unidad: boxName,
+                horasNetas: Math.round(hNet * 100) / 100,
+                diasProporcionales: Math.round(dProp * 100) / 100,
+                diasDisponibles: effectiveDateRange.diasCalendario,
+                pctOcupacion: Math.round((dProp / effectiveDateRange.diasCalendario) * 1000) / 10,
+                pacientes: pacs
+            };
+        });
+
+        return {
+            totalPeriodo: periodAdmisiones.length,
+            countSerieI,
+            countSerieSR,
+            countOtras,
+            filteredCount: filteredRows.length,
+            sumHoras: Math.round(sumHoras * 100) / 100,
+            sumHorasSR: Math.round(sumHorasSR * 100) / 100,
+            sumHorasPiso: Math.round(sumHorasPiso * 100) / 100,
+            sumDiasDireccion: Math.round(sumDiasDireccion * 100) / 100,
+            sumDiasProporcionales: Math.round(sumDiasProporcionales * 100) / 100,
+            diferenciaDias: Math.round((sumDiasDireccion - sumDiasProporcionales) * 100) / 100,
+            horasNetasBoxesSr: Math.round(horasNetasBoxesSr * 100) / 100,
+            diasPropBoxesSr: Math.round(diasPropBoxesSr * 100) / 100,
+            diasDispBoxesSr,
+            pctOcupBoxesSr: Math.round(pctOcupBoxesSr * 100) / 100,
+            sinHabCount,
+            excluidasCount,
+            boxSummary
+        };
+    }, [periodAdmisiones, filteredRows, periodOcupacion, effectiveDateRange, boxesConfig]);
+
+    // Días con mayor rotación para la pestaña de Boxes 24h
+    const highRotationDays = useMemo(() => {
+        const byDay = new Map();
+        for (const r of periodOcupacion) {
+            if (r.tipo_unidad !== 'SHOCK_ROOM_BOX') continue;
+            const prev = byDay.get(r.fecha) || { fecha: r.fecha, pacs: 0, diasProp: 0 };
+            prev.pacs += Number(r.pacientes_distintos || 0);
+            prev.diasProp += Number(r.dias_proporcionales || 0);
+            byDay.set(r.fecha, prev);
+        }
+        return Array.from(byDay.values()).sort((a, b) => b.pacs - a.pacs || b.fecha.localeCompare(a.fecha));
+    }, [periodOcupacion]);
+
+    useEffect(() => {
+        if (highRotationDays.length && !highRotationDays.some(d => d.fecha === selectedInspectDate)) {
+            setSelectedInspectDate(highRotationDays[0].fecha);
+        }
+    }, [highRotationDays]);
+
+    const inspectDayBoxes = useMemo(() => {
+        if (!selectedInspectDate) return [];
+        const dayRows = periodOcupacion.filter(o => o.fecha === selectedInspectDate && o.tipo_unidad === 'SHOCK_ROOM_BOX');
+        return ['BOX 1-SR', 'BOX 2-SR', 'BOX 3-SR'].map(boxName => {
+            const found = dayRows.find(r => r.unidad === boxName);
+            const hNet = Number(found?.horas_netas_ocupadas || 0);
+            return {
+                unidad: boxName,
+                horasNetas: Math.round(hNet * 100) / 100,
+                diasProporcionales: Math.round((hNet / 24) * 1000) / 1000,
+                pctOcupacion: Math.round((hNet / 24) * 1000) / 10,
+                pacientesCount: Number(found?.pacientes_distintos || 0),
+                tramos: Array.isArray(found?.detalle_tramos_dia) ? found.detalle_tramos_dia : []
+            };
+        });
+    }, [periodOcupacion, selectedInspectDate]);
+
+    // Exportar Excel IDÉNTICO a las columnas de Dirección + Columnas de Conciliación y Proporción Real
     const handleExportExcel = async () => {
         try {
             const XLSX = await import('xlsx');
             const wb = XLSX.utils.book_new();
 
-            // Hoja 1: Resumen Ejecutivo para Presupuesto de Gerencia
+            // Hoja 1: TODAS LAS ADMISIONES (Mismo formato que Dirección + Columnas Auditadas)
+            const headers = [
+                'Fecha Ingreso',
+                'Mes/Año',
+                'N. Admisión',
+                'Serie Admisión',
+                '¿Estaba en Excel Dirección?',
+                'Documento',
+                'Paciente',
+                'Cliente',
+                'Días (SALUS)',
+                'Procesos',
+                'Servicio',
+                'Doctor',
+                'NHC',
+                'Edad',
+                'Habitación (Cabecera SALUS)',
+                'Recorrido Real de Camas (Historial)',
+                'Fecha Alta',
+                'Motivo Alta',
+                'Horas de Internación (SALUS)',
+                'Días s/Fórmula Dirección (Mín 1)',
+                'Días Proporcionales Reales (Horas ÷ 24)',
+                'Horas en Shock Room',
+                'Días Prop. Shock Room (Hs SR ÷ 24)',
+                'Horas en Piso Clínico',
+                'Días Prop. Piso (Hs Piso ÷ 24)',
+                'Incluida en Presupuesto',
+                'Diagnóstico de Auditoría'
+            ];
+
+            const rowsToExport = filteredRows.map(a => {
+                const enDireccion = isSerieI(a) ? 'SÍ (Serie I)' : 'NO — OMITIDA POR DIRECCIÓN (Serie SR/Otra)';
+                const diasDir = a.incluida_en_presupuesto ? calcDiasFormulaDireccion(a.horas_brutas_salus) : 0;
+                return [
+                    formatSqlDateTime(a.fecha_ingreso),
+                    `${a.periodo}-01`,
+                    a.numero_admision || '',
+                    a.serie_admision || (isSerieSR(a) ? 'SHOCK ROOM' : 'INTERNADO'),
+                    enDireccion,
+                    a.dni || '',
+                    a.paciente || '',
+                    a.obra_social || '',
+                    a.dias_salus ?? '',
+                    a.proceso_salus || '',
+                    a.servicio_salus || '',
+                    a.doctor_cabecera || 'GARCIA, PAOLA GUADALUPE',
+                    a.nhc || '',
+                    a.edad_salus !== null && a.edad_salus !== undefined ? `${a.edad_salus}a` : '',
+                    a.habitacion_salus || 'SIN HABITACIÓN',
+                    formatRecorridoCamas(a.tramos_json),
+                    a.fecha_alta ? formatSqlDateTime(a.fecha_alta) : 'SIN ALTA (ABIERTA)',
+                    a.motivo_alta || '',
+                    Number(a.horas_brutas_salus || 0),
+                    diasDir,
+                    Number(a.dias_proporcionales_total || 0),
+                    Number(a.horas_shock_room || 0),
+                    Number(a.dias_proporcionales_sr || 0),
+                    Number(a.horas_piso || 0),
+                    Number(a.dias_proporcionales_piso || 0),
+                    a.incluida_en_presupuesto ? 'SI' : 'NO (EXCLUIDA)',
+                    a.inconsistencia_detalle || 'OK — Consistente'
+                ];
+            });
+
+            const wsAdm = XLSX.utils.aoa_to_sheet([headers, ...rowsToExport]);
+            wsAdm['!cols'] = [
+                { wch: 20 }, { wch: 12 }, { wch: 13 }, { wch: 15 }, { wch: 34 },
+                { wch: 13 }, { wch: 30 }, { wch: 28 }, { wch: 12 }, { wch: 44 },
+                { wch: 20 }, { wch: 26 }, { wch: 10 }, { wch: 8 }, { wch: 22 },
+                { wch: 36 }, { wch: 20 }, { wch: 20 }, { wch: 22 }, { wch: 26 },
+                { wch: 28 }, { wch: 18 }, { wch: 24 }, { wch: 18 }, { wch: 22 },
+                { wch: 20 }, { wch: 60 }
+            ];
+            XLSX.utils.book_append_sheet(wb, wsAdm, '1_Todas_Las_Admisiones');
+
+            // Hoja 2: Resumen Ejecutivo y Explicación de Diferencias con Dirección
             const resumenAoA = [
-                ['REPORTE PRESUPUESTARIO DE GUARDIA CLÍNICA (CABECERA: DRA. PAOLA GARCÍA)'],
-                ['Criterio Oficial de Ocupación:', 'Proporcional por Horas Reales (Horas Ocupadas / 24 = Días Proporcionales, independiente de la cantidad de pacientes)'],
-                ['Período Analizado:', effectiveDateRange.label],
-                ['Días Calendario del Período:', kpis.diasCal],
-                ['Dotación Operativa Shock Room (Boxes):', boxesConfig],
+                ['CONCILIACIÓN DE ADMISIONES GUARDIA CLÍNICA (DRA. PAOLA GARCÍA) — SALUS vs. EXCEL DIRECCIÓN'],
+                ['Período Exportado:', effectiveDateRange.label],
+                ['Días Calendario del Período:', effectiveDateRange.diasCalendario],
                 [],
-                ['INDICADOR PRESUPUESTARIO SHOCK ROOM', 'VALOR', 'UNIDAD / DETALLE'],
-                ['Capacidad Instalada en Horas (Boxes x 24h x Días)', kpis.horasDisponiblesSr, 'Horas-Box disponibles'],
-                ['Capacidad Instalada en Días-Box', kpis.diasDisponiblesSr, 'Días-Box disponibles (1 Box 24h = 1,00 día)'],
-                ['Horas Físicas Netas Ocupadas en Boxes SR', kpis.horasNetasSr, 'Horas netas (sin solapamientos)'],
-                ['Días Proporcionales Ocupados en Boxes SR (Horas / 24)', kpis.diasProporcionalesSr, 'Días Proporcionales Reales'],
-                ['% Ocupación Proporcional Shock Room', `${kpis.pctOcupacionSr}%`, 'Horas Netas / Horas Disponibles'],
-                ['Horas Auditadas con Atención Real sin Box Asignado (400109)', kpis.horasSinBox, `${kpis.diasPropSinBox} días proporcionales adicionales`],
-                ['% Ocupación Integrada (Boxes + Sin Box con Atención)', `${kpis.pctOcupacionSrConSinBox}%`, `${kpis.diasPropSrConSinBox} días proporcionales totales`],
+                ['1. ¿QUÉ ADMISIONES FALTABAN EN EL EXCEL DE DIRECCIÓN?', 'CANTIDAD', 'EXPLICACIÓN'],
+                ['Total Admisiones Reales en SALUS (en el período)', totals.totalPeriodo, '100% de las admisiones no anuladas con Doctor = GARCIA, PAOLA GUADALUPE'],
+                ['Admisiones Serie I (I0...) — Las únicas que veía Dirección', totals.countSerieI, 'Dirección tenía filtrado únicamente el talonario/serie I (Internado)'],
+                ['Admisiones Serie SR (SR00...) — OMITIDAS en Excel Dirección', totals.countSerieSR, 'Pacientes reales atendidos en Shock Room (módulo 400109/420301) ingresados con serie SR'],
+                ['Otras Series (UCI / TI / Otros)', totals.countOtras, ' Casos puntuales de otras series'],
                 [],
-                ['CONCILIACIÓN CONTRA CONTEO TRADICIONAL DISTORSIONADO', 'VALOR', 'EXPLICACIÓN'],
-                ['Días que arrojaba el Conteo Tradicional (1 pac = 1 día)', kpis.diasTradicionalesSr, 'Inflado cuando entran 2, 3 o 4 pacientes el mismo día al mismo box'],
-                ['Días Proporcionales Reales (Horas / 24)', kpis.diasProporcionalesSr, 'Medición exacta por proporción horaria'],
-                ['Días-Cama Fantasma Depurados', kpis.diasFantasmaDepurados, `${kpis.eventosMultiRotacion} días-box tuvieron rotación múltiple en el mismo día`],
+                ['2. COMPARATIVA DE DÍAS DE OCUPACIÓN (FILAS FILTRADAS)', 'VALOR', 'CRITERIO'],
+                ['Suma de Horas Reales (Válidas)', totals.sumHoras, `${totals.sumHorasSR} hs en Boxes SR + ${totals.sumHorasPiso} hs en Camas de Piso`],
+                ['Días según Fórmula Excel Dirección (Mínimo 1 día si < 24h)', totals.sumDiasDireccion, 'Infla cada estancia breve de 2 o 3 hs en Shock Room como 1,00 día entero'],
+                ['Días Proporcionales Reales (Horas ÷ 24)', totals.sumDiasProporcionales, '12 hs usadas de 24 hs = 0,50 días sin importar cuántos pacientes rotaron'],
+                ['Días Inflados Depurados', totals.diferenciaDias, 'Diferencia entre fórmula con piso mínimo 1 día vs. proporción exacta Hs/24'],
                 [],
-                ['DESGLOSE POR BOX FÍSICO DE SHOCK ROOM', 'HORAS NETAS', 'DÍAS PROPORCIONALES (Hs/24)', 'DÍAS DISPONIBLES', '% OCUPACIÓN', 'PACIENTES ATENDIDOS'],
-                ...kpis.boxSummary.map(b => [
+                ['3. OCUPACIÓN FÍSICA NETA DE LOS 3 BOXES DE SHOCK ROOM', 'HORAS NETAS', 'DÍAS PROP. (Hs/24)', 'DÍAS DISPONIBLES', '% OCUPACIÓN REAL', 'PACIENTES'],
+                ...totals.boxSummary.map(b => [
                     b.unidad,
                     b.horasNetas,
                     b.diasProporcionales,
                     b.diasDisponibles,
                     `${b.pctOcupacion}%`,
-                    b.rotacionesPacientes
+                    b.pacientes
                 ]),
-                [],
-                ['ESTADÍA EN PISO CLÍNICO (DRA. PAOLA GARCÍA)', 'VALOR', 'DETALLE'],
-                ['Admisiones exclusivas en Piso + Tramos Mixtos (SR -> Piso)', kpis.soloPisoCount + kpis.mixtoSrPisoCount, `${kpis.mixtoSrPisoCount} iniciaron en SR y subieron a Piso`],
-                ['Horas Ocupadas en Camas de Piso', kpis.horasPiso, `${kpis.diasPropPiso} días proporcionales en Piso`]
+                ['TOTAL 3 BOXES SHOCK ROOM', totals.horasNetasBoxesSr, totals.diasPropBoxesSr, totals.diasDispBoxesSr, `${totals.pctOcupBoxesSr}%`, '']
             ];
-            const wsResumen = XLSX.utils.aoa_to_sheet(resumenAoA);
-            wsResumen['!cols'] = [{ wch: 52 }, { wch: 18 }, { wch: 28 }, { wch: 18 }, { wch: 16 }, { wch: 20 }];
-            XLSX.utils.book_append_sheet(wb, wsResumen, '1_Presupuesto_Gerencia');
+            const wsRes = XLSX.utils.aoa_to_sheet(resumenAoA);
+            wsRes['!cols'] = [{ wch: 56 }, { wch: 18 }, { wch: 62 }, { wch: 18 }, { wch: 18 }, { wch: 14 }];
+            XLSX.utils.book_append_sheet(wb, wsRes, '2_Conciliacion_Direccion');
 
-            // Hoja 2: Ocupación Proporcional Diaria por Box
+            // Hoja 3: Ocupación Diaria por Box
             const ocupHeaders = [
-                'Fecha', 'Período', 'Unidad / Box', 'Tipo Unidad', 'Pacientes en el Día',
-                'Horas Brutas Pacientes', 'Horas Netas Ocupadas (Máx 24h)', 'Minutos Solapados Deduplicados',
-                'Días Proporcionales (Horas / 24)', 'Conteo Tradicional Pacientes/Día', '% Ocupación del Día'
+                'Fecha', 'Unidad / Box', 'Pacientes en el Día', 'Horas Netas Ocupadas (Máx 24h)',
+                'Días Proporcionales Reales (Horas ÷ 24)', '% Ocupación del Box en el Día'
             ];
-            const ocupRows = periodOcupacion.map(o => [
-                o.fecha,
-                o.periodo,
-                o.unidad,
-                o.tipo_unidad,
-                o.pacientes_distintos,
-                Number(o.horas_brutas_pacientes || 0),
-                Number(o.horas_netas_ocupadas || 0),
-                Number(o.minutos_solapados || 0),
-                Number(o.dias_proporcionales || 0),
-                Number(o.dias_conteo_tradicional || 0),
-                `${Number(o.porcentaje_ocupacion || 0)}%`
-            ]);
-            const wsOcup = XLSX.utils.aoa_to_sheet([ocupHeaders, ...ocupRows]);
-            wsOcup['!cols'] = [
-                { wch: 12 }, { wch: 10 }, { wch: 22 }, { wch: 18 }, { wch: 18 },
-                { wch: 22 }, { wch: 26 }, { wch: 26 }, { wch: 28 }, { wch: 28 }, { wch: 18 }
-            ];
-            XLSX.utils.book_append_sheet(wb, wsOcup, '2_Ocupacion_Diaria_Box');
-
-            // Hoja 3: Padrón Nominal Completo Dra. Paola García
-            const nomHeaders = [
-                'ID Admisión', 'N° Admisión', 'Fecha Ingreso', 'Fecha Alta', 'Paciente', 'NHC', 'DNI',
-                'Obra Social', 'Habitación SALUS', 'Régimen Real', 'Servicio SALUS', 'Proceso / Módulo',
-                'Motivo Alta', 'Horas Shock Room', 'Días Prop. SR (Hs/24)', 'Horas Piso', 'Días Prop. Piso (Hs/24)',
-                'Horas Sin Box Auditadas', 'Total Días Proporcionales', 'Incluida Presupuesto',
-                'Código Consistencia', 'Detalle Auditoría'
-            ];
-            const nomRows = periodAdmisiones.map(a => [
-                a.id_admision,
-                a.numero_admision || '',
-                formatDateTimeShort(a.fecha_ingreso),
-                a.fecha_alta ? formatDateTimeShort(a.fecha_alta) : 'ABIERTA',
-                a.paciente || '',
-                a.nhc || '',
-                a.dni || '',
-                a.obra_social || '',
-                a.habitacion_salus || 'SIN HABITACIÓN',
-                a.regimen_ubicacion,
-                a.servicio_salus || '',
-                a.proceso_salus || '',
-                a.motivo_alta || '',
-                Number(a.horas_shock_room || 0),
-                Number(a.dias_proporcionales_sr || 0),
-                Number(a.horas_piso || 0),
-                Number(a.dias_proporcionales_piso || 0),
-                Number(a.horas_sin_box_auditadas || 0),
-                Number(a.dias_proporcionales_total || 0),
-                a.incluida_en_presupuesto ? 'SI' : 'NO (EXCLUIDA)',
-                a.inconsistencia_codigo,
-                a.inconsistencia_detalle || 'OK'
-            ]);
-            const wsNom = XLSX.utils.aoa_to_sheet([nomHeaders, ...nomRows]);
-            wsNom['!cols'] = Array(22).fill({ wch: 20 });
-            XLSX.utils.book_append_sheet(wb, wsNom, '3_Padron_Paola_Garcia');
-
-            // Hoja 4: Bandeja de Inconsistencias SALUS
-            const incRows = periodAdmisiones
-                .filter(a => a.tiene_inconsistencia)
-                .map(a => [
-                    a.numero_admision || '',
-                    formatDateTimeShort(a.fecha_ingreso),
-                    a.fecha_alta ? formatDateTimeShort(a.fecha_alta) : 'SIN ALTA',
-                    a.paciente || '',
-                    a.nhc || '',
-                    a.habitacion_salus || 'SIN HABITACIÓN',
-                    a.servicio_salus || '',
-                    Number(a.horas_brutas_salus || 0),
-                    INCONSISTENCIA_META[a.inconsistencia_codigo]?.label || a.inconsistencia_codigo,
-                    a.incluida_en_presupuesto ? 'Incluida (Reclasificada)' : 'Excluida de Ocupación',
-                    a.inconsistencia_detalle || ''
+            const ocupRows = periodOcupacion
+                .filter(o => o.tipo_unidad === 'SHOCK_ROOM_BOX')
+                .map(o => [
+                    o.fecha,
+                    o.unidad,
+                    o.pacientes_distintos,
+                    Number(o.horas_netas_ocupadas || 0),
+                    Number(o.dias_proporcionales || 0),
+                    `${Number(o.porcentaje_ocupacion || 0)}%`
                 ]);
-            const wsInc = XLSX.utils.aoa_to_sheet([
-                [
-                    'N° Admisión', 'Ingreso', 'Alta', 'Paciente', 'NHC', 'Habitación SALUS',
-                    'Servicio SALUS', 'Horas Brutas SALUS', 'Tipo Inconsistencia',
-                    'Impacto Presupuesto', 'Diagnóstico y Acción Recomendada'
-                ],
-                ...incRows
-            ]);
-            wsInc['!cols'] = [
-                { wch: 15 }, { wch: 18 }, { wch: 18 }, { wch: 28 }, { wch: 12 }, { wch: 18 },
-                { wch: 22 }, { wch: 18 }, { wch: 28 }, { wch: 22 }, { wch: 65 }
-            ];
-            XLSX.utils.book_append_sheet(wb, wsInc, '4_Inconsistencias_SALUS');
+            const wsOcup = XLSX.utils.aoa_to_sheet([ocupHeaders, ...ocupRows]);
+            wsOcup['!cols'] = [{ wch: 14 }, { wch: 16 }, { wch: 20 }, { wch: 28 }, { wch: 32 }, { wch: 26 }];
+            XLSX.utils.book_append_sheet(wb, wsOcup, '3_Ocupacion_Diaria_Boxes');
 
-            const tag = new Date().toISOString().slice(0, 10);
-            XLSX.writeFile(wb, `presupuesto_guardia_clinica_paola_garcia_${tag}.xlsx`);
-            addToast?.('Libro Excel Presupuestario (4 hojas) descargado con éxito', 'success');
+            const tag = `${effectiveDateRange.desde}_a_${effectiveDateRange.hasta}`;
+            XLSX.writeFile(wb, `Admisiones_Guardia_Paola_Garcia_${tag}.xlsx`);
+            addToast?.(`Excel descargado con ${rowsToExport.length} admisiones`, 'success');
         } catch (err) {
-            console.error('Error exportando Excel de Guardia Clínica:', err);
-            addToast?.('Error al generar el Excel presupuestario', 'error');
+            console.error('Error exportando Excel:', err);
+            addToast?.('Error al generar el archivo Excel', 'error');
         }
     };
 
@@ -723,54 +610,36 @@ export default function GuardiaAdmisionesOcupacionPanel({
                 borderRadius: '12px',
                 border: '1px solid #E2E8F0',
                 padding: '48px 24px',
-                textAlign: 'center',
-                color: '#475569'
+                textAlign: 'center'
             }}>
                 <RefreshCw size={28} className="animate-spin" style={{ color: '#1E40AF', margin: '0 auto 12px auto' }} />
-                <div style={{ fontWeight: 700, fontSize: '0.95rem', color: '#0F172A' }}>
-                    Calculando Ocupación Proporcional por Horas y Auditoría de Admisiones (Dra. Paola García)...
+                <div style={{ fontWeight: 700, color: '#0F172A' }}>
+                    Cargando padrón completo de admisiones de Dra. Paola García...
                 </div>
             </div>
         );
     }
 
     return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
-            {/* ─── ENCABEZADO EJECUTIVO & SUB-NAVEGACIÓN ─── */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            {/* ─── BARRA SUPERIOR: PERÍODOS RÁPIDOS + DESCARGA EXCEL DIRECTA ─── */}
             <div style={{
                 background: '#FFFFFF',
                 borderRadius: '12px',
-                border: '1px solid #E2E8F0',
+                border: '1px solid #CBD5E1',
                 padding: '16px 20px',
                 display: 'flex',
                 flexDirection: 'column',
                 gap: '14px',
-                boxShadow: '0 1px 3px rgba(15, 23, 42, 0.04)'
+                boxShadow: '0 1px 3px rgba(15, 23, 42, 0.05)'
             }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
                     <div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                            <span style={{
-                                background: '#DBEAFE',
-                                color: '#1E40AF',
-                                fontSize: '0.68rem',
-                                fontWeight: 800,
-                                padding: '2px 8px',
-                                borderRadius: '6px',
-                                textTransform: 'uppercase',
-                                letterSpacing: '0.4px'
-                            }}>
-                                Criterio Presupuestario Gerencia
-                            </span>
-                            <span style={{ fontSize: '0.75rem', color: '#64748B', fontWeight: 600 }}>
-                                Período evaluado: <strong style={{ color: '#0F172A' }}>{effectiveDateRange.label}</strong> ({kpis.diasCal} días calendario)
-                            </span>
-                        </div>
-                        <h3 style={{ margin: '6px 0 2px 0', fontSize: '1.08rem', fontWeight: 800, color: '#0F172A' }}>
-                            Admisiones de Guardia Clínica (Cabecera: Dra. Paola García) & Ocupación Proporcional por Horas
+                        <h3 style={{ margin: 0, fontSize: '1.08rem', fontWeight: 800, color: '#0F172A' }}>
+                            Planilla Maestra de Admisiones — Guardia Clínica (Cabecera: Dra. Paola García)
                         </h3>
-                        <p style={{ margin: 0, fontSize: '0.78rem', color: '#475569' }}>
-                            Regla proporcional exacta: <strong>Horas Netas Ocupadas ÷ 24 hs = Días Proporcionales</strong> (ej. 12 hs usadas en un día de 24 hs = <strong>0,50 días</strong>, sin importar cuántos pacientes rotaron en el box).
+                        <p style={{ margin: '3px 0 0 0', fontSize: '0.8rem', color: '#475569' }}>
+                            Período visualizado: <strong style={{ color: '#1E40AF' }}>{effectiveDateRange.label}</strong> · Incluye tanto talonario <strong>Serie I</strong> (el que veía Dirección) como <strong>Serie SR</strong> (Shock Room).
                         </p>
                     </div>
 
@@ -780,13 +649,13 @@ export default function GuardiaAdmisionesOcupacionPanel({
                             onClick={handleSyncFromSalus}
                             disabled={syncing}
                             style={{
-                                padding: '8px 12px',
+                                padding: '9px 13px',
                                 borderRadius: '8px',
                                 border: '1px solid #BFDBFE',
                                 background: '#EFF6FF',
                                 color: '#1E40AF',
                                 fontWeight: 700,
-                                fontSize: '0.78rem',
+                                fontSize: '0.8rem',
                                 cursor: syncing ? 'wait' : 'pointer',
                                 display: 'inline-flex',
                                 alignItems: 'center',
@@ -794,796 +663,164 @@ export default function GuardiaAdmisionesOcupacionPanel({
                             }}
                         >
                             <RefreshCw size={14} className={syncing ? 'animate-spin' : ''} />
-                            {syncing ? 'Sincronizando SALUS...' : 'Actualizar SALUS'}
+                            {syncing ? 'Sincronizando...' : 'Sincronizar SALUS'}
                         </button>
 
                         <button
                             type="button"
                             onClick={handleExportExcel}
                             style={{
-                                padding: '8px 14px',
+                                padding: '9px 18px',
                                 borderRadius: '8px',
-                                border: '1px solid #059669',
+                                border: '1px solid #047857',
                                 background: '#059669',
                                 color: '#FFFFFF',
-                                fontWeight: 700,
-                                fontSize: '0.78rem',
+                                fontWeight: 800,
+                                fontSize: '0.85rem',
                                 cursor: 'pointer',
                                 display: 'inline-flex',
                                 alignItems: 'center',
-                                gap: '6px',
-                                boxShadow: '0 1px 2px rgba(5, 150, 105, 0.2)'
+                                gap: '8px',
+                                boxShadow: '0 2px 4px rgba(5, 150, 105, 0.25)'
                             }}
                         >
-                            <FileSpreadsheet size={15} />
-                            Excel Presupuesto Gerencia (4 Hojas)
+                            <FileSpreadsheet size={17} />
+                            Descargar Excel Completo ({filteredRows.length} admisiones)
                         </button>
                     </div>
                 </div>
 
-                {/* Selector de Vistas del Módulo */}
+                {/* Botones rápidos de corte temporal + pestañas simples */}
                 <div style={{
                     display: 'flex',
-                    alignItems: 'center',
                     justifyContent: 'space-between',
+                    alignItems: 'center',
                     flexWrap: 'wrap',
-                    gap: '12px',
+                    gap: '10px',
                     borderTop: '1px solid #F1F5F9',
                     paddingTop: '12px'
                 }}>
-                    <div style={{
-                        display: 'flex',
-                        background: '#F8FAFC',
-                        padding: '3px',
-                        borderRadius: '8px',
-                        border: '1px solid #E2E8F0',
-                        gap: '4px',
-                        flexWrap: 'wrap'
-                    }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: '0.76rem', fontWeight: 800, color: '#334155' }}>Corte de Fechas:</span>
                         {[
-                            {
-                                id: 'presupuesto',
-                                label: '📊 Ocupación Proporcional & Presupuesto (Boxes 24h)',
-                                badge: `${kpis.diasProporcionalesSr} días (${kpis.pctOcupacionSr}%)`
-                            },
-                            {
-                                id: 'auditoria',
-                                label: '🚨 Auditoría de Inconsistencias SALUS',
-                                badge: `${kpis.anomaliasCriticasYAdvertencias} desvíos`,
-                                alert: kpis.anomaliasCriticasYAdvertencias > 0
-                            },
-                            {
-                                id: 'padron',
-                                label: '📋 Padrón Nominal Dra. Paola García',
-                                badge: `${kpis.totalAdmisiones} adm.`
-                            }
-                        ].map(t => {
-                            const active = viewTab === t.id;
-                            return (
-                                <button
-                                    key={t.id}
-                                    type="button"
-                                    onClick={() => setViewTab(t.id)}
-                                    style={{
-                                        padding: '7px 13px',
-                                        borderRadius: '6px',
-                                        border: 'none',
-                                        background: active ? '#1E40AF' : 'transparent',
-                                        color: active ? '#FFFFFF' : '#334155',
-                                        fontWeight: active ? 700 : 600,
-                                        fontSize: '0.8rem',
-                                        cursor: 'pointer',
-                                        display: 'inline-flex',
-                                        alignItems: 'center',
-                                        gap: '7px',
-                                        transition: 'all 0.15s ease'
-                                    }}
-                                >
-                                    <span>{t.label}</span>
-                                    <span style={{
-                                        padding: '1px 7px',
-                                        borderRadius: '10px',
-                                        fontSize: '0.7rem',
-                                        fontWeight: 800,
-                                        background: active
-                                            ? 'rgba(255,255,255,0.22)'
-                                            : t.alert
-                                                ? '#FEE2E2'
-                                                : '#E2E8F0',
-                                        color: active
-                                            ? '#FFFFFF'
-                                            : t.alert
-                                                ? '#991B1B'
-                                                : '#334155'
-                                    }}>
-                                        {t.badge}
-                                    </span>
-                                </button>
-                            );
-                        })}
-                    </div>
-
-                    {/* Simulador rápido de dotación de Boxes para Gerencia */}
-                    <div style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px',
-                        background: '#F8FAFC',
-                        border: '1px solid #CBD5E1',
-                        borderRadius: '8px',
-                        padding: '5px 10px'
-                    }}>
-                        <Sliders size={14} color="#1E40AF" />
-                        <span style={{ fontSize: '0.74rem', fontWeight: 700, color: '#334155' }}>
-                            Dotación Boxes SR (Simulador):
-                        </span>
-                        {[2, 3, 4, 5].map(n => (
+                            { id: 'telar', label: 'Filtro Superior del Tablero' },
+                            { id: 'corte_direccion', label: '🔍 Corte Excel Dirección (Nov 2025 – Jun 2026)' },
+                            { id: 'anio_2026', label: 'Año 2026 Completo' },
+                            { id: 'todo_2025_2026', label: 'Todo 2025–2026' }
+                        ].map(btn => (
                             <button
-                                key={n}
+                                key={btn.id}
                                 type="button"
-                                onClick={() => handleSaveBoxesConfig(n)}
-                                disabled={savingBoxes}
+                                onClick={() => setRangeMode(btn.id)}
                                 style={{
-                                    padding: '2px 8px',
+                                    padding: '6px 11px',
                                     borderRadius: '6px',
-                                    border: boxesConfig === n ? '1px solid #1E40AF' : '1px solid #CBD5E1',
-                                    background: boxesConfig === n ? '#1E40AF' : '#FFFFFF',
-                                    color: boxesConfig === n ? '#FFFFFF' : '#334155',
-                                    fontWeight: 800,
-                                    fontSize: '0.74rem',
+                                    border: rangeMode === btn.id ? '1px solid #1E40AF' : '1px solid #CBD5E1',
+                                    background: rangeMode === btn.id ? '#1E40AF' : '#F8FAFC',
+                                    color: rangeMode === btn.id ? '#FFFFFF' : '#334155',
+                                    fontWeight: 700,
+                                    fontSize: '0.76rem',
                                     cursor: 'pointer'
                                 }}
                             >
-                                {n} {n === 3 ? '(Real)' : ''}
+                                {btn.label}
+                            </button>
+                        ))}
+                    </div>
+
+                    <div style={{ display: 'flex', background: '#F1F5F9', padding: '3px', borderRadius: '8px', gap: '4px' }}>
+                        {[
+                            { id: 'planilla_excel', label: `📋 Planilla de Todas las Admisiones (${filteredRows.length})` },
+                            { id: 'ocupacion_boxes', label: `📊 Ocupación por Box 24h (${totals.pctOcupBoxesSr}%)` },
+                            { id: 'auditoria', label: `⚠️ Sin Habitación / Excluidas (${totals.sinHabCount + totals.excluidasCount})` }
+                        ].map(t => (
+                            <button
+                                key={t.id}
+                                type="button"
+                                onClick={() => setViewTab(t.id)}
+                                style={{
+                                    padding: '6px 12px',
+                                    borderRadius: '6px',
+                                    border: 'none',
+                                    background: viewTab === t.id ? '#FFFFFF' : 'transparent',
+                                    color: viewTab === t.id ? '#1E40AF' : '#475569',
+                                    fontWeight: viewTab === t.id ? 800 : 600,
+                                    fontSize: '0.77rem',
+                                    cursor: 'pointer',
+                                    boxShadow: viewTab === t.id ? '0 1px 2px rgba(0,0,0,0.08)' : 'none'
+                                }}
+                            >
+                                {t.label}
                             </button>
                         ))}
                     </div>
                 </div>
             </div>
 
-            {/* ═══════════════════════════════════════════════════════════════════════════
-                VISTA 1: PRESUPUESTO & OCUPACIÓN PROPORCIONAL POR HORAS
-               ═══════════════════════════════════════════════════════════════════════════ */}
-            {viewTab === 'presupuesto' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
-                    {/* 1. TARJETAS KPI EJECUTIVAS */}
-                    <div style={{
-                        display: 'grid',
-                        gridTemplateColumns: 'repeat(auto-fit, minmax(225px, 1fr))',
-                        gap: '12px'
-                    }}>
-                        {/* KPI 1: Días Proporcionales Shock Room */}
-                        <div style={{
-                            background: '#FFFFFF',
-                            borderRadius: '10px',
-                            border: '1px solid #BFDBFE',
-                            borderLeft: '4px solid #1E40AF',
-                            padding: '14px 16px',
-                            boxShadow: '0 1px 2px rgba(0,0,0,0.03)'
-                        }}>
-                            <span style={{ fontSize: '0.7rem', fontWeight: 800, color: '#1E40AF', textTransform: 'uppercase' }}>
-                                Días Proporcionales Shock Room
-                            </span>
-                            <div style={{ fontSize: '1.65rem', fontWeight: 900, color: '#0F172A', marginTop: '4px' }}>
-                                {kpis.diasProporcionalesSr.toLocaleString('es-AR')}
-                                <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#64748B', marginLeft: '6px' }}>
-                                    / {kpis.diasDisponiblesSr} días disp.
-                                </span>
-                            </div>
-                            <div style={{ fontSize: '0.74rem', color: '#334155', marginTop: '4px', fontWeight: 600 }}>
-                                <strong>{kpis.horasNetasSr.toLocaleString('es-AR')} hs netas</strong> ÷ 24 hs ({boxesConfig} boxes × {kpis.diasCal} d)
-                            </div>
-                        </div>
-
-                        {/* KPI 2: % Ocupación Proporcional Real */}
-                        <div style={{
-                            background: '#FFFFFF',
-                            borderRadius: '10px',
-                            border: '1px solid #E2E8F0',
-                            borderLeft: '4px solid #0284C7',
-                            padding: '14px 16px',
-                            boxShadow: '0 1px 2px rgba(0,0,0,0.03)'
-                        }}>
-                            <span style={{ fontSize: '0.7rem', fontWeight: 800, color: '#0369A1', textTransform: 'uppercase' }}>
-                                % Ocupación Proporcional SR
-                            </span>
-                            <div style={{ fontSize: '1.65rem', fontWeight: 900, color: '#0369A1', marginTop: '4px' }}>
-                                {kpis.pctOcupacionSr}%
-                            </div>
-                            <div style={{ fontSize: '0.73rem', color: '#475569', marginTop: '4px' }}>
-                                Con casos sin box ({kpis.horasSinBox} hs): <strong>{kpis.pctOcupacionSrConSinBox}%</strong> ({kpis.diasPropSrConSinBox} d)
-                            </div>
-                        </div>
-
-                        {/* KPI 3: Admisiones Guardia Clínica (Dra. Paola García) */}
-                        <div
-                            onClick={() => setViewTab('padron')}
-                            style={{
-                                background: '#FFFFFF',
-                                borderRadius: '10px',
-                                border: '1px solid #E2E8F0',
-                                borderLeft: '4px solid #0D9488',
-                                padding: '14px 16px',
-                                cursor: 'pointer',
-                                boxShadow: '0 1px 2px rgba(0,0,0,0.03)'
-                            }}
-                        >
-                            <span style={{ fontSize: '0.7rem', fontWeight: 800, color: '#0F766E', textTransform: 'uppercase' }}>
-                                Admisiones Dra. Paola García
-                            </span>
-                            <div style={{ fontSize: '1.65rem', fontWeight: 900, color: '#0F172A', marginTop: '4px' }}>
-                                {kpis.validasCount}
-                                <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#64748B', marginLeft: '6px' }}>
-                                    válidas ({kpis.excluidasCount} excluidas)
-                                </span>
-                            </div>
-                            <div style={{ fontSize: '0.72rem', color: '#475569', marginTop: '4px' }}>
-                                SR: <strong>{kpis.soloSrCount}</strong> · SR→Piso: <strong>{kpis.mixtoSrPisoCount}</strong> · Piso: <strong>{kpis.soloPisoCount}</strong>
-                            </div>
-                        </div>
-
-                        {/* KPI 4: Estadía en Camas de Piso Clínico */}
-                        <div style={{
-                            background: '#FFFFFF',
-                            borderRadius: '10px',
-                            border: '1px solid #E2E8F0',
-                            borderLeft: '4px solid #10B981',
-                            padding: '14px 16px',
-                            boxShadow: '0 1px 2px rgba(0,0,0,0.03)'
-                        }}>
-                            <span style={{ fontSize: '0.7rem', fontWeight: 800, color: '#047857', textTransform: 'uppercase' }}>
-                                Tramos en Camas de Piso Clínico
-                            </span>
-                            <div style={{ fontSize: '1.65rem', fontWeight: 900, color: '#047857', marginTop: '4px' }}>
-                                {kpis.diasPropPiso.toLocaleString('es-AR')}
-                                <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#64748B', marginLeft: '6px' }}>
-                                    días prop.
-                                </span>
-                            </div>
-                            <div style={{ fontSize: '0.72rem', color: '#475569', marginTop: '4px' }}>
-                                <strong>{kpis.horasPiso.toLocaleString('es-AR')} hs</strong> en habitaciones de Internado (separadas de SR)
-                            </div>
-                        </div>
-
-                        {/* KPI 5: Auditoría de Inconsistencias SALUS */}
-                        <div
-                            onClick={() => setViewTab('auditoria')}
-                            style={{
-                                background: kpis.anomaliasCriticasYAdvertencias > 0 ? '#FFFBEB' : '#FFFFFF',
-                                borderRadius: '10px',
-                                border: '1px solid #FDE68A',
-                                borderLeft: '4px solid #D97706',
-                                padding: '14px 16px',
-                                cursor: 'pointer',
-                                boxShadow: '0 1px 2px rgba(0,0,0,0.03)'
-                            }}
-                        >
-                            <span style={{ fontSize: '0.7rem', fontWeight: 800, color: '#B45309', textTransform: 'uppercase' }}>
-                                Auditoría sin Cama / Abiertas
-                            </span>
-                            <div style={{ fontSize: '1.65rem', fontWeight: 900, color: '#92400E', marginTop: '4px' }}>
-                                {kpis.anomaliasCriticasYAdvertencias}
-                                <span style={{ fontSize: '0.76rem', fontWeight: 700, color: '#B45309', marginLeft: '6px' }}>
-                                    casos a auditar →
-                                </span>
-                            </div>
-                            <div style={{ fontSize: '0.72rem', color: '#78350F', marginTop: '4px' }}>
-                                Sin hab. c/atención: <strong>{kpis.inconsistenciasCount.SIN_HABITACION_CON_ATENCION}</strong> · Abiertas s/alta: <strong>{kpis.inconsistenciasCount.ABIERTA_OLVIDADA_SIN_ALTA}</strong>
-                            </div>
-                        </div>
+            {/* ─── 4 TARJETAS CLARAS DE CONCILIACIÓN CONTRA EL EXCEL DE DIRECCIÓN ─── */}
+            <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))',
+                gap: '12px'
+            }}>
+                <div style={{ background: '#FFFFFF', borderRadius: '10px', border: '1px solid #BFDBFE', borderLeft: '4px solid #1E40AF', padding: '12px 15px' }}>
+                    <div style={{ fontSize: '0.7rem', fontWeight: 800, color: '#1E40AF', textTransform: 'uppercase' }}>
+                        Total Admisiones Reales (SALUS)
                     </div>
-
-                    {/* 2. COMPARADOR PEDAGÓGICO PARA GERENCIA: POR QUÉ CAMBIA EL NÚMERO */}
-                    <div style={{
-                        background: '#FFFFFF',
-                        borderRadius: '12px',
-                        border: '1px solid #CBD5E1',
-                        padding: '16px 20px',
-                        display: 'grid',
-                        gridTemplateColumns: 'repeat(auto-fit, minmax(290px, 1fr))',
-                        gap: '16px',
-                        alignItems: 'center',
-                        boxShadow: '0 1px 3px rgba(0,0,0,0.04)'
-                    }}>
-                        <div style={{
-                            background: '#FEF2F2',
-                            border: '1px solid #FECACA',
-                            borderRadius: '10px',
-                            padding: '14px 16px'
-                        }}>
-                            <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#991B1B', textTransform: 'uppercase' }}>
-                                ❌ Conteo Tradicional Distorsionado (Por Paciente)
-                            </div>
-                            <div style={{ fontSize: '1.5rem', fontWeight: 900, color: '#991B1B', marginTop: '4px' }}>
-                                {kpis.diasTradicionalesSr.toLocaleString('es-AR')} días-cama aparentes
-                            </div>
-                            <div style={{ fontSize: '0.76rem', color: '#7F1D1D', marginTop: '4px', lineHeight: 1.4 }}>
-                                Si 2 o 3 pacientes ingresan 3 hs cada uno al mismo box en el mismo día, el conteo tradicional sumaba <strong>2 o 3 días enteros en 1 solo box</strong> ({kpis.eventosMultiRotacion} eventos de rotación múltiple detectados).
-                            </div>
-                        </div>
-
-                        <div style={{
-                            background: '#EFF6FF',
-                            border: '1px solid #BFDBFE',
-                            borderRadius: '10px',
-                            padding: '14px 16px'
-                        }}>
-                            <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#1E40AF', textTransform: 'uppercase' }}>
-                                ✅ Criterio Proporcional Aprobado (Solo Horas ÷ 24)
-                            </div>
-                            <div style={{ fontSize: '1.5rem', fontWeight: 900, color: '#1E40AF', marginTop: '4px' }}>
-                                {kpis.diasProporcionalesSr.toLocaleString('es-AR')} días proporcionales reales
-                            </div>
-                            <div style={{ fontSize: '0.76rem', color: '#1E3A8A', marginTop: '4px', lineHeight: 1.4 }}>
-                                Se miden únicamente las <strong>{kpis.horasNetasSr.toLocaleString('es-AR')} hs físicas ocupadas</strong> sobre 24 hs diarias: 12 hs usadas = <strong>0,50 días</strong> sin importar cuántos pacientes pasaron. Se depuraron <strong>{kpis.diasFantasmaDepurados.toLocaleString('es-AR')} días fantasma</strong>.
-                            </div>
-                        </div>
+                    <div style={{ fontSize: '1.55rem', fontWeight: 900, color: '#0F172A', marginTop: '3px' }}>
+                        {totals.totalPeriodo.toLocaleString('es-AR')}
                     </div>
-
-                    {/* 3. RESUMEN POR CADA BOX FÍSICO DE SHOCK ROOM + GRÁFICO EVOLUTIVO */}
-                    <div style={{
-                        display: 'grid',
-                        gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))',
-                        gap: '16px'
-                    }}>
-                        {/* Tabla ejecutiva de los 3 Boxes */}
-                        <div style={{
-                            background: '#FFFFFF',
-                            borderRadius: '12px',
-                            border: '1px solid #E2E8F0',
-                            padding: '16px 18px',
-                            display: 'flex',
-                            flexDirection: 'column',
-                            gap: '12px'
-                        }}>
-                            <div>
-                                <h4 style={{ margin: 0, fontSize: '0.92rem', fontWeight: 800, color: '#0F172A' }}>
-                                    Rendimiento Proporcional por Box Físico (Base 24 hs = 1,00 Día)
-                                </h4>
-                                <span style={{ fontSize: '0.74rem', color: '#64748B' }}>
-                                    Capacidad individual por box en el período: {kpis.diasCal} días ({kpis.diasCal * 24} hs)
-                                </span>
-                            </div>
-
-                            <div style={{ overflowX: 'auto' }}>
-                                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.79rem' }}>
-                                    <thead>
-                                        <tr style={{ background: '#F8FAFC', borderBottom: '2px solid #E2E8F0', textAlign: 'left' }}>
-                                            <th style={{ padding: '8px 10px', color: '#475569' }}>Unidad</th>
-                                            <th style={{ padding: '8px 10px', color: '#475569', textAlign: 'right' }}>Horas Netas</th>
-                                            <th style={{ padding: '8px 10px', color: '#1E40AF', textAlign: 'right' }}>Días Prop. (Hs/24)</th>
-                                            <th style={{ padding: '8px 10px', color: '#475569', textAlign: 'right' }}>% Ocupación</th>
-                                            <th style={{ padding: '8px 10px', color: '#475569', textAlign: 'right' }}>Pacientes</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {kpis.boxSummary.map(b => (
-                                            <tr key={b.unidad} style={{ borderBottom: '1px solid #F1F5F9' }}>
-                                                <td style={{ padding: '9px 10px', fontWeight: 800, color: '#0F172A' }}>
-                                                    ⚡ {b.unidad}
-                                                </td>
-                                                <td style={{ padding: '9px 10px', textAlign: 'right', fontWeight: 600, color: '#334155' }}>
-                                                    {b.horasNetas.toLocaleString('es-AR')} hs
-                                                    <div style={{ fontSize: '0.68rem', color: '#64748B' }}>
-                                                        prom. {b.horasPromedioPorDia} hs/día
-                                                    </div>
-                                                </td>
-                                                <td style={{ padding: '9px 10px', textAlign: 'right', fontWeight: 900, color: '#1E40AF' }}>
-                                                    {b.diasProporcionales.toLocaleString('es-AR')} d
-                                                    <div style={{ fontSize: '0.68rem', color: '#64748B', fontWeight: 500 }}>
-                                                        de {b.diasDisponibles} d
-                                                    </div>
-                                                </td>
-                                                <td style={{ padding: '9px 10px', textAlign: 'right' }}>
-                                                    <span style={{
-                                                        background: '#EFF6FF',
-                                                        color: '#1E40AF',
-                                                        padding: '2px 8px',
-                                                        borderRadius: '6px',
-                                                        fontWeight: 800
-                                                    }}>
-                                                        {b.pctOcupacion}%
-                                                    </span>
-                                                </td>
-                                                <td style={{ padding: '9px 10px', textAlign: 'right', color: '#475569', fontWeight: 700 }}>
-                                                    {b.rotacionesPacientes}
-                                                    <div style={{ fontSize: '0.66rem', color: '#64748B', fontWeight: 500 }}>
-                                                        {b.diasConMultiplesPacientes} d c/≥2 pac
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                        ))}
-                                        {kpis.horasSinBox > 0 && (
-                                            <tr style={{ background: '#FFFBEB', borderBottom: '1px solid #FDE68A' }}>
-                                                <td style={{ padding: '9px 10px', fontWeight: 800, color: '#92400E' }}>
-                                                    ⚠️ Sin Box Asignado (400109)
-                                                </td>
-                                                <td style={{ padding: '9px 10px', textAlign: 'right', fontWeight: 700, color: '#92400E' }}>
-                                                    {kpis.horasSinBox} hs
-                                                </td>
-                                                <td style={{ padding: '9px 10px', textAlign: 'right', fontWeight: 800, color: '#92400E' }}>
-                                                    {kpis.diasPropSinBox} d
-                                                </td>
-                                                <td style={{ padding: '9px 10px', textAlign: 'right', fontSize: '0.7rem', color: '#92400E', fontWeight: 700 }}>
-                                                    Bolsa auditada
-                                                </td>
-                                                <td style={{ padding: '9px 10px', textAlign: 'right', fontWeight: 700, color: '#92400E' }}>
-                                                    {kpis.sinHabConAtencionCount}
-                                                </td>
-                                            </tr>
-                                        )}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-
-                        {/* Gráfico: Días Proporcionales vs Conteo Tradicional y % Ocupación */}
-                        <div style={{
-                            background: '#FFFFFF',
-                            borderRadius: '12px',
-                            border: '1px solid #E2E8F0',
-                            padding: '16px 18px',
-                            display: 'flex',
-                            flexDirection: 'column',
-                            gap: '10px'
-                        }}>
-                            <div>
-                                <h4 style={{ margin: 0, fontSize: '0.92rem', fontWeight: 800, color: '#0F172A' }}>
-                                    Días Proporcionales Reales (Hs/24) vs. Conteo Tradicional
-                                </h4>
-                                <span style={{ fontSize: '0.74rem', color: '#64748B' }}>
-                                    Barras azules: Días Proporcionales Reales · Barras grises: Días aparentes por paciente · Línea verde: % Ocupación
-                                </span>
-                            </div>
-
-                            <div style={{ width: '100%', height: '235px' }}>
-                                <ResponsiveContainer width="100%" height="100%">
-                                    <ComposedChart data={chartData} margin={{ top: 8, right: 12, left: -12, bottom: 0 }}>
-                                        <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" vertical={false} />
-                                        <XAxis dataKey="label" fontSize={11} stroke="#64748B" tickLine={false} />
-                                        <YAxis yAxisId="days" fontSize={11} stroke="#1E40AF" tickLine={false} />
-                                        <YAxis yAxisId="pct" orientation="right" fontSize={11} stroke="#059669" unit="%" tickLine={false} domain={[0, 100]} />
-                                        <RechartsTooltip
-                                            formatter={(value, name) => {
-                                                if (name.includes('%')) return [`${value}%`, name];
-                                                return [`${value} días`, name];
-                                            }}
-                                        />
-                                        <Legend wrapperStyle={{ fontSize: '0.73rem' }} />
-                                        <Bar yAxisId="days" dataKey="diasTradicionales" name="Conteo Tradicional (Distorsionado)" fill="#CBD5E1" radius={[4, 4, 0, 0]} maxBarSize={26} />
-                                        <Bar yAxisId="days" dataKey="diasProporcionales" name="Días Proporcionales Reales (Hs/24)" fill="#1E40AF" radius={[4, 4, 0, 0]} maxBarSize={26} />
-                                        <Line yAxisId="pct" type="monotone" dataKey="pctOcupacion" name="% Ocupación Real SR" stroke="#059669" strokeWidth={2.5} dot={{ r: 3.5, fill: '#059669' }} />
-                                    </ComposedChart>
-                                </ResponsiveContainer>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* 4. VERIFICADOR "CAJA DE CRISTAL": CRONOGRAMA DE 24 HORAS POR BOX */}
-                    <div style={{
-                        background: '#FFFFFF',
-                        borderRadius: '12px',
-                        border: '1px solid #BFDBFE',
-                        padding: '18px 20px',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: '14px',
-                        boxShadow: '0 2px 6px rgba(30, 64, 175, 0.05)'
-                    }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
-                            <div>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                    <Clock size={18} color="#1E40AF" />
-                                    <h4 style={{ margin: 0, fontSize: '0.96rem', fontWeight: 800, color: '#0F172A' }}>
-                                        Auditoría Visual de 24 Horas por Box ("Caja de Cristal" para Gerencia)
-                                    </h4>
-                                </div>
-                                <span style={{ fontSize: '0.75rem', color: '#475569' }}>
-                                    Seleccioná cualquier día para verificar hora por hora qué pacientes ocuparon cada box y cómo la suma de sus horas se convierte en proporción de día (0,00 a 1,00 día).
-                                </span>
-                            </div>
-
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#334155' }}>Día a inspeccionar:</span>
-                                <input
-                                    type="date"
-                                    value={selectedInspectDate}
-                                    min={effectiveDateRange.desde}
-                                    max={effectiveDateRange.hasta}
-                                    onChange={(e) => setSelectedInspectDate(e.target.value)}
-                                    style={{
-                                        padding: '6px 10px',
-                                        borderRadius: '6px',
-                                        border: '1px solid #93C5FD',
-                                        background: '#EFF6FF',
-                                        color: '#1E3A8A',
-                                        fontWeight: 800,
-                                        fontSize: '0.78rem'
-                                    }}
-                                />
-                            </div>
-                        </div>
-
-                        {/* Accesos rápidos a días con alta rotación de pacientes en un mismo box */}
-                        {highRotationDays.length > 0 && (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                                <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748B' }}>
-                                    Ejemplos reales de alta rotación en el período:
-                                </span>
-                                {highRotationDays.slice(0, 6).map(d => (
-                                    <button
-                                        key={d.fecha}
-                                        type="button"
-                                        onClick={() => setSelectedInspectDate(d.fecha)}
-                                        style={{
-                                            padding: '3px 9px',
-                                            borderRadius: '6px',
-                                            border: selectedInspectDate === d.fecha ? '1px solid #1E40AF' : '1px solid #CBD5E1',
-                                            background: selectedInspectDate === d.fecha ? '#1E40AF' : '#F8FAFC',
-                                            color: selectedInspectDate === d.fecha ? '#FFFFFF' : '#334155',
-                                            fontSize: '0.71rem',
-                                            fontWeight: 700,
-                                            cursor: 'pointer'
-                                        }}
-                                    >
-                                        {formatDateDMY(d.fecha)} ({d.pacientesBoxes} pac → {d.diasPropTotal.toFixed(2)} d reales vs {d.diasTradTotal} d trad.)
-                                    </button>
-                                ))}
-                            </div>
-                        )}
-
-                        {/* Regla de 24 horas para BOX 1-SR, BOX 2-SR y BOX 3-SR */}
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                            {inspectDayBoxes.map(box => (
-                                <div
-                                    key={box.unidad}
-                                    style={{
-                                        background: '#F8FAFC',
-                                        border: '1px solid #E2E8F0',
-                                        borderRadius: '10px',
-                                        padding: '12px 14px',
-                                        display: 'flex',
-                                        flexDirection: 'column',
-                                        gap: '8px'
-                                    }}
-                                >
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                            <span style={{
-                                                background: '#1E40AF',
-                                                color: '#FFFFFF',
-                                                padding: '2px 9px',
-                                                borderRadius: '6px',
-                                                fontSize: '0.76rem',
-                                                fontWeight: 800
-                                            }}>
-                                                {box.unidad}
-                                            </span>
-                                            <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#334155' }}>
-                                                {box.pacientesCount} {box.pacientesCount === 1 ? 'paciente atendido' : 'pacientes atendidos'} el {formatDateDMY(selectedInspectDate)}
-                                            </span>
-                                            {box.minSolapados >= 5 && (
-                                                <span style={{
-                                                    background: '#EDE9FE',
-                                                    color: '#5B21B6',
-                                                    padding: '1px 7px',
-                                                    borderRadius: '6px',
-                                                    fontSize: '0.68rem',
-                                                    fontWeight: 700
-                                                }}>
-                                                    {box.minSolapados} min solapados deduplicados
-                                                </span>
-                                            )}
-                                        </div>
-
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.78rem' }}>
-                                            <span style={{ color: '#475569' }}>
-                                                Ocupado: <strong>{box.horasNetas} hs</strong> / 24 hs (Libre: {box.horasLibres} hs)
-                                            </span>
-                                            <span style={{
-                                                background: '#DCFCE7',
-                                                color: '#166534',
-                                                border: '1px solid #86EFAC',
-                                                padding: '2px 9px',
-                                                borderRadius: '6px',
-                                                fontWeight: 900
-                                            }}>
-                                                = {box.diasProporcionales} días ({box.pctOcupacion}%)
-                                            </span>
-                                        </div>
-                                    </div>
-
-                                    {/* Barra proporcional 00:00 a 24:00 */}
-                                    <div style={{
-                                        position: 'relative',
-                                        height: '30px',
-                                        background: '#E2E8F0',
-                                        borderRadius: '6px',
-                                        overflow: 'hidden',
-                                        border: '1px solid #CBD5E1'
-                                    }}>
-                                        {[6, 12, 18].map(hMark => (
-                                            <div
-                                                key={hMark}
-                                                style={{
-                                                    position: 'absolute',
-                                                    left: `${(hMark / 24) * 100}%`,
-                                                    top: 0,
-                                                    bottom: 0,
-                                                    borderLeft: '1px dashed #94A3B8',
-                                                    zIndex: 1
-                                                }}
-                                            />
-                                        ))}
-                                        {box.tramos.map((t, idx) => {
-                                            const leftPct = Math.max(0, Math.min(100, (t.min_inicio / 1440) * 100));
-                                            const widthPct = Math.max(1.2, Math.min(100 - leftPct, ((t.min_fin - t.min_inicio) / 1440) * 100));
-                                            const color = BOX_COLORS[idx % BOX_COLORS.length];
-                                            return (
-                                                <div
-                                                    key={`${t.id_admision}-${idx}`}
-                                                    title={`${t.paciente} (${t.numero_admision || 'S/N'}) · ${t.inicio_hm} a ${t.fin_hm} (${t.horas} hs = ${t.proporcion_dia} días)`}
-                                                    style={{
-                                                        position: 'absolute',
-                                                        left: `${leftPct}%`,
-                                                        width: `${widthPct}%`,
-                                                        top: '2px',
-                                                        bottom: '2px',
-                                                        background: color,
-                                                        borderRadius: '4px',
-                                                        color: '#FFFFFF',
-                                                        fontSize: '0.68rem',
-                                                        fontWeight: 700,
-                                                        display: 'flex',
-                                                        alignItems: 'center',
-                                                        justifyContent: 'center',
-                                                        overflow: 'hidden',
-                                                        whiteSpace: 'nowrap',
-                                                        padding: '0 4px',
-                                                        zIndex: 2,
-                                                        boxShadow: '0 1px 2px rgba(0,0,0,0.18)'
-                                                    }}
-                                                >
-                                                    {widthPct > 10 ? `${t.inicio_hm}-${t.fin_hm} (${t.horas}h)` : ''}
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.66rem', color: '#64748B', fontWeight: 600 }}>
-                                        <span>00:00</span>
-                                        <span>06:00</span>
-                                        <span>12:00</span>
-                                        <span>18:00</span>
-                                        <span>24:00</span>
-                                    </div>
-
-                                    {box.tramos.length > 0 && (
-                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '2px' }}>
-                                            {box.tramos.map((t, idx) => (
-                                                <span
-                                                    key={`pill-${t.id_admision}-${idx}`}
-                                                    style={{
-                                                        background: '#FFFFFF',
-                                                        border: '1px solid #CBD5E1',
-                                                        borderLeft: `4px solid ${BOX_COLORS[idx % BOX_COLORS.length]}`,
-                                                        borderRadius: '6px',
-                                                        padding: '3px 8px',
-                                                        fontSize: '0.72rem',
-                                                        color: '#1E293B'
-                                                    }}
-                                                >
-                                                    <strong>{t.inicio_hm}–{t.fin_hm}</strong> · {t.paciente} ({t.numero_admision}) → <strong>{t.horas} hs ({(t.horas / 24).toFixed(2)} d)</strong>
-                                                </span>
-                                            ))}
-                                        </div>
-                                    )}
-                                </div>
-                            ))}
-                        </div>
+                    <div style={{ fontSize: '0.74rem', color: '#334155', marginTop: '3px' }}>
+                        Serie I (Dirección): <strong>{totals.countSerieI}</strong> · Serie SR (Omitidas): <strong style={{ color: '#DC2626' }}>{totals.countSerieSR}</strong>
                     </div>
                 </div>
-            )}
+
+                <div style={{ background: '#FFFFFF', borderRadius: '10px', border: '1px solid #E2E8F0', borderLeft: '4px solid #0284C7', padding: '12px 15px' }}>
+                    <div style={{ fontSize: '0.7rem', fontWeight: 800, color: '#0369A1', textTransform: 'uppercase' }}>
+                        Horas de Internación (Selección)
+                    </div>
+                    <div style={{ fontSize: '1.55rem', fontWeight: 900, color: '#0F172A', marginTop: '3px' }}>
+                        {totals.sumHoras.toLocaleString('es-AR')} hs
+                    </div>
+                    <div style={{ fontSize: '0.74rem', color: '#475569', marginTop: '3px' }}>
+                        Shock Room: <strong>{totals.sumHorasSR.toLocaleString('es-AR')} hs</strong> · Piso: <strong>{totals.sumHorasPiso.toLocaleString('es-AR')} hs</strong>
+                    </div>
+                </div>
+
+                <div style={{ background: '#EFF6FF', borderRadius: '10px', border: '1px solid #93C5FD', borderLeft: '4px solid #1D4ED8', padding: '12px 15px' }}>
+                    <div style={{ fontSize: '0.7rem', fontWeight: 800, color: '#1E40AF', textTransform: 'uppercase' }}>
+                        Días Proporcionales Reales (Horas ÷ 24)
+                    </div>
+                    <div style={{ fontSize: '1.55rem', fontWeight: 900, color: '#1E40AF', marginTop: '3px' }}>
+                        {totals.sumDiasProporcionales.toLocaleString('es-AR')} días
+                    </div>
+                    <div style={{ fontSize: '0.73rem', color: '#1E3A8A', marginTop: '3px' }}>
+                        Fórmula Dirección (mín. 1d): <strong>{totals.sumDiasDireccion.toLocaleString('es-AR')} d</strong> (−{totals.diferenciaDias.toLocaleString('es-AR')} d inflados)
+                    </div>
+                </div>
+
+                <div style={{ background: '#FFFFFF', borderRadius: '10px', border: '1px solid #E2E8F0', borderLeft: '4px solid #059669', padding: '12px 15px' }}>
+                    <div style={{ fontSize: '0.7rem', fontWeight: 800, color: '#047857', textTransform: 'uppercase' }}>
+                        Ocupación Neta 3 Boxes SR (24 hs/día)
+                    </div>
+                    <div style={{ fontSize: '1.55rem', fontWeight: 900, color: '#047857', marginTop: '3px' }}>
+                        {totals.pctOcupBoxesSr}%
+                        <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#475569', marginLeft: '6px' }}>
+                            ({totals.diasPropBoxesSr} / {totals.diasDispBoxesSr} días)
+                        </span>
+                    </div>
+                    <div style={{ fontSize: '0.73rem', color: '#475569', marginTop: '3px' }}>
+                        {totals.horasNetasBoxesSr.toLocaleString('es-AR')} hs netas sobre {totals.diasDispBoxesSr * 24} hs disponibles
+                    </div>
+                </div>
+            </div>
 
             {/* ═══════════════════════════════════════════════════════════════════════════
-                VISTA 2: BANDEJA DE AUDITORÍA DE INCONSISTENCIAS SALUS
+                VISTA 1 (PRINCIPAL): PLANILLA MAESTRA ESTILO EXCEL DE TODAS LAS ADMISIONES
                ═══════════════════════════════════════════════════════════════════════════ */}
-            {viewTab === 'auditoria' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                    {/* Resumen explicativo de las causas de Admisiones sin Habitación y Desvíos */}
-                    <div style={{
-                        display: 'grid',
-                        gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-                        gap: '10px'
-                    }}>
-                        {[
-                            {
-                                code: 'SIN_HABITACION_CON_ATENCION',
-                                title: 'Sin Habitación c/Atención (400109)',
-                                count: kpis.inconsistenciasCount.SIN_HABITACION_CON_ATENCION,
-                                color: '#B45309',
-                                bg: '#FFFBEB',
-                                desc: 'Atendidos en Shock Room con registros en HC pero dados de alta sin asignarles BOX 1/2/3-SR.'
-                            },
-                            {
-                                code: 'ABIERTA_OLVIDADA_SIN_ALTA',
-                                title: 'Abiertas Olvidadas sin Alta',
-                                count: kpis.inconsistenciasCount.ABIERTA_OLVIDADA_SIN_ALTA,
-                                color: '#991B1B',
-                                bg: '#FEF2F2',
-                                desc: 'Admisiones nunca cerradas en SALUS (> 48h en SR/Sin cama). Excluidas para no inflar cientos de horas.'
-                            },
-                            {
-                                code: 'INTERNACION_SUSPENDIDA',
-                                title: 'Internación Suspendida (< 1h)',
-                                count: kpis.inconsistenciasCount.INTERNACION_SUSPENDIDA,
-                                color: '#9A3412',
-                                bg: '#FFF7ED',
-                                desc: 'Abiertas en ventanilla y suspendidas antes de ocupar cama ni recibir evolución médica. Excluidas.'
-                            },
-                            {
-                                code: 'SERVICIO_INCORRECTO_CHEQUEO',
-                                title: 'Error Servicio (CHEQUEO)',
-                                count: kpis.inconsistenciasCount.SERVICIO_INCORRECTO_CHEQUEO,
-                                color: '#991B1B',
-                                bg: '#FEF2F2',
-                                desc: 'Pacientes ambulatorios de Chequeo Preventivo (A-CE...) imputados por error a Dra. Paola García.'
-                            },
-                            {
-                                code: 'SERVICIO_MAL_IMPUTADO_SR',
-                                title: 'Box SR con Servicio Piso',
-                                count: kpis.inconsistenciasCount.SERVICIO_MAL_IMPUTADO_SR,
-                                color: '#0369A1',
-                                bg: '#F0F9FF',
-                                desc: 'Estancias breves en BOX SR con Servicio INTERNACION CLINICA (reclasificadas a SR y quitadas de Piso).'
-                            },
-                            {
-                                code: 'SOLAPAMIENTO_HORARIO_BOX',
-                                title: 'Solapamientos en Mismo Box',
-                                count: kpis.inconsistenciasCount.SOLAPAMIENTO_HORARIO_BOX,
-                                color: '#5B21B6',
-                                bg: '#F5F3FF',
-                                desc: 'Demora en alta administrativa que pisó el ingreso del siguiente paciente (minutos deduplicados).'
-                            }
-                        ].map(card => {
-                            const selected = inconsistenciaFilter === card.code;
-                            return (
-                                <div
-                                    key={card.code}
-                                    onClick={() => setInconsistenciaFilter(selected ? 'TODAS_OBSERVADAS' : card.code)}
-                                    style={{
-                                        background: selected ? card.bg : '#FFFFFF',
-                                        borderRadius: '10px',
-                                        border: selected ? `2px solid ${card.color}` : '1px solid #E2E8F0',
-                                        padding: '12px 14px',
-                                        cursor: 'pointer',
-                                        transition: 'all 0.15s ease'
-                                    }}
-                                >
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                        <span style={{ fontSize: '0.73rem', fontWeight: 800, color: card.color }}>
-                                            {card.title}
-                                        </span>
-                                        <span style={{
-                                            background: card.bg,
-                                            color: card.color,
-                                            padding: '2px 8px',
-                                            borderRadius: '8px',
-                                            fontWeight: 900,
-                                            fontSize: '0.88rem'
-                                        }}>
-                                            {card.count}
-                                        </span>
-                                    </div>
-                                    <p style={{ margin: '6px 0 0 0', fontSize: '0.71rem', color: '#475569', lineHeight: 1.35 }}>
-                                        {card.desc}
-                                    </p>
-                                </div>
-                            );
-                        })}
-                    </div>
-
-                    {/* Barra de filtro de Auditoría */}
+            {viewTab === 'planilla_excel' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    {/* Barra de filtros de columnas de la planilla */}
                     <div style={{
                         background: '#FFFFFF',
                         borderRadius: '10px',
@@ -1595,155 +832,178 @@ export default function GuardiaAdmisionesOcupacionPanel({
                         flexWrap: 'wrap',
                         gap: '10px'
                     }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                            <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#334155' }}>Mostrar:</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
                             <select
-                                value={inconsistenciaFilter}
-                                onChange={(e) => setInconsistenciaFilter(e.target.value)}
-                                style={{
-                                    padding: '6px 10px',
-                                    borderRadius: '6px',
-                                    border: '1px solid #CBD5E1',
-                                    fontSize: '0.78rem',
-                                    fontWeight: 700,
-                                    color: '#0F172A',
-                                    background: '#F8FAFC'
-                                }}
+                                value={serieFilter}
+                                onChange={(e) => setSerieFilter(e.target.value)}
+                                style={{ padding: '6px 10px', borderRadius: '6px', border: '1px solid #CBD5E1', fontSize: '0.78rem', fontWeight: 700, background: '#F8FAFC', color: '#0F172A' }}
                             >
-                                <option value="CRITICAS_SIN_HAB">🚨 Críticas: Sin Habitación, Abiertas sin Alta, Suspendidas y Chequeos ({kpis.anomaliasCriticasYAdvertencias})</option>
-                                <option value="TODAS_OBSERVADAS">📋 Todas las Observaciones (incluye Servicio Piso en SR y Solapamientos)</option>
-                                <option value="SIN_HABITACION_CON_ATENCION">⚠️ Sin Habitación con Atención Real ({kpis.inconsistenciasCount.SIN_HABITACION_CON_ATENCION})</option>
-                                <option value="ABIERTA_OLVIDADA_SIN_ALTA">🛑 Abiertas sin Alta Administrativa ({kpis.inconsistenciasCount.ABIERTA_OLVIDADA_SIN_ALTA})</option>
-                                <option value="INTERNACION_SUSPENDIDA">⏸️ Internaciones Suspendidas ({kpis.inconsistenciasCount.INTERNACION_SUSPENDIDA})</option>
-                                <option value="SERVICIO_INCORRECTO_CHEQUEO">❌ Error Servicio CHEQUEO ({kpis.inconsistenciasCount.SERVICIO_INCORRECTO_CHEQUEO})</option>
-                                <option value="SERVICIO_MAL_IMPUTADO_SR">ℹ️ Box SR con Servicio INTERNACION CLINICA ({kpis.inconsistenciasCount.SERVICIO_MAL_IMPUTADO_SR})</option>
-                                <option value="SOLAPAMIENTO_HORARIO_BOX">⏱️ Solapamiento Horario en Box ({kpis.inconsistenciasCount.SOLAPAMIENTO_HORARIO_BOX})</option>
+                                <option value="TODAS">Todas las Series ({totals.totalPeriodo})</option>
+                                <option value="SOLO_I_DIRECCION">Solo Serie I — Las que están en Excel Dirección ({totals.countSerieI})</option>
+                                <option value="SOLO_SR_OMITIDAS">Solo Serie SR — Shock Room omitidas por Dirección ({totals.countSerieSR})</option>
+                            </select>
+
+                            <select
+                                value={ubicacionFilter}
+                                onChange={(e) => setUbicacionFilter(e.target.value)}
+                                style={{ padding: '6px 10px', borderRadius: '6px', border: '1px solid #CBD5E1', fontSize: '0.78rem', fontWeight: 700, background: '#F8FAFC', color: '#0F172A' }}
+                            >
+                                <option value="TODAS">Todas las Habitaciones</option>
+                                <option value="SHOCK_ROOM">Con paso por BOX 1/2/3-SR</option>
+                                <option value="PISO">Camas de Piso / UCI</option>
+                                <option value="SIN_HABITACION">Sin Habitación en SALUS ({totals.sinHabCount})</option>
+                                <option value="EXCLUIDAS">Excluidas por Auditoría ({totals.excluidasCount})</option>
+                            </select>
+
+                            <select
+                                value={procesoFilter}
+                                onChange={(e) => setProcesoFilter(e.target.value)}
+                                style={{ padding: '6px 10px', borderRadius: '6px', border: '1px solid #CBD5E1', fontSize: '0.78rem', fontWeight: 700, background: '#F8FAFC', color: '#0F172A' }}
+                            >
+                                <option value="TODOS">Todos los Procesos / Códigos</option>
+                                <option value="400109">400109 - Internación Breve UCE</option>
+                                <option value="420301">420301 - Atención Médica por Día</option>
+                                <option value="SIN_PROCESO">Sin Proceso Cargado</option>
                             </select>
                         </div>
 
-                        <div style={{ position: 'relative', width: '280px' }}>
+                        <div style={{ position: 'relative', width: '290px' }}>
                             <Search size={14} style={{ position: 'absolute', left: '10px', top: '9px', color: '#94A3B8' }} />
                             <input
                                 type="text"
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
-                                placeholder="Buscar paciente, admisión, NHC..."
-                                style={{
-                                    width: '100%',
-                                    padding: '6px 10px 6px 30px',
-                                    borderRadius: '6px',
-                                    border: '1px solid #CBD5E1',
-                                    fontSize: '0.78rem'
-                                }}
+                                placeholder="Buscar N° admisión (ej. I050089, SR000318), paciente, DNI..."
+                                style={{ width: '100%', padding: '6px 10px 6px 30px', borderRadius: '6px', border: '1px solid #CBD5E1', fontSize: '0.78rem' }}
                             />
                         </div>
                     </div>
 
-                    {/* Tabla de Inconsistencias */}
+                    {/* Grilla estilo Excel con las mismas columnas de Dirección + Días Proporcionales */}
                     <div style={{
                         background: '#FFFFFF',
                         borderRadius: '10px',
-                        border: '1px solid #E2E8F0',
-                        overflow: 'hidden'
+                        border: '1px solid #CBD5E1',
+                        overflow: 'hidden',
+                        boxShadow: '0 1px 3px rgba(0,0,0,0.04)'
                     }}>
-                        <div style={{ overflowX: 'auto', maxHeight: '540px' }}>
-                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.79rem', textAlign: 'left' }}>
-                                <thead style={{ position: 'sticky', top: 0, background: '#F8FAFC', borderBottom: '2px solid #E2E8F0', zIndex: 2 }}>
+                        <div style={{ overflowX: 'auto', maxHeight: '620px' }}>
+                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.76rem', textAlign: 'left' }}>
+                                <thead style={{ position: 'sticky', top: 0, background: '#F1F5F9', borderBottom: '2px solid #CBD5E1', zIndex: 2 }}>
                                     <tr>
-                                        <th style={{ padding: '10px 12px', color: '#475569' }}>Admisión / Fechas</th>
-                                        <th style={{ padding: '10px 12px', color: '#475569' }}>Paciente</th>
-                                        <th style={{ padding: '10px 12px', color: '#475569' }}>Habitación & Servicio SALUS</th>
-                                        <th style={{ padding: '10px 12px', color: '#475569' }}>Horas SALUS vs. Presupuesto</th>
-                                        <th style={{ padding: '10px 12px', color: '#475569' }}>Clasificación y Diagnóstico Forense</th>
+                                        <th style={{ padding: '9px 10px', whiteSpace: 'nowrap', color: '#334155' }}>Fecha Ingreso</th>
+                                        <th style={{ padding: '9px 10px', whiteSpace: 'nowrap', color: '#334155' }}>N. Admisión</th>
+                                        <th style={{ padding: '9px 10px', whiteSpace: 'nowrap', color: '#334155' }}>¿En Excel Dir.?</th>
+                                        <th style={{ padding: '9px 10px', whiteSpace: 'nowrap', color: '#334155' }}>Documento</th>
+                                        <th style={{ padding: '9px 10px', whiteSpace: 'nowrap', color: '#334155' }}>Paciente</th>
+                                        <th style={{ padding: '9px 10px', whiteSpace: 'nowrap', color: '#334155' }}>Cliente (Obra Social)</th>
+                                        <th style={{ padding: '9px 10px', whiteSpace: 'nowrap', color: '#334155' }}>Procesos</th>
+                                        <th style={{ padding: '9px 10px', whiteSpace: 'nowrap', color: '#334155' }}>Servicio</th>
+                                        <th style={{ padding: '9px 10px', whiteSpace: 'nowrap', color: '#334155' }}>NHC</th>
+                                        <th style={{ padding: '9px 10px', whiteSpace: 'nowrap', color: '#334155' }}>Habitación & Recorrido</th>
+                                        <th style={{ padding: '9px 10px', whiteSpace: 'nowrap', color: '#334155' }}>Fecha Alta</th>
+                                        <th style={{ padding: '9px 10px', whiteSpace: 'nowrap', textAlign: 'right', color: '#334155' }}>Horas</th>
+                                        <th style={{ padding: '9px 10px', whiteSpace: 'nowrap', textAlign: 'right', color: '#991B1B', background: '#FEF2F2' }}>Días s/Dir. (Mín 1)</th>
+                                        <th style={{ padding: '9px 10px', whiteSpace: 'nowrap', textAlign: 'right', color: '#1E40AF', background: '#EFF6FF' }}>Días Prop. (Hs÷24)</th>
+                                        <th style={{ padding: '9px 10px', whiteSpace: 'nowrap', color: '#334155' }}>Auditoría</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {filteredInconsistencias.length === 0 ? (
+                                    {filteredRows.length === 0 ? (
                                         <tr>
-                                            <td colSpan="5" style={{ padding: '32px', textAlign: 'center', color: '#64748B' }}>
-                                                No hay registros observados para el filtro seleccionado en este período.
+                                            <td colSpan="15" style={{ padding: '32px', textAlign: 'center', color: '#64748B' }}>
+                                                No hay admisiones para los filtros seleccionados.
                                             </td>
                                         </tr>
                                     ) : (
-                                        filteredInconsistencias.slice(0, 300).map(a => {
+                                        filteredRows.slice(0, 500).map((a, idx) => {
+                                            const enDir = isSerieI(a);
+                                            const diasDir = a.incluida_en_presupuesto ? calcDiasFormulaDireccion(a.horas_brutas_salus) : 0;
                                             const meta = INCONSISTENCIA_META[a.inconsistencia_codigo] || INCONSISTENCIA_META.OK;
                                             return (
                                                 <tr
                                                     key={a.id_admision}
                                                     onClick={() => setSelectedAdmDetail(a)}
-                                                    style={{ borderBottom: '1px solid #F1F5F9', cursor: 'pointer' }}
+                                                    style={{
+                                                        borderBottom: '1px solid #E2E8F0',
+                                                        background: !a.incluida_en_presupuesto
+                                                            ? '#FFF1F2'
+                                                            : idx % 2 === 0
+                                                                ? '#FFFFFF'
+                                                                : '#F8FAFC',
+                                                        cursor: 'pointer'
+                                                    }}
                                                 >
-                                                    <td style={{ padding: '10px 12px', whiteSpace: 'nowrap' }}>
-                                                        <div style={{ fontWeight: 800, color: '#1E40AF' }}>
-                                                            {a.numero_admision || `ID ${a.id_admision}`}
-                                                        </div>
-                                                        <div style={{ fontSize: '0.71rem', color: '#334155' }}>
-                                                            Ing: {formatDateTimeShort(a.fecha_ingreso)}
-                                                        </div>
-                                                        <div style={{ fontSize: '0.71rem', color: a.fecha_alta ? '#64748B' : '#DC2626', fontWeight: a.fecha_alta ? 500 : 800 }}>
-                                                            Alta: {formatDateTimeShort(a.fecha_alta)}
-                                                        </div>
+                                                    <td style={{ padding: '7px 10px', whiteSpace: 'nowrap', fontFamily: 'monospace', fontSize: '0.73rem' }}>
+                                                        {formatDateTimeShort(a.fecha_ingreso)}
                                                     </td>
-                                                    <td style={{ padding: '10px 12px' }}>
-                                                        <div style={{ fontWeight: 800, color: '#0F172A' }}>{a.paciente}</div>
-                                                        <div style={{ fontSize: '0.71rem', color: '#64748B' }}>
-                                                            NHC: {a.nhc || '-'} · DNI: {a.dni || '-'}
-                                                        </div>
-                                                        <div style={{ fontSize: '0.69rem', color: '#64748B' }}>{a.obra_social}</div>
+                                                    <td style={{ padding: '7px 10px', whiteSpace: 'nowrap', fontWeight: 800, color: enDir ? '#0F172A' : '#1E40AF' }}>
+                                                        {a.numero_admision}
                                                     </td>
-                                                    <td style={{ padding: '10px 12px' }}>
+                                                    <td style={{ padding: '7px 10px', whiteSpace: 'nowrap' }}>
                                                         <span style={{
-                                                            display: 'inline-block',
-                                                            padding: '2px 8px',
-                                                            borderRadius: '6px',
+                                                            padding: '2px 7px',
+                                                            borderRadius: '5px',
+                                                            fontSize: '0.68rem',
                                                             fontWeight: 800,
-                                                            fontSize: '0.74rem',
-                                                            background: a.habitacion_salus ? '#EFF6FF' : '#FEE2E2',
-                                                            color: a.habitacion_salus ? '#1E40AF' : '#991B1B'
+                                                            background: enDir ? '#E2E8F0' : '#FEF3C7',
+                                                            color: enDir ? '#334155' : '#92400E'
                                                         }}>
-                                                            {a.habitacion_salus || 'SIN HABITACIÓN'}
+                                                            {enDir ? 'Sí (Serie I)' : 'Omitida (SR)'}
                                                         </span>
-                                                        <div style={{ fontSize: '0.71rem', color: '#475569', marginTop: '3px' }}>
-                                                            Serv: <strong>{a.servicio_salus || 'S/D'}</strong>
-                                                        </div>
-                                                        {a.proceso_salus && (
-                                                            <div style={{ fontSize: '0.68rem', color: '#64748B' }}>
-                                                                {a.proceso_salus}
+                                                    </td>
+                                                    <td style={{ padding: '7px 10px', whiteSpace: 'nowrap', color: '#475569' }}>
+                                                        {a.dni || '-'}
+                                                    </td>
+                                                    <td style={{ padding: '7px 10px', fontWeight: 700, color: '#0F172A', whiteSpace: 'nowrap' }}>
+                                                        {a.paciente}
+                                                    </td>
+                                                    <td style={{ padding: '7px 10px', maxWidth: '170px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#475569' }} title={a.obra_social}>
+                                                        {a.obra_social}
+                                                    </td>
+                                                    <td style={{ padding: '7px 10px', maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#475569' }} title={a.proceso_salus || ''}>
+                                                        {a.proceso_salus ? a.proceso_salus.slice(0, 26) : <span style={{ color: '#94A3B8' }}>(Sin código)</span>}
+                                                    </td>
+                                                    <td style={{ padding: '7px 10px', whiteSpace: 'nowrap', color: '#334155' }}>
+                                                        {a.servicio_salus}
+                                                    </td>
+                                                    <td style={{ padding: '7px 10px', whiteSpace: 'nowrap', color: '#475569' }}>
+                                                        {a.nhc || '-'}
+                                                    </td>
+                                                    <td style={{ padding: '7px 10px', whiteSpace: 'nowrap' }}>
+                                                        <strong style={{ color: a.habitacion_salus ? '#1E40AF' : '#DC2626' }}>
+                                                            {a.habitacion_salus || 'SIN HABITACIÓN'}
+                                                        </strong>
+                                                        {Array.isArray(a.tramos_json) && a.tramos_json.length > 1 && (
+                                                            <div style={{ fontSize: '0.66rem', color: '#64748B' }}>
+                                                                {formatRecorridoCamas(a.tramos_json)}
                                                             </div>
                                                         )}
                                                     </td>
-                                                    <td style={{ padding: '10px 12px', whiteSpace: 'nowrap' }}>
-                                                        <div style={{ fontSize: '0.74rem', color: '#475569' }}>
-                                                            Brutas SALUS: <strong>{Number(a.horas_brutas_salus || 0).toLocaleString('es-AR')} hs</strong>
-                                                        </div>
-                                                        <div style={{
-                                                            fontSize: '0.76rem',
-                                                            fontWeight: 800,
-                                                            color: a.incluida_en_presupuesto ? '#047857' : '#991B1B',
-                                                            marginTop: '2px'
-                                                        }}>
-                                                            {a.incluida_en_presupuesto
-                                                                ? `Presupuesto: ${a.horas_presupuesto_total} hs (${a.dias_proporcionales_total} d)`
-                                                                : 'Excluida (0,00 días)'}
-                                                        </div>
+                                                    <td style={{ padding: '7px 10px', whiteSpace: 'nowrap', fontFamily: 'monospace', fontSize: '0.73rem', color: a.fecha_alta ? '#334155' : '#DC2626' }}>
+                                                        {formatDateTimeShort(a.fecha_alta)}
                                                     </td>
-                                                    <td style={{ padding: '10px 12px', maxWidth: '380px' }}>
+                                                    <td style={{ padding: '7px 10px', textAlign: 'right', fontWeight: 700, color: '#0F172A' }}>
+                                                        {Number(a.horas_brutas_salus || 0).toFixed(2)}
+                                                    </td>
+                                                    <td style={{ padding: '7px 10px', textAlign: 'right', fontWeight: 700, color: '#991B1B', background: 'rgba(254, 226, 226, 0.35)' }}>
+                                                        {diasDir}
+                                                    </td>
+                                                    <td style={{ padding: '7px 10px', textAlign: 'right', fontWeight: 900, color: '#1E40AF', background: 'rgba(219, 234, 254, 0.45)' }}>
+                                                        {Number(a.dias_proporcionales_total || 0).toFixed(2)}
+                                                    </td>
+                                                    <td style={{ padding: '7px 10px', whiteSpace: 'nowrap' }}>
                                                         <span style={{
-                                                            display: 'inline-block',
-                                                            padding: '2px 8px',
-                                                            borderRadius: '6px',
-                                                            fontSize: '0.7rem',
-                                                            fontWeight: 800,
+                                                            padding: '2px 7px',
+                                                            borderRadius: '5px',
+                                                            fontSize: '0.68rem',
+                                                            fontWeight: 700,
                                                             background: meta.badgeBg,
                                                             color: meta.badgeColor,
-                                                            border: `1px solid ${meta.border}`,
-                                                            marginBottom: '4px'
+                                                            border: `1px solid ${meta.border}`
                                                         }}>
                                                             {meta.label}
                                                         </span>
-                                                        <div style={{ fontSize: '0.73rem', color: '#334155', lineHeight: 1.35 }}>
-                                                            {a.inconsistencia_detalle}
-                                                        </div>
                                                     </td>
                                                 </tr>
                                             );
@@ -1752,174 +1012,151 @@ export default function GuardiaAdmisionesOcupacionPanel({
                                 </tbody>
                             </table>
                         </div>
+                        {filteredRows.length > 500 && (
+                            <div style={{ padding: '8px 14px', background: '#F8FAFC', borderTop: '1px solid #E2E8F0', fontSize: '0.75rem', color: '#475569', textAlign: 'center' }}>
+                                Mostrando primeras 500 filas en pantalla para fluidez visual. Al hacer clic en <strong>"Descargar Excel Completo ({filteredRows.length} admisiones)"</strong> se exportan el 100% de las filas.
+                            </div>
+                        )}
                     </div>
                 </div>
             )}
 
             {/* ═══════════════════════════════════════════════════════════════════════════
-                VISTA 3: PADRÓN NOMINAL COMPLETO (DRA. PAOLA GARCÍA)
+                VISTA 2: OCUPACIÓN DIARIA POR BOX DE SHOCK ROOM (24 HS = 1 DÍA)
                ═══════════════════════════════════════════════════════════════════════════ */}
-            {viewTab === 'padron' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                    <div style={{
-                        background: '#FFFFFF',
-                        borderRadius: '10px',
-                        border: '1px solid #E2E8F0',
-                        padding: '12px 16px',
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        flexWrap: 'wrap',
-                        gap: '10px'
-                    }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                            <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#334155' }}>Régimen Físico:</span>
-                            <select
-                                value={regimenFilter}
-                                onChange={(e) => setRegimenFilter(e.target.value)}
-                                style={{
-                                    padding: '6px 10px',
-                                    borderRadius: '6px',
-                                    border: '1px solid #CBD5E1',
-                                    fontSize: '0.78rem',
-                                    fontWeight: 700,
-                                    color: '#0F172A',
-                                    background: '#F8FAFC'
-                                }}
-                            >
-                                <option value="TODOS">Todas las Admisiones ({periodAdmisiones.length})</option>
-                                <option value="SOLO_VALIDAS">✅ Incluidas en Presupuesto ({kpis.validasCount})</option>
-                                <option value="SHOCK_ROOM">⚡ Exclusivas en Box Shock Room ({kpis.soloSrCount})</option>
-                                <option value="MIXTO_SR_PISO">🔄 Mixtas: Shock Room → Subieron a Piso ({kpis.mixtoSrPisoCount})</option>
-                                <option value="PISO_CLINICO">🛏️ Directas en Camas de Piso ({kpis.soloPisoCount})</option>
-                                <option value="SIN_HABITACION">⚠️ Sin Habitación Asignada ({periodAdmisiones.filter(x => x.regimen_ubicacion === 'SIN_HABITACION').length})</option>
-                                <option value="SOLO_EXCLUIDAS">🚫 Excluidas por Auditoría ({kpis.excluidasCount})</option>
-                            </select>
-                        </div>
-
-                        <div style={{ position: 'relative', width: '300px' }}>
-                            <Search size={14} style={{ position: 'absolute', left: '10px', top: '9px', color: '#94A3B8' }} />
-                            <input
-                                type="text"
-                                value={searchQuery}
-                                onChange={(e) => setSearchQuery(e.target.value)}
-                                placeholder="Buscar paciente, N° admisión, NHC, box, obra social..."
-                                style={{
-                                    width: '100%',
-                                    padding: '6px 10px 6px 30px',
-                                    borderRadius: '6px',
-                                    border: '1px solid #CBD5E1',
-                                    fontSize: '0.78rem'
-                                }}
-                            />
-                        </div>
+            {viewTab === 'ocupacion_boxes' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                    <div style={{ background: '#FFFFFF', borderRadius: '12px', border: '1px solid #E2E8F0', padding: '16px 20px' }}>
+                        <h4 style={{ margin: '0 0 10px 0', fontSize: '0.95rem', fontWeight: 800, color: '#0F172A' }}>
+                            Ocupación Proporcional por Box Físico en el Período ({effectiveDateRange.diasCalendario} días calendario)
+                        </h4>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                            <thead>
+                                <tr style={{ background: '#F8FAFC', borderBottom: '2px solid #E2E8F0', textAlign: 'left' }}>
+                                    <th style={{ padding: '9px 12px' }}>Box Físico</th>
+                                    <th style={{ padding: '9px 12px', textAlign: 'right' }}>Horas Ocupadas Netas</th>
+                                    <th style={{ padding: '9px 12px', textAlign: 'right' }}>Horas Disponibles (24h/día)</th>
+                                    <th style={{ padding: '9px 12px', textAlign: 'right', color: '#1E40AF' }}>Días Proporcionales (Horas ÷ 24)</th>
+                                    <th style={{ padding: '9px 12px', textAlign: 'right' }}>% Ocupación Real</th>
+                                    <th style={{ padding: '9px 12px', textAlign: 'right' }}>Pacientes Atendidos</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {totals.boxSummary.map(b => (
+                                    <tr key={b.unidad} style={{ borderBottom: '1px solid #F1F5F9' }}>
+                                        <td style={{ padding: '10px 12px', fontWeight: 800 }}>⚡ {b.unidad}</td>
+                                        <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700 }}>{b.horasNetas.toLocaleString('es-AR')} hs</td>
+                                        <td style={{ padding: '10px 12px', textAlign: 'right', color: '#64748B' }}>{(b.diasDisponibles * 24).toLocaleString('es-AR')} hs</td>
+                                        <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 900, color: '#1E40AF' }}>
+                                            {b.diasProporcionales.toLocaleString('es-AR')} / {b.diasDisponibles} días
+                                        </td>
+                                        <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 800, color: '#047857' }}>{b.pctOcupacion}%</td>
+                                        <td style={{ padding: '10px 12px', textAlign: 'right' }}>{b.pacientes}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
                     </div>
 
-                    <div style={{
-                        background: '#FFFFFF',
-                        borderRadius: '10px',
-                        border: '1px solid #E2E8F0',
-                        overflow: 'hidden'
-                    }}>
-                        <div style={{ overflowX: 'auto', maxHeight: '580px' }}>
-                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.79rem', textAlign: 'left' }}>
-                                <thead style={{ position: 'sticky', top: 0, background: '#F8FAFC', borderBottom: '2px solid #E2E8F0', zIndex: 2 }}>
-                                    <tr>
-                                        <th style={{ padding: '10px 12px', color: '#475569' }}>N° Admisión & Horario</th>
-                                        <th style={{ padding: '10px 12px', color: '#475569' }}>Paciente</th>
-                                        <th style={{ padding: '10px 12px', color: '#475569' }}>Ubicación / Régimen</th>
-                                        <th style={{ padding: '10px 12px', color: '#1E40AF', textAlign: 'right' }}>Horas & Días SR</th>
-                                        <th style={{ padding: '10px 12px', color: '#047857', textAlign: 'right' }}>Horas & Días Piso</th>
-                                        <th style={{ padding: '10px 12px', color: '#475569' }}>Estado Auditoría</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {filteredPadron.slice(0, 300).map(a => {
-                                        const meta = INCONSISTENCIA_META[a.inconsistencia_codigo] || INCONSISTENCIA_META.OK;
+                    {/* Verificador visual de 24 hs de un día puntual */}
+                    <div style={{ background: '#FFFFFF', borderRadius: '12px', border: '1px solid #BFDBFE', padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+                            <div>
+                                <h4 style={{ margin: 0, fontSize: '0.94rem', fontWeight: 800, color: '#0F172A' }}>
+                                    Detalle Horario de un Día Puntual (00:00 a 24:00 hs)
+                                </h4>
+                                <span style={{ fontSize: '0.75rem', color: '#475569' }}>
+                                    Verificá cómo las horas de varios pacientes en el mismo día se suman y dividen por 24 sin superar jamás 1,00 día por box.
+                                </span>
+                            </div>
+                            <input
+                                type="date"
+                                value={selectedInspectDate}
+                                min={effectiveDateRange.desde}
+                                max={effectiveDateRange.hasta}
+                                onChange={(e) => setSelectedInspectDate(e.target.value)}
+                                style={{ padding: '6px 10px', borderRadius: '6px', border: '1px solid #93C5FD', fontWeight: 800, fontSize: '0.8rem' }}
+                            />
+                        </div>
+
+                        {inspectDayBoxes.map(box => (
+                            <div key={box.unidad} style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: '8px', padding: '10px 14px' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', fontSize: '0.78rem' }}>
+                                    <strong>{box.unidad} · {box.pacientesCount} pac.</strong>
+                                    <strong style={{ color: '#1E40AF' }}>{box.horasNetas} hs ÷ 24 = {box.diasProporcionales} días ({box.pctOcupacion}%)</strong>
+                                </div>
+                                <div style={{ position: 'relative', height: '24px', background: '#E2E8F0', borderRadius: '5px', overflow: 'hidden' }}>
+                                    {box.tramos.map((t, idx) => {
+                                        const leftPct = Math.max(0, Math.min(100, (t.min_inicio / 1440) * 100));
+                                        const widthPct = Math.max(1.2, Math.min(100 - leftPct, ((t.min_fin - t.min_inicio) / 1440) * 100));
                                         return (
-                                            <tr
-                                                key={a.id_admision}
-                                                onClick={() => setSelectedAdmDetail(a)}
+                                            <div
+                                                key={`${t.id_admision}-${idx}`}
+                                                title={`${t.paciente} (${t.numero_admision}) · ${t.inicio_hm}–${t.fin_hm} (${t.horas} hs)`}
                                                 style={{
-                                                    borderBottom: '1px solid #F1F5F9',
-                                                    background: a.incluida_en_presupuesto ? '#FFFFFF' : '#FEF2F2',
-                                                    cursor: 'pointer'
+                                                    position: 'absolute',
+                                                    left: `${leftPct}%`,
+                                                    width: `${widthPct}%`,
+                                                    top: '2px',
+                                                    bottom: '2px',
+                                                    background: BOX_COLORS[idx % BOX_COLORS.length],
+                                                    borderRadius: '3px'
                                                 }}
-                                            >
-                                                <td style={{ padding: '9px 12px', whiteSpace: 'nowrap' }}>
-                                                    <div style={{ fontWeight: 800, color: '#0F172A' }}>
-                                                        {a.numero_admision || a.id_admision}
-                                                    </div>
-                                                    <div style={{ fontSize: '0.71rem', color: '#475569' }}>
-                                                        {formatDateTimeShort(a.fecha_ingreso)}
-                                                    </div>
-                                                    <div style={{ fontSize: '0.7rem', color: '#64748B' }}>
-                                                        → {formatDateTimeShort(a.fecha_alta)}
-                                                    </div>
-                                                </td>
-                                                <td style={{ padding: '9px 12px' }}>
-                                                    <div style={{ fontWeight: 800, color: '#0F172A' }}>{a.paciente}</div>
-                                                    <div style={{ fontSize: '0.71rem', color: '#64748B' }}>
-                                                        NHC: {a.nhc || '-'} · {a.obra_social}
-                                                    </div>
-                                                </td>
-                                                <td style={{ padding: '9px 12px' }}>
-                                                    <span style={{
-                                                        display: 'inline-block',
-                                                        background: '#EFF6FF',
-                                                        color: '#1E40AF',
-                                                        padding: '2px 8px',
-                                                        borderRadius: '6px',
-                                                        fontWeight: 800,
-                                                        fontSize: '0.74rem'
-                                                    }}>
-                                                        {a.habitacion_salus || 'SIN HABITACIÓN'}
-                                                    </span>
-                                                    <div style={{ fontSize: '0.7rem', color: '#475569', marginTop: '2px' }}>
-                                                        {a.regimen_ubicacion} · {a.servicio_salus}
-                                                    </div>
-                                                </td>
-                                                <td style={{ padding: '9px 12px', textAlign: 'right', whiteSpace: 'nowrap' }}>
-                                                    <div style={{ fontWeight: 800, color: '#1E40AF' }}>
-                                                        {Number(a.dias_proporcionales_sr || 0).toFixed(2)} d
-                                                    </div>
-                                                    <div style={{ fontSize: '0.7rem', color: '#64748B' }}>
-                                                        {Number(a.horas_shock_room || 0)} hs
-                                                    </div>
-                                                </td>
-                                                <td style={{ padding: '9px 12px', textAlign: 'right', whiteSpace: 'nowrap' }}>
-                                                    <div style={{ fontWeight: 800, color: '#047857' }}>
-                                                        {Number(a.dias_proporcionales_piso || 0).toFixed(2)} d
-                                                    </div>
-                                                    <div style={{ fontSize: '0.7rem', color: '#64748B' }}>
-                                                        {Number(a.horas_piso || 0)} hs
-                                                    </div>
-                                                </td>
-                                                <td style={{ padding: '9px 12px' }}>
-                                                    <span style={{
-                                                        display: 'inline-block',
-                                                        padding: '2px 8px',
-                                                        borderRadius: '6px',
-                                                        fontSize: '0.7rem',
-                                                        fontWeight: 700,
-                                                        background: meta.badgeBg,
-                                                        color: meta.badgeColor,
-                                                        border: `1px solid ${meta.border}`
-                                                    }}>
-                                                        {meta.label}
-                                                    </span>
-                                                </td>
-                                            </tr>
+                                            />
                                         );
                                     })}
-                                </tbody>
-                            </table>
-                        </div>
+                                </div>
+                            </div>
+                        ))}
                     </div>
                 </div>
             )}
 
-            {/* ─── MODAL DE TRAZABILIDAD DE TRAMOS POR ADMISIÓN ─── */}
+            {/* ═══════════════════════════════════════════════════════════════════════════
+                VISTA 3: AUDITORÍA DE SIN HABITACIÓN Y EXCLUIDAS
+               ═══════════════════════════════════════════════════════════════════════════ */}
+            {viewTab === 'auditoria' && (
+                <div style={{ background: '#FFFFFF', borderRadius: '10px', border: '1px solid #E2E8F0', padding: '16px 20px' }}>
+                    <h4 style={{ margin: '0 0 8px 0', fontSize: '0.96rem', fontWeight: 800, color: '#0F172A' }}>
+                        Casos sin Habitación en SALUS o Excluidos por Inconsistencia Administrativa
+                    </h4>
+                    <p style={{ margin: '0 0 14px 0', fontSize: '0.78rem', color: '#475569' }}>
+                        Nota clave: Los 4 casos que figuraban con habitación vacía en el Excel de Dirección (<code>I048472</code>, <code>I048891</code>, <code>I050089</code> e <code>I050935</code>) <strong>sí tuvieron habitación real</strong> en SALUS (Enfermería liberó la cama minutos antes del alta administrativa). Abajo se listan las admisiones que realmente nunca tuvieron habitación asignada o quedaron abiertas/suspendidas en SALUS:
+                    </p>
+                    <div style={{ overflowX: 'auto' }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem', textAlign: 'left' }}>
+                            <thead>
+                                <tr style={{ background: '#F8FAFC', borderBottom: '2px solid #E2E8F0' }}>
+                                    <th style={{ padding: '8px 10px' }}>N. Admisión</th>
+                                    <th style={{ padding: '8px 10px' }}>Ingreso → Alta</th>
+                                    <th style={{ padding: '8px 10px' }}>Paciente</th>
+                                    <th style={{ padding: '8px 10px' }}>Habitación SALUS</th>
+                                    <th style={{ padding: '8px 10px' }}>Horas SALUS</th>
+                                    <th style={{ padding: '8px 10px' }}>Motivo Exacto</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {periodAdmisiones
+                                    .filter(a => !a.habitacion_salus || !a.incluida_en_presupuesto)
+                                    .map(a => (
+                                        <tr key={a.id_admision} style={{ borderBottom: '1px solid #F1F5F9' }}>
+                                            <td style={{ padding: '8px 10px', fontWeight: 800, color: '#1E40AF' }}>{a.numero_admision}</td>
+                                            <td style={{ padding: '8px 10px', whiteSpace: 'nowrap' }}>
+                                                {formatDateTimeShort(a.fecha_ingreso)} → {formatDateTimeShort(a.fecha_alta)}
+                                            </td>
+                                            <td style={{ padding: '8px 10px', fontWeight: 700 }}>{a.paciente} (NHC {a.nhc})</td>
+                                            <td style={{ padding: '8px 10px', color: '#DC2626', fontWeight: 800 }}>{a.habitacion_salus || 'SIN HABITACIÓN'}</td>
+                                            <td style={{ padding: '8px 10px', fontWeight: 700 }}>{a.horas_brutas_salus} hs</td>
+                                            <td style={{ padding: '8px 10px', color: '#334155' }}>{a.inconsistencia_detalle}</td>
+                                        </tr>
+                                    ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            )}
+
+            {/* Modal de detalle de tramos al hacer clic en una fila */}
             {selectedAdmDetail && (
                 <div
                     onClick={() => setSelectedAdmDetail(null)}
@@ -1931,149 +1168,44 @@ export default function GuardiaAdmisionesOcupacionPanel({
                         alignItems: 'center',
                         justifyContent: 'center',
                         zIndex: 9999,
-                        padding: '16px',
-                        backdropFilter: 'blur(2px)'
+                        padding: '16px'
                     }}
                 >
                     <div
                         onClick={(e) => e.stopPropagation()}
                         style={{
                             background: '#FFFFFF',
-                            borderRadius: '14px',
+                            borderRadius: '12px',
                             width: '100%',
-                            maxWidth: '680px',
-                            maxHeight: '88vh',
-                            overflow: 'hidden',
+                            maxWidth: '640px',
+                            padding: '20px',
                             display: 'flex',
                             flexDirection: 'column',
-                            boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)'
+                            gap: '12px'
                         }}
                     >
-                        <div style={{
-                            padding: '16px 20px',
-                            background: '#F8FAFC',
-                            borderBottom: '1px solid #E2E8F0',
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            alignItems: 'center'
-                        }}>
-                            <div>
-                                <span style={{ fontSize: '0.7rem', fontWeight: 800, color: '#1E40AF', textTransform: 'uppercase' }}>
-                                    Trazabilidad Horaria de Admisión · Cabecera Dra. Paola García
-                                </span>
-                                <h3 style={{ margin: '2px 0 0 0', fontSize: '1.05rem', fontWeight: 800, color: '#0F172A' }}>
-                                    {selectedAdmDetail.paciente} ({selectedAdmDetail.numero_admision || selectedAdmDetail.id_admision})
-                                </h3>
-                            </div>
-                            <button
-                                type="button"
-                                onClick={() => setSelectedAdmDetail(null)}
-                                style={{
-                                    border: '1px solid #CBD5E1',
-                                    background: '#FFFFFF',
-                                    borderRadius: '8px',
-                                    width: '32px',
-                                    height: '32px',
-                                    cursor: 'pointer',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center'
-                                }}
-                            >
-                                <X size={16} />
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 800 }}>
+                                {selectedAdmDetail.numero_admision} — {selectedAdmDetail.paciente}
+                            </h3>
+                            <button type="button" onClick={() => setSelectedAdmDetail(null)} style={{ border: '1px solid #CBD5E1', background: '#FFF', borderRadius: '6px', padding: '4px 8px', cursor: 'pointer' }}>
+                                ✕
                             </button>
                         </div>
-
-                        <div style={{ padding: '18px 20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '10px', fontSize: '0.78rem' }}>
-                                <div style={{ background: '#F8FAFC', padding: '10px', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
-                                    <div style={{ color: '#64748B', fontSize: '0.68rem', fontWeight: 700 }}>INGRESO SALUS</div>
-                                    <div style={{ fontWeight: 800, color: '#0F172A', marginTop: '2px' }}>{formatDateTimeShort(selectedAdmDetail.fecha_ingreso)}</div>
+                        <div style={{ fontSize: '0.8rem', color: '#334155' }}>
+                            <strong>Ingreso:</strong> {formatDateTimeShort(selectedAdmDetail.fecha_ingreso)} · <strong>Alta:</strong> {formatDateTimeShort(selectedAdmDetail.fecha_alta)}
+                        </div>
+                        <div style={{ fontSize: '0.8rem', color: '#1E40AF', fontWeight: 700 }}>
+                            Horas Totales: {selectedAdmDetail.horas_brutas_salus} hs → Días Proporcionales Reales: {selectedAdmDetail.dias_proporcionales_total} días (vs. {calcDiasFormulaDireccion(selectedAdmDetail.horas_brutas_salus)} días en fórmula Dirección)
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                            <strong style={{ fontSize: '0.78rem' }}>Recorrido Físico en Historial de Camas SALUS:</strong>
+                            {(selectedAdmDetail.tramos_json || []).map((t, i) => (
+                                <div key={i} style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: '6px', padding: '7px 10px', fontSize: '0.78rem', display: 'flex', justifyContent: 'space-between' }}>
+                                    <span><strong>{t.unidad}</strong> · {formatDateTimeShort(t.inicio)} → {formatDateTimeShort(t.fin)}</span>
+                                    <strong>{t.horas} hs ({Number(t.dias_prop || 0).toFixed(2)} d)</strong>
                                 </div>
-                                <div style={{ background: '#F8FAFC', padding: '10px', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
-                                    <div style={{ color: '#64748B', fontSize: '0.68rem', fontWeight: 700 }}>ALTA SALUS</div>
-                                    <div style={{ fontWeight: 800, color: '#0F172A', marginTop: '2px' }}>{formatDateTimeShort(selectedAdmDetail.fecha_alta)}</div>
-                                </div>
-                                <div style={{ background: '#EFF6FF', padding: '10px', borderRadius: '8px', border: '1px solid #BFDBFE' }}>
-                                    <div style={{ color: '#1E40AF', fontSize: '0.68rem', fontWeight: 700 }}>OCUPACIÓN PROPORCIONAL</div>
-                                    <div style={{ fontWeight: 900, color: '#1E40AF', marginTop: '2px' }}>
-                                        {selectedAdmDetail.dias_proporcionales_total} días ({selectedAdmDetail.horas_presupuesto_total} hs)
-                                    </div>
-                                </div>
-                            </div>
-
-                            {selectedAdmDetail.inconsistencia_detalle && (
-                                <div style={{
-                                    background: '#FFFBEB',
-                                    border: '1px solid #FDE68A',
-                                    borderRadius: '8px',
-                                    padding: '10px 12px',
-                                    fontSize: '0.78rem',
-                                    color: '#92400E'
-                                }}>
-                                    <strong>Auditoría SALUS:</strong> {selectedAdmDetail.inconsistencia_detalle}
-                                </div>
-                            )}
-
-                            <div>
-                                <div style={{ fontSize: '0.76rem', fontWeight: 800, color: '#334155', marginBottom: '6px' }}>
-                                    Tramos Físicos Registrados (Historial de Camas):
-                                </div>
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                    {(selectedAdmDetail.tramos_json || []).map((t, idx) => (
-                                        <div
-                                            key={idx}
-                                            style={{
-                                                background: '#F8FAFC',
-                                                border: '1px solid #E2E8F0',
-                                                borderRadius: '8px',
-                                                padding: '8px 12px',
-                                                display: 'flex',
-                                                justifyContent: 'space-between',
-                                                alignItems: 'center',
-                                                fontSize: '0.78rem'
-                                            }}
-                                        >
-                                            <div>
-                                                <strong style={{ color: '#1E40AF' }}>{t.unidad}</strong> ({t.tipo})
-                                                <div style={{ fontSize: '0.7rem', color: '#64748B' }}>
-                                                    {formatDateTimeShort(t.inicio)} → {formatDateTimeShort(t.fin)}
-                                                </div>
-                                            </div>
-                                            <div style={{ textAlign: 'right', fontWeight: 800, color: '#0F172A' }}>
-                                                {t.horas} hs = {Number(t.dias_prop || 0).toFixed(3)} días
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-
-                            {selectedAdmDetail.tiene_ficha_557 && onOpenFicha557ById && (
-                                <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            const idVis = selectedAdmDetail.id_visita_557;
-                                            const nhc = selectedAdmDetail.nhc;
-                                            const dni = selectedAdmDetail.dni;
-                                            setSelectedAdmDetail(null);
-                                            onOpenFicha557ById({ id_visita_557: idVis, nhc, dni });
-                                        }}
-                                        style={{
-                                            padding: '7px 14px',
-                                            borderRadius: '8px',
-                                            border: '1px solid #1E40AF',
-                                            background: '#1E40AF',
-                                            color: '#FFFFFF',
-                                            fontWeight: 700,
-                                            fontSize: '0.78rem',
-                                            cursor: 'pointer'
-                                        }}
-                                    >
-                                        📝 Ver Valoración Clínica Protocolo 557 Asociada
-                                    </button>
-                                </div>
-                            )}
+                            ))}
                         </div>
                     </div>
                 </div>
