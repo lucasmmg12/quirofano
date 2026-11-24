@@ -1765,9 +1765,22 @@ export default function QuirofanoDashboard({
     fechaHasta,
     datePresetMode,
     onDatePresetChange,
-    onCustomDateChange
+    onCustomDateChange,
+    currentTab,
+    onTabChange
 }) {
-    const [activeTab, setActiveTab] = useState('resumen');
+    const [activeTab, setActiveTab] = useState(() => currentTab || 'resumen');
+
+    useEffect(() => {
+        if (currentTab && currentTab !== activeTab) {
+            setActiveTab(currentTab);
+        }
+    }, [currentTab]);
+
+    const handleSelectTab = (t) => {
+        setActiveTab(t);
+        if (onTabChange) onTabChange(t);
+    };
     const [searchCirujano, setSearchCirujano] = useState('');
     const [selectedChartHelp, setSelectedChartHelp] = useState(null);
     const [showSqlModal, setShowSqlModal] = useState(false);
@@ -3877,7 +3890,7 @@ export default function QuirofanoDashboard({
                         <button
                             key={tab.id}
                             type="button"
-                            onClick={() => setActiveTab(tab.id)}
+                            onClick={() => handleSelectTab(tab.id)}
                             style={{
                                 padding: '8px 16px',
                                 borderRadius: '9px',

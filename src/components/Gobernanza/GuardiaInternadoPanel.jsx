@@ -9,8 +9,21 @@ import {
 import { supabase } from '../../lib/supabase';
 import GuardiaAdmisionesOcupacionPanel from './GuardiaAdmisionesOcupacionPanel';
 
-export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admisiones_paola', selectedPeriodoProp, fechaDesde, fechaHasta, onOpenEpicrisisIa }) {
+export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admisiones_paola', onSubTabChange, selectedPeriodoProp, fechaDesde, fechaHasta, onOpenEpicrisisIa }) {
     const [subTab, setSubTab] = useState(initialSubTab); // 'admisiones_paola' | 'admisiones_557' | 'seguimiento' | 'traumatologia' | 'interconsultas'
+
+    useEffect(() => {
+        if (initialSubTab && initialSubTab !== subTab) {
+            setSubTab(initialSubTab);
+        }
+    }, [initialSubTab]);
+
+    const handleSelectSubTab = (newSubTab) => {
+        setSubTab(newSubTab);
+        if (onSubTabChange) {
+            onSubTabChange(newSubTab);
+        }
+    };
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [data, setData] = useState({ admisiones_clinicas: [], interconsultas_en_557: [], traumatologia: [], interconsultas: [], stats: null });
@@ -586,7 +599,7 @@ export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admis
                     }}>
                         <button
                             type="button"
-                            onClick={() => setSubTab('admisiones_paola')}
+                            onClick={() => handleSelectSubTab('admisiones_paola')}
                             style={{
                                 padding: '8px 14px',
                                 borderRadius: '6px',
@@ -607,7 +620,7 @@ export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admis
 
                         <button
                             type="button"
-                            onClick={() => setSubTab('admisiones_557')}
+                            onClick={() => handleSelectSubTab('admisiones_557')}
                             style={{
                                 padding: '8px 14px',
                                 borderRadius: '6px',
@@ -628,7 +641,7 @@ export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admis
 
                         <button
                             type="button"
-                            onClick={() => setSubTab('seguimiento')}
+                            onClick={() => handleSelectSubTab('seguimiento')}
                             style={{
                                 padding: '8px 14px',
                                 borderRadius: '6px',
@@ -661,7 +674,7 @@ export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admis
 
                         <button
                             type="button"
-                            onClick={() => setSubTab('traumatologia')}
+                            onClick={() => handleSelectSubTab('traumatologia')}
                             style={{
                                 padding: '8px 14px',
                                 borderRadius: '6px',
@@ -692,7 +705,7 @@ export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admis
 
                         <button
                             type="button"
-                            onClick={() => setSubTab('interconsultas')}
+                            onClick={() => handleSelectSubTab('interconsultas')}
                             style={{
                                 padding: '8px 14px',
                                 borderRadius: '6px',
@@ -1334,7 +1347,7 @@ export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admis
                                 type="button"
                                 onClick={() => {
                                     setAdmPeriodoFilter(selectedSegPeriodo.includes('ANUAL') ? 'todos' : selectedSegPeriodo);
-                                    setSubTab('admisiones_557');
+                                    handleSelectSubTab('admisiones_557');
                                 }}
                                 style={{
                                     background: '#1E40AF',
@@ -1624,7 +1637,7 @@ export default function GuardiaInternadoPanel({ addToast, initialSubTab = 'admis
                                         key={doc.key} 
                                         onClick={() => {
                                             setAdmDoctorFilter(doc.filterKey);
-                                            setSubTab('admisiones_557');
+                                            handleSelectSubTab('admisiones_557');
                                         }}
                                         style={{
                                             background: evCount > 0 ? '#FFFFFF' : '#F8FAFC',

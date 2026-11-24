@@ -392,6 +392,8 @@ export default function InternacionDashboard({
     fechaHasta,
     datePresetMode = 'este_mes',
     addToast,
+    currentTab,
+    onTabChange
 }) {
     // Fechas efectivas 100% supeditadas al filtro maestro del Telar
     const effectiveDesde = useMemo(() => {
@@ -409,9 +411,20 @@ export default function InternacionDashboard({
 
     const telarYMD = useMemo(() => parseYMD(effectiveDesde) || { y: 2026, m: 11, d: 1 }, [effectiveDesde]);
 
-    // Navegación interna
-    const [activeTab, setActiveTab] = useState('portal');
+    // Navegación interna sincronizada con URL
+    const [activeTab, setActiveTab] = useState(() => currentTab || 'portal');
     const [tablaSubTab, setTablaSubTab] = useState('dias_cama'); // 'dias_cama' | 'ingresos' | 'ocupacion'
+
+    useEffect(() => {
+        if (currentTab && currentTab !== activeTab) {
+            setActiveTab(currentTab);
+        }
+    }, [currentTab]);
+
+    const handleSelectTab = (t) => {
+        setActiveTab(t);
+        if (onTabChange) onTabChange(t);
+    };
 
     // Filtros no temporales (Obra Social, Especialidad, Sector, Proceso)
     const [filterCliente, setFilterCliente] = useState('');
@@ -836,7 +849,7 @@ export default function InternacionDashboard({
 
     const goToDetallesWithSector = (sectoresArr) => {
         setSelectedSectoresDetalles(sectoresArr);
-        setActiveTab('detalles');
+        handleSelectTab('detalles');
     };
 
     const yearsAll = [2021, 2022, 2023, 2024, 2025, 2026];
@@ -1033,7 +1046,7 @@ export default function InternacionDashboard({
                             <button
                                 key={t.id}
                                 type="button"
-                                onClick={() => setActiveTab(t.id)}
+                                onClick={() => handleSelectTab(t.id)}
                                 style={{
                                     display: 'inline-flex',
                                     alignItems: 'center',
@@ -1140,7 +1153,7 @@ export default function InternacionDashboard({
                             <button
                                 key={card.tab}
                                 type="button"
-                                onClick={() => setActiveTab(card.tab)}
+                                onClick={() => handleSelectTab(card.tab)}
                                 style={{
                                     textAlign: 'left',
                                     background: '#FFFFFF',
@@ -1395,7 +1408,7 @@ export default function InternacionDashboard({
                             )}
                             <button
                                 type="button"
-                                onClick={() => setActiveTab('pacientes')}
+                                onClick={() => handleSelectTab('pacientes')}
                                 style={{ padding: '6px 12px', borderRadius: '8px', border: '1px solid #0284C7', background: '#F0F9FF', color: '#003B73', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer' }}
                             >
                                 Detalle paciente →

@@ -89,7 +89,9 @@ export default function DiagnosticoImagenesDashboard({
     datePresetMode = 'este_mes',
     onDatePresetChange,
     onCustomDateChange,
-    addToast
+    addToast,
+    currentTab,
+    onTabChange
 }) {
     // ─── ESTADOS LOCALES ───
     const [loading, setLoading] = useState(true);
@@ -123,7 +125,18 @@ export default function DiagnosticoImagenesDashboard({
     const [filterFinanciador, setFilterFinanciador] = useState('TODOS'); // 'TODOS' | 'Obra Social' | 'Particular'
     const [ecoSinInformarExpanded, setEcoSinInformarExpanded] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
-    const [activeTabDetail, setActiveTabDetail] = useState('prestadores'); // 'prestadores' | 'solicitantes' | 'informantes' | 'asistencia' | 'obras_sociales' | 'centros'
+    const [activeTabDetail, setActiveTabDetail] = useState(() => currentTab || 'prestadores'); // 'prestadores' | 'solicitantes' | 'informantes' | 'asistencia' | 'obras_sociales' | 'centros'
+
+    useEffect(() => {
+        if (currentTab && currentTab !== activeTabDetail) {
+            setActiveTabDetail(currentTab);
+        }
+    }, [currentTab]);
+
+    const handleSelectTabDetail = (t) => {
+        setActiveTabDetail(t);
+        if (onTabChange) onTabChange(t);
+    };
 
     // Estados para el Gráfico de Progresión Temporal
     const [chartGranularity, setChartGranularity] = useState('auto'); // 'auto' | 'dia' | 'mes'
@@ -3914,7 +3927,7 @@ export default function DiagnosticoImagenesDashboard({
                             return (
                                 <button
                                     key={sub.id}
-                                    onClick={() => setActiveTabDetail(sub.id)}
+                                    onClick={() => handleSelectTabDetail(sub.id)}
                                     style={{
                                         flex: 1,
                                         display: 'flex',

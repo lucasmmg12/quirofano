@@ -38,6 +38,7 @@ import EpidemiologiaDashboard from './EpidemiologiaDashboard';
 import DiagnosticoImagenesDashboard from './DiagnosticoImagenesDashboard';
 import InternacionDashboard from './InternacionDashboard';
 import ComprasConsumoStockDashboard from './ComprasConsumoStockDashboard';
+import { useGobernanzaNavigation } from './useGobernanzaNavigation';
 
 const SIDEBAR_INDICATOR_GROUPS = [
     {
@@ -226,15 +227,40 @@ export function esDiaOcupadoValido(fechaOcupacion, fechaIngreso, fechaAlta) {
 export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpdate, addToast, currentUser }) {
     const isUciOnly = (currentUser?.usuario || '').toLowerCase().trim() === 'naguilera';
 
+    // Hook de enrutamiento sincronizado con URL y HTML routes
+    const {
+        sectorId: routeSectorId,
+        tabId: routeTabId,
+        subTabId: routeSubTabId,
+        navigateToRoute
+    } = useGobernanzaNavigation(currentUser);
+
     // === ESTADOS DE NAVEGACIÓN Y SECTOR ===
     const [sidebarOpen, setSidebarOpen] = useState(false); // Colapsado por defecto a solicitud
-    const [sectorId, setSectorId] = useState('UCI');
+    const [sectorId, setSectorId] = useState(() => routeSectorId || 'UCI');
     const [uciSubNivel, setUciSubNivel] = useState('CONSOLIDADO');
-    const [uciActiveTab, setUciActiveTab] = useState('censo'); // 'censo' | 'camas' | 'demografia' | 'mortalidad' | 'diagnostico' // 'CONSOLIDADO' | 'INTENSIVA' | 'INTERMEDIA'
+    const [uciActiveTab, setUciActiveTab] = useState(() => (routeSectorId === 'UCI' && routeTabId ? routeTabId : 'censo')); // 'censo' | 'camas' | 'demografia' | 'mortalidad' | 'diagnostico'
     const [isUciOpen, setIsUciOpen] = useState(() => {
         if (isUciOnly) return true;
         return localStorage.getItem('telar_uci_expanded') === 'true';
     });
+
+    // Sincronizar cambios de URL (botón atrás/adelante del navegador o enlaces directos)
+    useEffect(() => {
+        if (routeSectorId && routeSectorId !== sectorId) {
+            setSectorId(routeSectorId);
+            const cfg = SECTORES_CONFIG.find(s => s.id === routeSectorId);
+            if (cfg) setCamasTotales(cfg.camasDefault);
+        }
+        if (routeSectorId === 'UCI' && routeTabId && routeTabId !== uciActiveTab) {
+            setUciActiveTab(routeTabId);
+            if (routeTabId === 'camas') {
+                setViewMode('gantt');
+            } else {
+                setViewMode('dashboard');
+            }
+        }
+    }, [routeSectorId, routeTabId]);
 
     useEffect(() => {
         if (isUciOnly && sectorId !== 'UCI') {
@@ -734,7 +760,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
         return SECTORES_CONFIG.find(s => s.id === sectorId) || SECTORES_CONFIG[0];
     }, [sectorId]);
 
-    // Cuando cambia el sector, actualizar camas por defecto
+    // Cuando cambia el sector, actualizar camas por defecto y sincronizar URL
     const handleSelectSector = (sId) => {
         if (isUciOnly && sId !== 'UCI') return;
         setSectorId(sId);
@@ -746,7 +772,17 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
         }
         if (sId === 'UCI') {
             setUciSubNivel('CONSOLIDADO');
+            navigateToRoute('UCI', uciActiveTab || 'censo');
+        } else if (sId === 'GUARDIA') {
+            navigateToRoute('GUARDIA', routeTabId || 'internado', routeSubTabId || 'admisiones_paola');
+        } else {
+            navigateToRoute(sId, null, null);
         }
+    };
+
+    const handleSelectUciTab = (tab) => {
+        setUciActiveTab(tab);
+        navigateToRoute('UCI', tab);
     };
 
     // Manejo de cambio de subnivel en UCI (Intensiva vs Intermedia vs Consolidado)
@@ -4265,6 +4301,8 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                             fechaDesde={fechaDesde}
                             fechaHasta={fechaHasta}
                             datePresetMode={datePresetMode}
+                            currentTab={sectorId === 'COMPRAS_STOCK' ? routeTabId : null}
+                            onTabChange={(tab) => navigateToRoute('COMPRAS_STOCK', tab)}
                             addToast={addToast}
                         />
                     ) : sectorId === 'INTERNACION' ? (
@@ -4272,6 +4310,8 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                             fechaDesde={fechaDesde}
                             fechaHasta={fechaHasta}
                             datePresetMode={datePresetMode}
+                            currentTab={sectorId === 'INTERNACION' ? routeTabId : null}
+                            onTabChange={(tab) => navigateToRoute('INTERNACION', tab)}
                             addToast={addToast}
                         />
                     ) : sectorId === 'EPIDEMIOLOGIA' ? (
@@ -4289,6 +4329,8 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                             fechaDesde={fechaDesde}
                             fechaHasta={fechaHasta}
                             datePresetMode={datePresetMode}
+                            currentTab={sectorId === 'DXI' ? routeTabId : null}
+                            onTabChange={(tab) => navigateToRoute('DXI', tab)}
                             onDatePresetChange={handleSetDatePreset}
                             onCustomDateChange={(d, h) => {
                                 setFechaDesde(d);
@@ -4309,6 +4351,9 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                             fechaDesde={fechaDesde}
                             fechaHasta={fechaHasta}
                             datePresetMode={datePresetMode}
+                            currentTab={sectorId === 'GUARDIA' ? routeTabId : null}
+                            currentSubTab={sectorId === 'GUARDIA' ? routeSubTabId : null}
+                            onTabChange={(tab, subtab) => navigateToRoute('GUARDIA', tab, subtab)}
                             onDatePresetChange={handleSetDatePreset}
                             onCustomDateChange={(d, h) => {
                                 setFechaDesde(d);
@@ -4328,6 +4373,8 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                             fechaDesde={fechaDesde}
                             fechaHasta={fechaHasta}
                             datePresetMode={datePresetMode}
+                            currentTab={sectorId === 'QUIROFANO' ? routeTabId : null}
+                            onTabChange={(tab) => navigateToRoute('QUIROFANO', tab)}
                             onDatePresetChange={handleSetDatePreset}
                             onCustomDateChange={(d, h) => {
                                 setFechaDesde(d);
@@ -4369,7 +4416,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                             key={tab.id}
                                             type="button"
                                             onClick={() => {
-                                                setUciActiveTab(tab.id);
+                                                handleSelectUciTab(tab.id);
                                                 if (tab.id === 'camas') {
                                                     setViewMode('gantt');
                                                 } else {

@@ -60,6 +60,8 @@ export default function ComprasConsumoStockDashboard({
     fechaHasta,
     datePresetMode = 'este_mes',
     addToast,
+    currentTab,
+    onTabChange
 }) {
     const effectiveDesde = useMemo(() => {
         if (fechaDesde) return fechaDesde;
@@ -77,13 +79,24 @@ export default function ComprasConsumoStockDashboard({
     const desdeYM = useMemo(() => dateToYM(effectiveDesde), [effectiveDesde]);
     const hastaYM = useMemo(() => dateToYM(effectiveHasta), [effectiveHasta]);
 
-    // UI States
-    const [activeTab, setActiveTab] = useState('resumen');
+    // UI States sincronizados con URL
+    const [activeTab, setActiveTab] = useState(() => currentTab || 'resumen');
     const [soloClinicos, setSoloClinicos] = useState(true); // Por defecto Clínicos + Central (Farmacia/Compras)
     const [filterAlmacen, setFilterAlmacen] = useState('TODOS');
     const [filterEstadoStock, setFilterEstadoStock] = useState('TODOS');
     const [searchTerm, setSearchTerm] = useState('');
     const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        if (currentTab && currentTab !== activeTab) {
+            setActiveTab(currentTab);
+        }
+    }, [currentTab]);
+
+    const handleSelectTab = (t) => {
+        setActiveTab(t);
+        if (onTabChange) onTabChange(t);
+    };
 
     // Datasets
     const [mensualRows, setMensualRows] = useState([]);
@@ -692,7 +705,7 @@ export default function ComprasConsumoStockDashboard({
                             <button
                                 key={t.id}
                                 type="button"
-                                onClick={() => setActiveTab(t.id)}
+                                onClick={() => handleSelectTab(t.id)}
                                 style={{
                                     display: 'inline-flex',
                                     alignItems: 'center',

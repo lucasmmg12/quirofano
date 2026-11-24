@@ -585,7 +585,8 @@ function App({ currentUser, onLogout, onUserUpdated }) {
 
     // Derive activeView directly from the URL pathname
     // If it's "/" or unrecognized, it will default to 'inicio' visually (handled below)
-    const activeView = location.pathname === '/' ? 'inicio' : location.pathname.substring(1);
+    const pathSegments = location.pathname.split('/').filter(Boolean);
+    const activeView = pathSegments.length === 0 ? 'inicio' : pathSegments[0];
 
     // Dark mode
     const [darkMode, setDarkMode] = useState(() => localStorage.getItem('dark_mode') === 'true');

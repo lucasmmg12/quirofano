@@ -305,7 +305,10 @@ export default function GuardiaClinicaDashboard({
     fechaHasta,
     datePresetMode,
     onDatePresetChange,
-    onCustomDateChange
+    onCustomDateChange,
+    currentTab,
+    currentSubTab,
+    onTabChange
 }) {
     const [loading, setLoading] = useState(true);
     const [historialResumen, setHistorialResumen] = useState([]);
@@ -317,7 +320,20 @@ export default function GuardiaClinicaDashboard({
     const [isConversionModalOpen, setIsConversionModalOpen] = useState(false);
     const [showQuirofanoModal, setShowQuirofanoModal] = useState(false);
     const [showPuertaMedicoProgression, setShowPuertaMedicoProgression] = useState(false);
-    const [activeDashboardTab, setActiveDashboardTab] = useState('resumen'); // 'resumen' | 'triage' | 'tiempos' | 'resolucion' | 'calidad' | 'internado'
+    const [activeDashboardTab, setActiveDashboardTab] = useState(() => currentTab || 'resumen'); // 'resumen' | 'triage' | 'tiempos' | 'resolucion' | 'calidad' | 'internado'
+
+    useEffect(() => {
+        if (currentTab && currentTab !== activeDashboardTab) {
+            setActiveDashboardTab(currentTab);
+        }
+    }, [currentTab]);
+
+    const handleSelectTab = (tabId, subTabId = null) => {
+        setActiveDashboardTab(tabId);
+        if (onTabChange) {
+            onTabChange(tabId, subTabId);
+        }
+    };
     const [cirugiasConversionAll, setCirugiasConversionAll] = useState([]);
     const [triagePacientesAll, setTriagePacientesAll] = useState([]);
     const [franjaFiltro, setFranjaFiltro] = useState('diurna'); // 'diurna' | 'nocturna' | '24hs'
@@ -980,7 +996,7 @@ export default function GuardiaClinicaDashboard({
                         <button
                             key={tab.id}
                             type="button"
-                            onClick={() => setActiveDashboardTab(tab.id)}
+                            onClick={() => handleSelectTab(tab.id)}
                             style={{
                                 padding: '8px 16px',
                                 borderRadius: '9px',
@@ -1022,6 +1038,8 @@ export default function GuardiaClinicaDashboard({
                     selectedPeriodoProp={selectedPeriodo}
                     fechaDesde={fechaDesde}
                     fechaHasta={fechaHasta}
+                    initialSubTab={currentSubTab || 'admisiones_paola'}
+                    onSubTabChange={(st) => handleSelectTab('internado', st)}
                 />
             )}
 
@@ -1085,7 +1103,7 @@ export default function GuardiaClinicaDashboard({
                                 metaStatus={enrichedMetrics.esperaPuertaTriage <= 15 ? 'ok' : 'warning'}
                                 detalle="Minutos transcurridos entre [Fecha Entrada Real] en ventanilla y la apertura del Protocolo 621 en [PR InstRespEntrada]."
                                 origen="VLISE_Visitas cruzada con [PR InstRespEntrada]"
-                                onClick={() => setActiveDashboardTab('triage')}
+                                onClick={() => handleSelectTab('triage')}
                             />
 
                             {/* 3. Puerta – Médico por Franja Horaria (Clickeable: abre progresión temporal) */}
@@ -1219,7 +1237,7 @@ export default function GuardiaClinicaDashboard({
                                 metaStatus={currentData.cobertura_triage_pct >= 50 ? 'ok' : 'warning'}
                                 detalle="Porcentaje de consultas de guardia con Protocolo 621 completado. Clic para ver el mapa de cobertura por hora y horas ciegas."
                                 origen="VLISE_Visitas cruzada con [PR InstRespEntrada]"
-                                onClick={() => setActiveDashboardTab('triage')}
+                                onClick={() => handleSelectTab('triage')}
                             />
 
                             {/* 5. Pases a Internación (Piso Clínico) */}
@@ -1232,7 +1250,7 @@ export default function GuardiaClinicaDashboard({
                                 metaStatus="ok"
                                 detalle="Pacientes ingresados con formulario SALUS (INT) ADMISION MEDICA CLINICA derivados a Piso Clínico. Clic para auditar fichas completas."
                                 origen="VLISE_Visitas + TABLEAU_Admisiones"
-                                onClick={() => setActiveDashboardTab('internado')}
+                                onClick={() => handleSelectTab('internado')}
                             />
 
                             {/* 6. Derivaciones a UCI (Cuidados Críticos) */}
@@ -1245,7 +1263,7 @@ export default function GuardiaClinicaDashboard({
                                 metaStatus={(currentAdmisiones?.destino_uci_count || enrichedMetrics.cantUCI) > 0 ? 'warning' : 'ok'}
                                 detalle="Pacientes con Admisión Clínica Médica derivados a camas de Terapia Intensiva (UCI). Clic para ver listado e historias."
                                 origen="VLISE_Visitas (Area=UCI) + TABLEAU_Admisiones"
-                                onClick={() => setActiveDashboardTab('internado')}
+                                onClick={() => handleSelectTab('internado')}
                             />
 
                             {/* 7. Cirugías Efectivas de Guardia */}
@@ -1258,7 +1276,7 @@ export default function GuardiaClinicaDashboard({
                                 metaStatus="ok"
                                 detalle="Pacientes con cirugía de urgencia real (<= 48hs). Excluye ingresos de cirugías previamente programadas que entraron por ventanilla administrativa."
                                 origen="TABLEAU_Cirugias (Filtro Tipo Urgencia, sin programadas)"
-                                onClick={() => setActiveDashboardTab('resolucion')}
+                                onClick={() => handleSelectTab('resolucion')}
                             />
                         </div>
                     </div>
@@ -2310,7 +2328,7 @@ export default function GuardiaClinicaDashboard({
                                     Total: {currentAdmisiones?.total_admisiones_clinicas || 0} fichas 557
                                 </span>
                                 <button
-                                    onClick={() => setActiveDashboardTab('internado')}
+                                    onClick={() => handleSelectTab('internado')}
                                     style={{
                                         padding: '6px 12px',
                                         borderRadius: '8px',
@@ -2337,7 +2355,7 @@ export default function GuardiaClinicaDashboard({
                             gap: '12px'
                         }}>
                             {/* Pase a Quirófano */}
-                            <div onClick={() => setActiveDashboardTab('internado')} style={{ background: '#F8FAFC', borderRadius: '10px', border: '1px solid #E2E8F0', padding: '14px', borderLeft: '4px solid #EC4899', cursor: 'pointer' }}>
+                            <div onClick={() => handleSelectTab('internado')} style={{ background: '#F8FAFC', borderRadius: '10px', border: '1px solid #E2E8F0', padding: '14px', borderLeft: '4px solid #EC4899', cursor: 'pointer' }}>
                                 <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#BE185D', display: 'flex', alignItems: 'center', gap: '6px' }}>
                                     <span>✂️</span> Pase Quirúrgico / Procedimiento
                                 </div>
@@ -2351,7 +2369,7 @@ export default function GuardiaClinicaDashboard({
                             </div>
 
                             {/* Internado General (Piso) */}
-                            <div onClick={() => setActiveDashboardTab('internado')} style={{ background: '#F8FAFC', borderRadius: '10px', border: '1px solid #E2E8F0', padding: '14px', borderLeft: '4px solid #2563EB', cursor: 'pointer' }}>
+                            <div onClick={() => handleSelectTab('internado')} style={{ background: '#F8FAFC', borderRadius: '10px', border: '1px solid #E2E8F0', padding: '14px', borderLeft: '4px solid #2563EB', cursor: 'pointer' }}>
                                 <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#1D4ED8', display: 'flex', alignItems: 'center', gap: '6px' }}>
                                     <span>🛌</span> Internado (Piso Clínico)
                                 </div>
@@ -2365,7 +2383,7 @@ export default function GuardiaClinicaDashboard({
                             </div>
 
                             {/* UCI / Cuidados Críticos */}
-                            <div onClick={() => setActiveDashboardTab('internado')} style={{ background: '#F8FAFC', borderRadius: '10px', border: '1px solid #E2E8F0', padding: '14px', borderLeft: '4px solid #EF4444', cursor: 'pointer' }}>
+                            <div onClick={() => handleSelectTab('internado')} style={{ background: '#F8FAFC', borderRadius: '10px', border: '1px solid #E2E8F0', padding: '14px', borderLeft: '4px solid #EF4444', cursor: 'pointer' }}>
                                 <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#B91C1C', display: 'flex', alignItems: 'center', gap: '6px' }}>
                                     <span>🫀</span> UCI / Cuidados Críticos
                                 </div>
@@ -2379,7 +2397,7 @@ export default function GuardiaClinicaDashboard({
                             </div>
 
                             {/* Reinternación <= 72 hs */}
-                            <div onClick={() => setActiveDashboardTab('internado')} style={{ background: '#FEF3C7', borderRadius: '10px', border: '1px solid #FDE68A', padding: '14px', borderLeft: '4px solid #D97706', cursor: 'pointer' }}>
+                            <div onClick={() => handleSelectTab('internado')} style={{ background: '#FEF3C7', borderRadius: '10px', border: '1px solid #FDE68A', padding: '14px', borderLeft: '4px solid #D97706', cursor: 'pointer' }}>
                                 <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#92400E', display: 'flex', alignItems: 'center', gap: '6px' }}>
                                     <span>🔁</span> Reconsulta / Reingreso &le; 72 hs
                                 </div>
