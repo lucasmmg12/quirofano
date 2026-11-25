@@ -25,12 +25,23 @@ const TABS = [
 
 const MESES_CORTO = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
 const DIAS_ORDEN = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
-const FRANJAS_ORDEN = ['08-14', '14-22', '22-08'];
+const FRANJAS_ORDEN = ['08 a 14', '14 a 22', '22 a 08'];
 const FRANJA_LABELS = {
-    '08-14': 'Mañana (08–14 hs)',
-    '14-22': 'Tarde (14–22 hs)',
-    '22-08': 'Noche (22–08 hs)',
+    '08 a 14': 'Mañana (08–14 hs)',
+    '14 a 22': 'Tarde (14–22 hs)',
+    '22 a 08': 'Noche (22–08 hs)',
 };
+
+const CUELLO_LABELS = {
+    ESPERA_MEDICO_GGO: { label: 'Espera Médico GGO', grupo: 'GGO', bg: '#DBEAFE', color: '#1E40AF' },
+    ATENCION_GGO: { label: 'Atención GGO', grupo: 'GGO', bg: '#FCE7F3', color: '#9D174D' },
+    ADMISION_PRE_QX: { label: 'Admisión Pre-Qx', grupo: 'POST_GGO', bg: '#FEF3C7', color: '#92400E' },
+    ESPERA_QUIROFANO: { label: 'Espera Quirófano', grupo: 'POST_GGO', bg: '#FEE2E2', color: '#991B1B' },
+};
+
+function getCuelloMeta(val) {
+    return CUELLO_LABELS[val] || { label: val || 'Post-GGO', grupo: 'POST_GGO', bg: '#FEF3C7', color: '#92400E' };
+}
 
 const TRAMO_COLORS = {
     t1: '#3B82F6', // Espera médico GGO
@@ -393,10 +404,11 @@ export default function GuardiaGgoDashboard({
         });
     }, [casosQxBase]);
 
-    // Franjas horarias y días de la semana agregados
+    // Franjas horarias y días de la semana agregados (usando dia_semana === 'TODOS' para evitar doble conteo)
     const franjasAgg = useMemo(() => {
         return FRANJAS_ORDEN.map(franja => {
-            const rows = franjasRaw.filter(r => r.franja_horaria === franja);
+            const rowsTodos = franjasRaw.filter(r => r.franja_horaria === franja && r.dia_semana === 'TODOS');
+            const rows = rowsTodos.length > 0 ? rowsTodos : franjasRaw.filter(r => r.franja_horaria === franja && r.dia_semana !== 'TODOS');
             const total = rows.reduce((s, r) => s + (r.total_consultas || 0), 0);
             const obst = rows.reduce((s, r) => s + (r.consultas_obstetricia || 0), 0);
             const gine = rows.reduce((s, r) => s + (r.consultas_ginecologia || 0), 0);
@@ -427,6 +439,23 @@ export default function GuardiaGgoDashboard({
         });
     }, [franjasRaw, casosQxBase]);
 
+    // Matriz Franja × Día de la Semana
+    const matrizFranjaDia = useMemo(() => {
+        const map = {};
+        for (const f of FRANJAS_ORDEN) {
+            map[f] = {};
+            for (const d of DIAS_ORDEN) {
+                const rows = franjasRaw.filter(r => r.franja_horaria === f && r.dia_semana === d);
+                const total = rows.reduce((s, r) => s + (r.total_consultas || 0), 0);
+                const perm = total > 0
+                    ? rows.reduce((s, r) => s + Number(r.mediana_permanencia_min || 0) * (r.total_consultas || 0), 0) / total
+                    : 0;
+                map[f][d] = { total, perm };
+            }
+        }
+        return map;
+    }, [franjasRaw]);
+
     const diasAgg = useMemo(() => {
         return DIAS_ORDEN.map(dia => {
             const rows = franjasRaw.filter(r => r.dia_semana === dia);
@@ -436,6 +465,9 @@ export default function GuardiaGgoDashboard({
             const medEspera = total > 0
                 ? rows.reduce((s, r) => s + Number(r.mediana_puerta_medico_min || 0) * (r.total_consultas || 0), 0) / total
                 : 0;
+            const medPerm = total > 0
+                ? rows.reduce((s, r) => s + Number(r.mediana_permanencia_min || 0) * (r.total_consultas || 0), 0) / total
+                : 0;
             return {
                 dia,
                 diaCorto: dia.slice(0, 3),
@@ -443,18 +475,20 @@ export default function GuardiaGgoDashboard({
                 eco,
                 qx,
                 medEspera: Number(medEspera.toFixed(1)),
+                medPerm: Number(medPerm.toFixed(1)),
             };
         });
     }, [franjasRaw]);
 
-    // Rankings de médicos y obras sociales agregando los JSON del período
+    // Rankings de médicos y obras sociales agregando los JSON del período (soportando { nombre, count } y fallback)
     const topMedicos = useMemo(() => {
         const map = new Map();
         for (const r of resumenPeriodo) {
             const arr = Array.isArray(r.top_medicos_json) ? r.top_medicos_json : [];
             for (const item of arr) {
-                const key = item.medico || 'Sin especificar';
-                map.set(key, (map.get(key) || 0) + (Number(item.consultas) || 0));
+                const key = item.nombre || item.medico || 'Sin especificar';
+                const cnt = Number(item.count ?? item.consultas ?? 0);
+                map.set(key, (map.get(key) || 0) + cnt);
             }
         }
         return Array.from(map.entries())
@@ -468,8 +502,9 @@ export default function GuardiaGgoDashboard({
         for (const r of resumenPeriodo) {
             const arr = Array.isArray(r.top_obras_sociales_json) ? r.top_obras_sociales_json : [];
             for (const item of arr) {
-                const key = item.obra_social || 'Sin especificar';
-                map.set(key, (map.get(key) || 0) + (Number(item.consultas) || 0));
+                const key = item.nombre || item.obra_social || 'Sin especificar';
+                const cnt = Number(item.count ?? item.consultas ?? 0);
+                map.set(key, (map.get(key) || 0) + cnt);
             }
         }
         return Array.from(map.entries())
@@ -486,7 +521,12 @@ export default function GuardiaGgoDashboard({
             if (filtroPrioridad !== 'TODAS' && c.prioridad !== filtroPrioridad) return false;
             if (filtroEco === 'CON_ECO' && !c.tuvo_eco_guardia) return false;
             if (filtroEco === 'SIN_ECO' && c.tuvo_eco_guardia) return false;
-            if (filtroCuello !== 'TODOS' && c.cuello_botella_dominante !== filtroCuello) return false;
+            if (filtroCuello !== 'TODOS') {
+                const metaC = getCuelloMeta(c.cuello_botella_dominante);
+                if (filtroCuello === 'GGO' && metaC.grupo !== 'GGO') return false;
+                if (filtroCuello === 'POST_GGO' && metaC.grupo !== 'POST_GGO') return false;
+                if (filtroCuello !== 'GGO' && filtroCuello !== 'POST_GGO' && c.cuello_botella_dominante !== filtroCuello) return false;
+            }
             if (q) {
                 const hay = [
                     c.paciente, c.nhc, c.dni, c.obra_social, c.nombre_cirugia,
@@ -1186,8 +1226,12 @@ export default function GuardiaGgoDashboard({
                             </select>
                             <select value={filtroCuello} onChange={(e) => setFiltroCuello(e.target.value)} style={{ padding: '7px 10px', borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '12px' }}>
                                 <option value="TODOS">Cuello: Todos</option>
-                                <option value="GGO">Dominante: GGO</option>
-                                <option value="POST_GGO">Dominante: Post-GGO</option>
+                                <option value="GGO">Dominante: GGO (T1+T2)</option>
+                                <option value="POST_GGO">Dominante: Post-GGO (T3+T4)</option>
+                                <option value="ESPERA_QUIROFANO">↳ Espera Quirófano (T4)</option>
+                                <option value="ADMISION_PRE_QX">↳ Admisión Pre-Qx (T3)</option>
+                                <option value="ATENCION_GGO">↳ Atención GGO (T2)</option>
+                                <option value="ESPERA_MEDICO_GGO">↳ Espera Médico GGO (T1)</option>
                             </select>
                         </div>
 
@@ -1213,8 +1257,9 @@ export default function GuardiaGgoDashboard({
                                         const t4 = Math.max(0, Number(c.min_tramo4_adm_quirofano || 0));
                                         const sum = Math.max(1, t1 + t2 + t3 + t4);
                                         const prioMeta = SLA_METAS[c.prioridad] || SLA_METAS.N3;
+                                        const cuelloMeta = getCuelloMeta(c.cuello_botella_dominante);
                                         return (
-                                            <tr key={c.id_visita_ggo} style={{ borderBottom: '1px solid #F1F5F9' }}>
+                                            <tr key={c.id || `${c.id_visita_ggo}-${c.t5_inicio_quirofano}`} style={{ borderBottom: '1px solid #F1F5F9' }}>
                                                 <td style={{ padding: '8px', whiteSpace: 'nowrap' }}>
                                                     <div style={{ fontWeight: 700, color: '#0F172A' }}>{formatDateTimeShort(c.t0_entrada_ggo || c.fecha_ggo)}</div>
                                                     <div style={{ fontSize: '10px', color: '#64748B' }}>{c.franja_horaria} · {c.dia_semana}</div>
@@ -1288,11 +1333,11 @@ export default function GuardiaGgoDashboard({
                                                 <td style={{ padding: '8px', textAlign: 'center', whiteSpace: 'nowrap' }}>
                                                     <div style={{
                                                         display: 'inline-block', fontSize: '10px', fontWeight: 700, padding: '2px 6px', borderRadius: '5px',
-                                                        background: c.cuello_botella_dominante === 'GGO' ? '#FCE7F3' : '#FEF3C7',
-                                                        color: c.cuello_botella_dominante === 'GGO' ? '#9D174D' : '#92400E',
+                                                        background: cuelloMeta.bg,
+                                                        color: cuelloMeta.color,
                                                         marginBottom: '2px'
                                                     }}>
-                                                        {c.cuello_botella_dominante === 'GGO' ? 'GGO' : 'Post-GGO'}
+                                                        {cuelloMeta.label}
                                                     </div>
                                                     <div>
                                                         {c.cumple_meta === true ? (
@@ -1404,9 +1449,46 @@ export default function GuardiaGgoDashboard({
                                     <Legend wrapperStyle={{ fontSize: '12px' }} />
                                     <Bar yAxisId="left" dataKey="total" name="Consultas GGO" fill="#1E40AF" radius={[4, 4, 0, 0]} />
                                     <Bar yAxisId="left" dataKey="eco" name="Deriv. Eco Guardia" fill="#7C3AED" radius={[4, 4, 0, 0]} />
-                                    <Line yAxisId="right" type="monotone" dataKey="medEspera" name="Mediana Espera (min)" stroke="#DB2777" strokeWidth={2.5} dot={{ r: 4 }} />
+                                    <Line yAxisId="right" type="monotone" dataKey="medPerm" name="Mediana Permanencia (min)" stroke="#DB2777" strokeWidth={2.5} dot={{ r: 4 }} />
                                 </ComposedChart>
                             </ResponsiveContainer>
+                        </div>
+                    </div>
+
+                    {/* Matriz Franja Horaria × Día de la Semana */}
+                    <div style={{ background: '#FFFFFF', borderRadius: '10px', border: '1px solid #E2E8F0', padding: '18px' }}>
+                        <h3 style={{ margin: '0 0 12px', fontSize: '15px', fontWeight: 700, color: '#0F172A' }}>
+                            Mapa de Demanda y Permanencia: Franja Horaria × Día de la Semana
+                        </h3>
+                        <div style={{ overflowX: 'auto' }}>
+                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+                                <thead>
+                                    <tr style={{ background: '#F8FAFC', borderBottom: '2px solid #E2E8F0', color: '#334155' }}>
+                                        <th style={{ padding: '9px 10px', textAlign: 'left' }}>Franja Horaria</th>
+                                        {DIAS_ORDEN.map(d => (
+                                            <th key={d} style={{ padding: '9px 8px', textAlign: 'center' }}>{d}</th>
+                                        ))}
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {FRANJAS_ORDEN.map(f => (
+                                        <tr key={f} style={{ borderBottom: '1px solid #F1F5F9' }}>
+                                            <td style={{ padding: '10px', fontWeight: 700, color: '#003B73', whiteSpace: 'nowrap' }}>
+                                                {FRANJA_LABELS[f]}
+                                            </td>
+                                            {DIAS_ORDEN.map(d => {
+                                                const cell = matrizFranjaDia[f]?.[d] || { total: 0, perm: 0 };
+                                                return (
+                                                    <td key={d} style={{ padding: '8px', textAlign: 'center', background: cell.total > 0 ? '#F8FAFC' : '#FFFFFF' }}>
+                                                        <div style={{ fontWeight: 800, color: '#0F172A' }}>{fmtNum(cell.total)}</div>
+                                                        <div style={{ fontSize: '10px', color: '#64748B' }}>{cell.total > 0 ? fmtMin(cell.perm) : '—'}</div>
+                                                    </td>
+                                                );
+                                            })}
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
                         </div>
                     </div>
                 </div>
