@@ -2835,16 +2835,16 @@ async function syncAsociacionesCirugias(db, fastSync = false) {
             V.[Cliente] AS [Cliente],
             V.[NIF] AS [DNI],
             V.[Visita_Especialidad] AS [Especialidad],
-            V.[Tipo Visita] AS [Nombre cirugía],
-            V.[Asistencia] AS [Estado],
+            ISNULL(NULLIF(LTRIM(RTRIM(V.[Tipo Visita])), ''), V.[Agenda]) AS [Nombre cirugía],
+            ISNULL(NULLIF(LTRIM(RTRIM(V.[Asistencia])), ''), 'Presente') AS [Estado],
             V.[Responsable] AS [Cirujano],
             LTRIM(RTRIM(TA.[Número admisión])) AS [Número admisión],
             'SUTURA' AS [Fuente]
         FROM [SALUS].[dbo].[VLISE_Visitas] V
         LEFT JOIN [SALUS].[dbo].[TABLEAU_Admisiones] TA ON TA.idAdmision = V.IdHospitalizacion
         WHERE 
-            V.[Tipo Visita] LIKE '%sutura%'
-            AND V.[Asistencia] = 'Presente'
+            (V.[Tipo Visita] LIKE '%sutura%' OR V.[Agenda] LIKE '%sutura%')
+            AND ISNULL(V.[Asistencia], '') NOT IN ('Ausente', 'Anulada', 'Cancelada', 'Suspendida')
             AND ${suturasDateFilter}
     `);
     console.log(`   📥 ${resultSuturas.recordset.length} suturas extraídas de VLISE_Visitas`);

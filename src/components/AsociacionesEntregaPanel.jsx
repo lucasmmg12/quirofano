@@ -53,10 +53,37 @@ const fmtDateTime = (isoString) => {
     }).format(date);
 };
 
+const normalizeSearchText = (str) =>
+    String(str || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase();
+
+const getPeriodDateRange = (periodKey) => {
+    const now = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    const y = now.getFullYear();
+    const m = now.getMonth(); // 0..11
+    const todayStr = `${y}-${pad(m + 1)}-${pad(now.getDate())}`;
+    const firstThisMonth = `${y}-${pad(m + 1)}-01`;
+    const prevDate = new Date(y, m - 1, 1);
+    const firstPrevMonth = `${prevDate.getFullYear()}-${pad(prevDate.getMonth() + 1)}-01`;
+    const lastPrevDate = new Date(y, m, 0);
+    const lastPrevMonth = `${lastPrevDate.getFullYear()}-${pad(lastPrevDate.getMonth() + 1)}-${pad(lastPrevDate.getDate())}`;
+
+    if (periodKey === 'este_mes') return { fechaDesde: firstThisMonth, fechaHasta: todayStr };
+    if (periodKey === 'mes_pasado') return { fechaDesde: firstPrevMonth, fechaHasta: lastPrevMonth };
+    if (periodKey === 'ultimos_2_meses') return { fechaDesde: firstPrevMonth, fechaHasta: todayStr };
+    return { fechaDesde: undefined, fechaHasta: undefined };
+};
+
+const BADGE_ASOCIACIONES = [...ASOCIACION_LIST, 'Sin Asignar'];
+
 function AsociacionBadges({ resumen, filtroAsociacion, onFilterChange }) {
+    const totalPendientes = Object.values(resumen).reduce((s, r) => s + (r.total - r.entregadas), 0);
     return (
         <div style={{
-            display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '16px',
+            display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '14px',
         }}>
             {/* "Todas" badge */}
             <button
@@ -76,14 +103,14 @@ function AsociacionBadges({ resumen, filtroAsociacion, onFilterChange }) {
                     background: '#F3F4F6', padding: '1px 8px', borderRadius: '10px',
                     fontSize: '0.7rem', fontWeight: 700, color: '#6B7280',
                 }}>
-                    {Object.values(resumen).reduce((s, r) => s + r.total - r.entregadas, 0)}
+                    {totalPendientes}
                 </span>
             </button>
 
-            {ASOCIACION_LIST.map(asoc => {
+            {BADGE_ASOCIACIONES.map(asoc => {
                 const r = resumen[asoc] || { total: 0, sinDocs: 0, conDocs: 0, enCarrito: 0, entregadas: 0 };
                 const pendientes = r.total - r.entregadas;
-                const color = ASOCIACION_COLORS[asoc];
+                const color = ASOCIACION_COLORS[asoc] || '#64748B';
                 const isActive = filtroAsociacion === asoc;
                 const shortName = asoc.replace('Asociación de ', '').replace(' (Particular)', '');
 
@@ -130,12 +157,14 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
 
     // Pendientes / Buscador por Admisión state
     const [cirugias, setCirugias] = useState([]);
+    const [periodoFilter, setPeriodoFilter] = useState('ultimos_2_meses'); // 'este_mes' | 'mes_pasado' | 'ultimos_2_meses' | 'todo'
     const [filtroAsociacion, setFiltroAsociacion] = useState(null);
     const [searchTerm, setSearchTerm] = useState('');
     const [soloSuturas, setSoloSuturas] = useState(false);
     const [asociacionDestinoLote, setAsociacionDestinoLote] = useState('');
     const [estadoEntregaFilter, setEstadoEntregaFilter] = useState('pendientes'); // 'all', 'entregados', 'pendientes'
-    const [resumen, setResumen] = useState({});
+    const [historicoResults, setHistoricoResults] = useState(null); // resultados puntuales al buscar en todo el histórico
+    const [searchingHistorico, setSearchingHistorico] = useState(false);
 
     // Carrito state
     const [carrito, setCarrito] = useState({});
@@ -180,30 +209,67 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
     // Modal for generating constancia
     const [showConstanciaModal, setShowConstanciaModal] = useState(null); // asociacion name
 
-    // ─── Load Data ───
+    // ─── Load Data (rápido: solo el período seleccionado; búsqueda y filtros corren en memoria en 0ms) ───
     const loadPendientes = useCallback(async () => {
         setLoading(true);
+        setHistoricoResults(null);
         try {
-            // Si el usuario está buscando por N° Admisión / DNI / Paciente, buscamos en TODO SALUS sin bloquear por Asociación
-            const effectiveAsociacion = searchTerm.trim() ? undefined : filtroAsociacion;
-            const [data, res] = await Promise.all([
-                fetchAsociacionesCirugias({
-                    asociacion: effectiveAsociacion,
-                    search: searchTerm || undefined,
-                    soloSinConstancia: false,
-                    soloSinCarrito: false,
-                    soloSuturas,
-                }),
-                fetchResumenAsociaciones(),
-            ]);
+            const { fechaDesde, fechaHasta } = getPeriodDateRange(periodoFilter);
+            const data = await fetchAsociacionesCirugias({
+                fechaDesde,
+                fechaHasta,
+                soloSinConstancia: false,
+                soloSinCarrito: false,
+                soloSuturas: false,
+            });
             setCirugias(data);
-            setResumen(res);
         } catch (err) {
-            addToast?.('Error al cargar cirugías: ' + err.message, 'error');
+            addToast?.('Error al cargar admisiones y cirugías: ' + err.message, 'error');
         } finally {
             setLoading(false);
         }
-    }, [filtroAsociacion, searchTerm, soloSuturas, addToast]);
+    }, [periodoFilter, addToast]);
+
+    // Búsqueda puntual en todo el histórico (sin recargar las 14.000+ filas ni borrar el input)
+    const handleBuscarEnHistorico = useCallback(async () => {
+        const q = searchTerm.trim();
+        if (q.length < 2) return;
+        setSearchingHistorico(true);
+        try {
+            const data = await fetchAsociacionesCirugias({
+                search: q,
+                soloSinConstancia: false,
+                soloSinCarrito: false,
+            });
+            setHistoricoResults(data);
+            setCurrentPage(0);
+            if (data.length === 0) {
+                addToast?.(`No se encontraron registros en todo el histórico para "${q}"`, 'info');
+            }
+        } catch (err) {
+            addToast?.('Error buscando en histórico: ' + err.message, 'error');
+        } finally {
+            setSearchingHistorico(false);
+        }
+    }, [searchTerm, addToast]);
+
+    // Resumen de badges calculado en memoria (0 requests extras, incluye "Sin Asignar")
+    const resumen = useMemo(() => {
+        const map = {};
+        for (const asoc of BADGE_ASOCIACIONES) {
+            map[asoc] = { total: 0, sinDocs: 0, conDocs: 0, enCarrito: 0, entregadas: 0 };
+        }
+        const source = historicoResults ?? cirugias;
+        for (const row of source) {
+            const asoc = row.asociacion && map[row.asociacion] ? row.asociacion : 'Sin Asignar';
+            map[asoc].total++;
+            if (row.constancia_id) map[asoc].entregadas++;
+            else if (row.en_carrito) map[asoc].enCarrito++;
+            else if (row.docs_completos) map[asoc].conDocs++;
+            else map[asoc].sinDocs++;
+        }
+        return map;
+    }, [cirugias, historicoResults]);
 
     const loadCarrito = useCallback(async () => {
         setCarritoLoading(true);
@@ -244,7 +310,9 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
                 asociacionDestinoLote || null
             );
             setCirugias(prev => prev.map(c => c.id === id ? updated : c));
-            fetchResumenAsociaciones().then(setResumen);
+            if (historicoResults) {
+                setHistoricoResults(prev => prev ? prev.map(c => c.id === id ? updated : c) : null);
+            }
         } catch (err) {
             addToast?.('Error al actualizar documentación: ' + err.message, 'error');
         }
@@ -255,12 +323,13 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
             const [updated] = await cambiarAsociacionExpedientes(id, nuevaAsociacion);
             if (updated) {
                 setCirugias(prev => prev.map(c => c.id === id ? updated : c));
+                if (historicoResults) {
+                    setHistoricoResults(prev => prev ? prev.map(c => c.id === id ? updated : c) : null);
+                }
             }
             addToast?.(`Asociación actualizada a ${nuevaAsociacion}`, 'success');
             if (fromCarrito) {
                 await Promise.all([loadCarrito(), loadPendientes()]);
-            } else {
-                fetchResumenAsociaciones().then(setResumen);
             }
         } catch (err) {
             addToast?.('Error al cambiar asociación: ' + err.message, 'error');
@@ -268,7 +337,8 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
     };
 
     const handleEnviarAlCarrito = async () => {
-        const conDocs = cirugias.filter(c => c.docs_completos && !c.en_carrito && !c.constancia_id);
+        const sourceList = historicoResults ?? cirugias;
+        const conDocs = sourceList.filter(c => c.docs_completos && !c.en_carrito && !c.constancia_id);
         if (conDocs.length === 0) {
             addToast?.('Seleccione al menos una admisión/cirugía para enviar al carrito', 'info');
             return;
@@ -645,12 +715,13 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
         }
     };
 
-    // ─── Filter display data ───
+    // ─── Filter display data (consolidación + filtros instantáneos en memoria en 0ms) ───
     const pendientesCirugias = useMemo(() => {
+        const sourceList = historicoResults ?? cirugias;
         // Consolidación inteligente de admisiones: si coexisten una fila de CIRUGIA/SUTURA y una de ADMISION preliminar para la misma admisión,
         // fusionamos estados (docs_completos, en_carrito, constancia_id) y presentamos la cirugía oficial sin duplicados
         const byAdm = new Map();
-        for (const item of cirugias) {
+        for (const item of sourceList) {
             const admKey = item.numero_admision ? String(item.numero_admision).trim() : null;
             if (admKey) {
                 if (!byAdm.has(admKey)) byAdm.set(admKey, []);
@@ -661,7 +732,7 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
         const consolidatedCirugias = [];
         const handledAdmKeys = new Set();
 
-        for (const item of cirugias) {
+        for (const item of sourceList) {
             const admKey = item.numero_admision ? String(item.numero_admision).trim() : null;
             if (!admKey) {
                 consolidatedCirugias.push(item);
@@ -708,8 +779,34 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
         let filtered = consolidatedCirugias.filter(c => !c.en_carrito); // exclude en_carrito since they are in the Cart tab
         if (estadoEntregaFilter === 'pendientes') filtered = filtered.filter(c => !c.constancia_id);
         if (estadoEntregaFilter === 'entregados') filtered = filtered.filter(c => c.constancia_id);
+
+        if (soloSuturas) {
+            filtered = filtered.filter(c =>
+                c.es_sutura ||
+                c.tipo_origen === 'SUTURA' ||
+                (c.nombre_cirugia || '').toUpperCase().includes('SUTURA')
+            );
+        }
+
+        const trimmedSearch = searchTerm.trim();
+        // Si no está buscando texto, respetar el badge de asociación seleccionado;
+        // al escribir en el buscador, buscar en TODAS las admisiones sin bloquear por asociación
+        if (!trimmedSearch && filtroAsociacion) {
+            filtered = filtered.filter(c => (c.asociacion || 'Sin Asignar') === filtroAsociacion);
+        }
+
+        if (trimmedSearch) {
+            const tokens = normalizeSearchText(trimmedSearch).split(/\s+/).filter(Boolean);
+            filtered = filtered.filter(c => {
+                const haystack = normalizeSearchText(
+                    `${c.numero_admision || ''} ${c.nombre_paciente || ''} ${c.dni || ''} ${c.cirujano || ''} ${c.nombre_cirugia || ''} ${c.cliente || ''} ${c.especialidad || ''}`
+                );
+                return tokens.every(tok => haystack.includes(tok));
+            });
+        }
+
         return filtered;
-    }, [cirugias, estadoEntregaFilter]);
+    }, [cirugias, historicoResults, estadoEntregaFilter, soloSuturas, filtroAsociacion, searchTerm]);
 
     const filteredDetalle = useMemo(() => {
         const items = constanciaDetalle[expandedConstancia] || [];
@@ -964,7 +1061,7 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
         );
     };
 
-    const selectedForCartCount = cirugias.filter(c => c.docs_completos && !c.en_carrito && !c.constancia_id).length;
+    const selectedForCartCount = (historicoResults ?? cirugias).filter(c => c.docs_completos && !c.en_carrito && !c.constancia_id).length;
 
     // Tab config
     const tabs = [
@@ -1076,11 +1173,74 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
             {/* ════════════════════════════════════════ */}
             {activeTab === 'pendientes' && (
                 <div>
+                    {/* Barra de Período Rápido + Badges de asociación */}
+                    <div style={{
+                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                        flexWrap: 'wrap', gap: '10px', marginTop: '14px', marginBottom: '12px',
+                    }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                            <span style={{ fontSize: '0.74rem', fontWeight: 700, color: '#475569' }}>Período:</span>
+                            {[
+                                { id: 'ultimos_2_meses', label: 'Este mes y mes pasado' },
+                                { id: 'este_mes', label: 'Solo este mes' },
+                                { id: 'mes_pasado', label: 'Mes pasado' },
+                                { id: 'todo', label: 'Todo (Histórico)' },
+                            ].map(p => {
+                                const isActive = periodoFilter === p.id && !historicoResults;
+                                return (
+                                    <button
+                                        key={p.id}
+                                        type="button"
+                                        onClick={() => {
+                                            setHistoricoResults(null);
+                                            setPeriodoFilter(p.id);
+                                            setCurrentPage(0);
+                                        }}
+                                        style={{
+                                            padding: '5px 12px',
+                                            borderRadius: '8px',
+                                            border: isActive ? '1.5px solid #0D3B66' : '1px solid #CBD5E1',
+                                            background: isActive ? '#0D3B66' : '#FFFFFF',
+                                            color: isActive ? '#FFFFFF' : '#475569',
+                                            fontWeight: isActive ? 700 : 600,
+                                            fontSize: '0.75rem',
+                                            cursor: 'pointer',
+                                            transition: 'all 0.15s ease',
+                                        }}
+                                    >
+                                        {p.label}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                        {historicoResults && (
+                            <div style={{
+                                display: 'inline-flex', alignItems: 'center', gap: '8px',
+                                padding: '4px 10px', borderRadius: '8px',
+                                background: '#EFF6FF', border: '1px solid #93C5FD',
+                                fontSize: '0.74rem', color: '#1E40AF', fontWeight: 700,
+                            }}>
+                                <span>Mostrando búsqueda en todo el histórico ({historicoResults.length})</span>
+                                <button
+                                    type="button"
+                                    onClick={() => { setHistoricoResults(null); setCurrentPage(0); }}
+                                    style={{
+                                        background: '#1E40AF', color: '#fff', border: 'none',
+                                        borderRadius: '5px', padding: '2px 8px', fontSize: '0.7rem',
+                                        fontWeight: 700, cursor: 'pointer',
+                                    }}
+                                >
+                                    Volver al período
+                                </button>
+                            </div>
+                        )}
+                    </div>
+
                     {/* Badges de asociación */}
                     <AsociacionBadges
                         resumen={resumen}
                         filtroAsociacion={filtroAsociacion}
-                        onFilterChange={setFiltroAsociacion}
+                        onFilterChange={(val) => { setFiltroAsociacion(val); setCurrentPage(0); }}
                     />
 
                     {/* Search + Actions */}
@@ -1098,20 +1258,52 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
                             <Search size={16} color={searchTerm ? '#2563EB' : '#9CA3AF'} />
                             <input
                                 type="text"
-                                placeholder="Buscar por Nº Admisión (ej. I104587), DNI, Apellido y Nombre o Cirujano..."
+                                placeholder="Buscar al instante por Nº Admisión, DNI, Paciente, Sutura o Cirujano..."
                                 value={searchTerm}
-                                onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(0); }}
+                                onChange={(e) => {
+                                    setSearchTerm(e.target.value);
+                                    if (!e.target.value.trim() && historicoResults) setHistoricoResults(null);
+                                    setCurrentPage(0);
+                                }}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter' && searchTerm.trim().length >= 2 && periodoFilter !== 'todo' && pendientesCirugias.length === 0) {
+                                        handleBuscarEnHistorico();
+                                    }
+                                }}
                                 style={{
                                     border: 'none', outline: 'none', flex: 1,
                                     fontSize: '0.84rem', color: '#1F2937', fontWeight: searchTerm ? 600 : 400,
                                     background: 'transparent',
                                 }}
                             />
+                            {searchTerm.trim().length >= 3 && periodoFilter !== 'todo' && !historicoResults && (
+                                <button
+                                    type="button"
+                                    onClick={handleBuscarEnHistorico}
+                                    disabled={searchingHistorico}
+                                    title="Buscar este texto en meses anteriores (todo el histórico)"
+                                    style={{
+                                        display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                        padding: '4px 9px', borderRadius: '6px',
+                                        border: '1px solid #93C5FD', background: '#EFF6FF',
+                                        color: '#1D4ED8', fontSize: '0.72rem', fontWeight: 700,
+                                        cursor: searchingHistorico ? 'wait' : 'pointer',
+                                        whiteSpace: 'nowrap',
+                                    }}
+                                >
+                                    {searchingHistorico ? <Loader2 size={12} className="animate-spin" /> : <Search size={12} />}
+                                    Buscar en histórico
+                                </button>
+                            )}
                             {searchTerm && (
-                                <button onClick={() => { setSearchTerm(''); setCurrentPage(0); }} style={{
-                                    background: 'none', border: 'none', cursor: 'pointer',
-                                    color: '#9CA3AF', padding: '2px',
-                                }}>
+                                <button
+                                    type="button"
+                                    onClick={() => { setSearchTerm(''); setHistoricoResults(null); setCurrentPage(0); }}
+                                    style={{
+                                        background: 'none', border: 'none', cursor: 'pointer',
+                                        color: '#9CA3AF', padding: '2px',
+                                    }}
+                                >
                                     <X size={14} />
                                 </button>
                             )}
@@ -1245,13 +1437,27 @@ export default function AsociacionesEntregaPanel({ addToast, currentUser }) {
                             <h3 style={{ fontSize: '1rem', fontWeight: 700, color: '#6B7280', margin: '0 0 4px' }}>
                                 No se encontraron admisiones ni cirugías
                             </h3>
-                            <p style={{ fontSize: '0.82rem' }}>
+                            <p style={{ fontSize: '0.82rem', marginBottom: '12px' }}>
                                 {searchTerm
-                                    ? `Sin resultados para "${searchTerm}"`
-                                    : filtroAsociacion
-                                        ? `No hay registros pendientes para ${filtroAsociacion}`
-                                        : 'Pruebe buscando por Nº de Admisión, DNI o Apellido'}
+                                    ? `Sin resultados en el período seleccionado para "${searchTerm}"`
+                                    : 'No hay registros pendientes en este período'}
                             </p>
+                            {searchTerm.trim().length >= 2 && periodoFilter !== 'todo' && !historicoResults && (
+                                <button
+                                    type="button"
+                                    onClick={handleBuscarEnHistorico}
+                                    disabled={searchingHistorico}
+                                    style={{
+                                        display: 'inline-flex', alignItems: 'center', gap: '6px',
+                                        padding: '8px 16px', borderRadius: '8px',
+                                        border: 'none', background: '#1D4ED8', color: '#FFFFFF',
+                                        fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer',
+                                    }}
+                                >
+                                    {searchingHistorico ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}
+                                    Buscar "{searchTerm.trim()}" en todo el histórico
+                                </button>
+                            )}
                         </div>
                     ) : (
                         <div style={{
