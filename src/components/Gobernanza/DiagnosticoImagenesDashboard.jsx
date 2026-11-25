@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { AnilloToroidal3D } from './GobernanzaCharts3D';
 import { 
     Activity, 
     Calendar, 
@@ -2828,6 +2829,41 @@ export default function DiagnosticoImagenesDashboard({
                     </div>
                 </div>
             </div>
+
+            {/* ─── ANILLO 3D: MIX DE MODALIDADES DE IMÁGENES ─── */}
+            {modalidadCounts && Object.keys(modalidadCounts).length > 0 && (() => {
+                const modDefs = [
+                    { key: 'ECOGRAFIA', label: 'Ecografía', rgb: [0, 59, 115] },
+                    { key: 'RADIOLOGIA', label: 'Radiología (RX)', rgb: [2, 132, 199] },
+                    { key: 'TOMOGRAFIA', label: 'Tomografía (TC)', rgb: [124, 58, 237] },
+                    { key: 'MAMOGRAFIA', label: 'Mamografía', rgb: [219, 39, 119] },
+                    { key: 'DENSITOMETRIA', label: 'Densitometría', rgb: [5, 150, 105] },
+                    { key: 'ECOCARDIO', label: 'Ecocardiograma', rgb: [225, 29, 72] },
+                ];
+                const segs = modDefs
+                    .map(m => ({ ...m, value: Number(modalidadCounts[m.key] || 0) }))
+                    .filter(m => m.value > 0)
+                    .sort((a, b) => b.value - a.value);
+                if (!segs.length) return null;
+                const totMod = segs.reduce((s, x) => s + x.value, 0);
+                const topMod = segs[0];
+                return (
+                    <AnilloToroidal3D
+                        title="Anillo 3D — Mix de Modalidades de Diagnóstico por Imágenes"
+                        subtitle="Distribución volumétrica de estudios realizados por modalidad en el período activo"
+                        badgeRightLabel="Modalidad Líder"
+                        badgeRightValue={topMod.label}
+                        badgeRightSub={`${((topMod.value * 100) / totMod).toFixed(1)}% (${topMod.value.toLocaleString('es-AR')} est.)`}
+                        segments={segs.map(s => ({
+                            label: s.label,
+                            value: s.value,
+                            valueLabel: `${((s.value * 100) / totMod).toFixed(1)}%`,
+                            rgb: s.rgb,
+                            detail: `${s.value.toLocaleString('es-AR')} estudios`,
+                        }))}
+                    />
+                );
+            })()}
 
             {/* ─── GRÁFICO DE LÍNEAS: PROGRESIÓN DEL PERÍODO ─── */}
             <div style={{

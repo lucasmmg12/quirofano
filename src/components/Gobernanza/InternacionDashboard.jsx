@@ -11,6 +11,7 @@ import {
 } from 'recharts';
 import * as XLSX from 'xlsx';
 import { supabase } from '../../lib/supabase';
+import { CilindrosOcupacion3D } from './GobernanzaCharts3D';
 
 // ─── CONSTANTES VISUALES CALIDAD-QOAG ───
 const MESES_CORTO = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sept', 'oct', 'nov', 'dic'];
@@ -1843,6 +1844,34 @@ export default function InternacionDashboard({
                                 </button>
                             );
                         })}
+                    </div>
+
+                    {/* Cilindros 3D Giratorios de Ocupación por Servicio */}
+                    <div style={{ marginTop: '18px' }}>
+                        {(() => {
+                            const oInt = (ocupacionMatrices.internado[telarYMD.y]?.[telarYMD.m] ?? 0) / 100;
+                            const oNeo = (ocupacionMatrices.neonatologia[telarYMD.y]?.[telarYMD.m] ?? 0) / 100;
+                            const oPed = (ocupacionMatrices.pedPiso[telarYMD.y]?.[telarYMD.m] ?? 0) / 100;
+                            const oUtip = (ocupacionMatrices.pedTerapia[telarYMD.y]?.[telarYMD.m] ?? 0) / 100;
+                            const oUci = (ocupacionMatrices.uci[telarYMD.y]?.[telarYMD.m] ?? 0) / 100;
+                            const pickRgb = (p, defRgb) => p >= 0.85 ? [220, 38, 38] : (p >= 0.78 ? [217, 119, 6] : defRgb);
+                            return (
+                                <CilindrosOcupacion3D
+                                    title={`Cilindros 3D de Ocupación por Servicio (${MESES_CORTO[telarYMD.m - 1]} ${telarYMD.y})`}
+                                    subtitle="Capacidad ocupada vs disponible en camas físicas con semáforo clínico"
+                                    badgeRightLabel="Ocupación Internado"
+                                    badgeRightValue={telarKpis.ocupIntMes !== null ? `${fmtNum(telarKpis.ocupIntMes, 1)}%` : '—'}
+                                    badgeRightSub={telarKpis.isCurrentMonthCutoff ? `Prorrateado al día ${cutoffYMD.d}` : 'Mes completo'}
+                                    items={[
+                                        { label: 'Internado Adultos', shortLabel: 'Internado', pct: oInt, rgb: pickRgb(oInt, [30, 64, 175]), detail: `${fmtNum(telarKpis.bySector.INTERNADO?.diasCama || 0, 1)} días cama` },
+                                        { label: 'Neonatología', shortLabel: 'Neo', pct: oNeo, rgb: pickRgb(oNeo, [2, 132, 199]), detail: `${fmtNum(telarKpis.bySector.NEONATOLOGIA?.diasCama || 0, 1)} días cama` },
+                                        { label: 'Pediatría Piso', shortLabel: 'Ped. Piso', pct: oPed, rgb: pickRgb(oPed, [5, 150, 105]), detail: `${fmtNum(telarKpis.bySector.PEDIATRIA_PISO?.diasCama || 0, 1)} días cama` },
+                                        { label: 'Terapia Pediátrica (UTIP)', shortLabel: 'UTIP', pct: oUtip, rgb: pickRgb(oUtip, [124, 58, 237]), detail: `${fmtNum(telarKpis.bySector.PEDIATRIA_TERAPIA?.diasCama || 0, 1)} días cama` },
+                                        { label: 'UCI Adultos', shortLabel: 'UCI', pct: oUci, rgb: pickRgb(oUci, [220, 38, 38]), detail: `${fmtNum(telarKpis.bySector.UCI?.diasCama || 0, 1)} días cama` },
+                                    ]}
+                                />
+                            );
+                        })()}
                     </div>
                 </>
             )}

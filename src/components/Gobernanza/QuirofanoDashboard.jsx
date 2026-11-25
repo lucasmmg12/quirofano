@@ -36,6 +36,7 @@ import {
     LabelList
 } from 'recharts';
 import SqlDocumentationModal from './SqlDocumentationModal';
+import { AnilloToroidal3D } from './GobernanzaCharts3D';
 import './Gobernanza.css';
 
 // ─── DATOS REALES EXTRAÍDOS DE TABLEAU INSTITUCIONAL (SANATORIO ARGENTINO) ───
@@ -4268,6 +4269,31 @@ export default function QuirofanoDashboard({
                                 </BarChart>
                             </ResponsiveContainer>
                         </div>
+
+                        {/* Anillo Toroidal 3D de Horas Quirúrgicas por Sala */}
+                        {activeSalasData.length > 0 && (() => {
+                            const palette = [[0, 59, 115], [30, 64, 175], [2, 132, 199], [59, 130, 246], [217, 119, 6], [5, 150, 105], [16, 185, 129], [220, 38, 38]];
+                            const totalHs = activeSalasData.reduce((s, x) => s + (Number(x.horas) || 0), 0);
+                            const totalCx = activeSalasData.reduce((s, x) => s + (Number(x.cirugias) || 0), 0);
+                            return (
+                                <div style={{ marginTop: '18px' }}>
+                                    <AnilloToroidal3D
+                                        title={`Anillo 3D — Distribución de Horas Quirúrgicas por Sala (${activePeriodLabel})`}
+                                        subtitle="Participación real de cada quirófano sobre el total de horas registradas"
+                                        badgeRightLabel="Total Horas"
+                                        badgeRightValue={`${totalHs.toFixed(1)} hs`}
+                                        badgeRightSub={`${totalCx.toLocaleString('es-AR')} cirugías`}
+                                        segments={activeSalasData.filter(s => Number(s.horas) > 0).map((s, idx) => ({
+                                            label: s.sala,
+                                            value: Number(s.horas) || 0,
+                                            valueLabel: `${Number(s.horas || 0).toFixed(1)} hs`,
+                                            rgb: palette[idx % palette.length],
+                                            detail: `${s.cirugias} cx · ${s.ocupacionPct}% ocup.`,
+                                        }))}
+                                    />
+                                </div>
+                            );
+                        })()}
                     </div>
 
                     {/* ─── GRÁFICO Y TABLA DE EVOLUCIÓN MENSUAL SEGÚN ASISTENCIA SALUS (Presente, Suspendida, CX Suspendida 24H, Urgencia, No Programada) ─── */}

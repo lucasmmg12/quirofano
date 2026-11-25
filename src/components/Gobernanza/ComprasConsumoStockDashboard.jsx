@@ -11,6 +11,7 @@ import {
 } from 'recharts';
 import * as XLSX from 'xlsx';
 import { supabase } from '../../lib/supabase';
+import { CapsulaBalance3D } from './GobernanzaCharts3D';
 
 const MESES_CORTO = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sept', 'oct', 'nov', 'dic'];
 
@@ -772,6 +773,31 @@ export default function ComprasConsumoStockDashboard({
                             </ResponsiveContainer>
                         </div>
                     </div>
+
+                    {/* Cápsula 3D de Balance y Salud de Inventario */}
+                    {scopedStock.length > 0 && (() => {
+                        const critYQuiebre = (kpis.quiebres || 0) + (kpis.criticos || 0);
+                        const reponerCnt = kpis.reponer || 0;
+                        const sobrestockCnt = kpis.sobrestock || 0;
+                        const saludableCnt = Math.max(0, scopedStock.length - critYQuiebre - reponerCnt - sobrestockCnt);
+                        const segs = [
+                            { label: 'Stock Saludable', value: saludableCnt, rgb: [5, 150, 105], detail: `${saludableCnt.toLocaleString('es-AR')} ítems` },
+                            { label: 'Sobrestock (>90d)', value: sobrestockCnt, rgb: [29, 78, 216], detail: `${sobrestockCnt.toLocaleString('es-AR')} ítems` },
+                            { label: 'A Reponer', value: reponerCnt, rgb: [217, 119, 6], detail: `${reponerCnt.toLocaleString('es-AR')} ítems` },
+                            { label: 'Crítico / Quiebre', value: critYQuiebre, rgb: [220, 38, 38], detail: `${critYQuiebre.toLocaleString('es-AR')} ítems` },
+                        ].filter(s => s.value > 0);
+                        const pctSal = ((saludableCnt + sobrestockCnt) * 100) / Math.max(1, scopedStock.length);
+                        return (
+                            <CapsulaBalance3D
+                                title="Cápsula 3D — Salud y Cobertura de Inventario"
+                                subtitle="Distribución actual de artículos según nivel de cobertura de stock"
+                                badgeRightLabel="Cobertura Activa"
+                                badgeRightValue={`${pctSal.toFixed(1)}%`}
+                                badgeRightSub={`${critYQuiebre.toLocaleString('es-AR')} ítems críticos/quiebre`}
+                                segments={segs}
+                            />
+                        );
+                    })()}
 
                     {/* Matriz Rápida por Almacén */}
                     <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '12px', overflow: 'hidden' }}>

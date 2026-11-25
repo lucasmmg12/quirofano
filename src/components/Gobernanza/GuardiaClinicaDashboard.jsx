@@ -34,6 +34,7 @@ import QuirofanoDashboard from './QuirofanoDashboard';
 import GuardiaInternadoPanel from './GuardiaInternadoPanel';
 import GuardiaAdmisionesOcupacionPanel from './GuardiaAdmisionesOcupacionPanel';
 import AgenteEpicrisisPanel from './AgenteEpicrisisPanel';
+import { EmbudoConversion3D } from './GobernanzaCharts3D';
 import './Gobernanza.css';
 
 // ─── CATÁLOGO DIDÁCTICO Y CLÍNICO DE EXPLICACIÓN DE GRÁFICOS ───
@@ -2477,6 +2478,35 @@ export default function GuardiaClinicaDashboard({
                             </button>
                         </div>
                     </div>
+
+                    {/* Embudo 3D de Conversión Clínica de Guardia */}
+                    {currentData && Number(currentData.total_consultas) > 0 && (() => {
+                        const totC = Number(currentData.total_consultas) || 1;
+                        const triagePct = Number(currentData.triage_cobertura_pct) || 0;
+                        const triageCnt = Number(currentData.triage_total) || Math.round((totC * triagePct) / 100);
+                        const intCnt = Number(currentData.cantidad_pases_internacion || currentData.pases_internacion) || 0;
+                        const intPct = Number(currentData.pases_internacion_pct) || ((intCnt * 100) / totC);
+                        const qxCnt = Number(currentData.cantidad_pases_cirugia) || 0;
+                        const qxPct = Number(currentData.conversion_cirugia_pct) || ((qxCnt * 100) / totC);
+                        const resolPct = Math.max(0, 100 - intPct);
+                        return (
+                            <div style={{ marginBottom: '16px' }}>
+                                <EmbudoConversion3D
+                                    title={`Embudo 3D de Conversión Clínica (${formatPeriodoLabel(currentData.periodo)})`}
+                                    subtitle="De la demanda total en puerta al Triage (Prot. 621), Internación y Quirófano ≤ 48 hs"
+                                    badgeRightLabel="Resolutividad Ambulatoria"
+                                    badgeRightValue={`${resolPct.toFixed(1)}%`}
+                                    badgeRightSub={`${totC.toLocaleString('es-AR')} consultas totales`}
+                                    stages={[
+                                        { label: '1 · Consultas Guardia', pct: 100, valueLabel: totC.toLocaleString('es-AR'), rgb: [0, 59, 115], detail: '100% demanda en puerta' },
+                                        { label: '2 · Triage Prot. 621', pct: triagePct, valueLabel: `${triagePct.toFixed(1)}%`, rgb: [124, 58, 237], detail: `${triageCnt.toLocaleString('es-AR')} evaluados` },
+                                        { label: '3 · Pase Internación', pct: intPct, valueLabel: `${intPct.toFixed(1)}%`, rgb: [2, 132, 199], detail: `${intCnt.toLocaleString('es-AR')} internaciones` },
+                                        { label: '4 · Quirófano ≤48h', pct: qxPct, valueLabel: `${qxPct.toFixed(1)}%`, rgb: [220, 38, 38], detail: `${qxCnt.toLocaleString('es-AR')} cirugías` },
+                                    ]}
+                                />
+                            </div>
+                        );
+                    })()}
 
                     <div className="guardia-charts-two-col">
                         {/* Gráfico 2: Demanda Mensual vs. Conversión a Cirugía (≤ 48h) */}
