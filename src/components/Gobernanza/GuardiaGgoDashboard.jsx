@@ -12,6 +12,7 @@ import {
 } from 'recharts';
 import * as XLSX from 'xlsx';
 import { supabase } from '../../lib/supabase';
+import GgoEmbudo3D from './GgoEmbudo3D';
 
 const SYNC_SERVER_URL = import.meta.env.VITE_SYNC_SERVER_URL || 'http://localhost:3001';
 
@@ -1021,30 +1022,17 @@ export default function GuardiaGgoDashboard({
                         </div>
                         <p style={{ margin: '0 0 12px', fontSize: '13px', color: '#334155', lineHeight: 1.5 }}>{veredicto.detalle}</p>
 
-                        {/* Barra visual de proporción GGO vs Post-GGO */}
-                        {(kpis.medT1 + kpis.medT2 + kpis.medT3 + kpis.medT4) > 0 && (() => {
-                            const sum = kpis.medT1 + kpis.medT2 + kpis.medT3 + kpis.medT4;
-                            const p1 = (kpis.medT1 * 100) / sum;
-                            const p2 = (kpis.medT2 * 100) / sum;
-                            const p3 = (kpis.medT3 * 100) / sum;
-                            const p4 = (kpis.medT4 * 100) / sum;
-                            return (
-                                <div>
-                                    <div style={{ display: 'flex', height: '16px', borderRadius: '8px', overflow: 'hidden', background: '#E2E8F0' }}>
-                                        {p1 > 0 && <div style={{ width: `${p1}%`, background: TRAMO_COLORS.t1 }} title={`T1 Espera Médico: ${fmtMin(kpis.medT1)}`} />}
-                                        {p2 > 0 && <div style={{ width: `${p2}%`, background: TRAMO_COLORS.t2 }} title={`T2 Atención GGO: ${fmtMin(kpis.medT2)}`} />}
-                                        {p3 > 0 && <div style={{ width: `${p3}%`, background: TRAMO_COLORS.t3 }} title={`T3 Salida → Admisión: ${fmtMin(kpis.medT3)}`} />}
-                                        {p4 > 0 && <div style={{ width: `${p4}%`, background: TRAMO_COLORS.t4 }} title={`T4 Admisión → Quirófano: ${fmtMin(kpis.medT4)}`} />}
-                                    </div>
-                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px', marginTop: '8px', fontSize: '11px', fontWeight: 600, color: '#334155' }}>
-                                        <span><span style={{ display: 'inline-block', width: 9, height: 9, borderRadius: 2, background: TRAMO_COLORS.t1, marginRight: 5 }} />T1 Espera Médico: {fmtMin(kpis.medT1)}</span>
-                                        <span><span style={{ display: 'inline-block', width: 9, height: 9, borderRadius: 2, background: TRAMO_COLORS.t2, marginRight: 5 }} />T2 Atención GGO: {fmtMin(kpis.medT2)}</span>
-                                        <span><span style={{ display: 'inline-block', width: 9, height: 9, borderRadius: 2, background: TRAMO_COLORS.t3, marginRight: 5 }} />T3 Post-GGO → Admisión: {fmtMin(kpis.medT3)}</span>
-                                        <span><span style={{ display: 'inline-block', width: 9, height: 9, borderRadius: 2, background: TRAMO_COLORS.t4, marginRight: 5 }} />T4 Admisión → Quirófano: {fmtMin(kpis.medT4)}</span>
-                                    </div>
-                                </div>
-                            );
-                        })()}
+                        {/* Embudo 3D Giratorio Interactivo de proporción GGO vs Post-GGO */}
+                        {(kpis.medT1 + kpis.medT2 + kpis.medT3 + kpis.medT4) > 0 && (
+                            <GgoEmbudo3D
+                                t1={kpis.medT1}
+                                t2={kpis.medT2}
+                                t3={kpis.medT3}
+                                t4={kpis.medT4}
+                                pctGgo={kpis.pctGgoEnCuello}
+                                pctPostGgo={kpis.pctPostGgoEnCuello}
+                            />
+                        )}
                     </div>
 
                     {/* 4 Tarjetas de Tramos */}
