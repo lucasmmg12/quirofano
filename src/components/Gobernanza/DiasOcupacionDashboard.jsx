@@ -38,6 +38,7 @@ import EpidemiologiaDashboard from './EpidemiologiaDashboard';
 import DiagnosticoImagenesDashboard from './DiagnosticoImagenesDashboard';
 import InternacionDashboard from './InternacionDashboard';
 import ComprasConsumoStockDashboard from './ComprasConsumoStockDashboard';
+import GuardiaGgoDashboard from './GuardiaGgoDashboard';
 import { useGobernanzaNavigation } from './useGobernanzaNavigation';
 
 const SIDEBAR_INDICATOR_GROUPS = [
@@ -815,7 +816,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
     }, [sectorId, fechaDesde, fechaHasta]);
 
     const fetchData = async () => {
-        if (sectorId === 'GUARDIA' || sectorId === 'QUIROFANO' || sectorId === 'EPIDEMIOLOGIA' || sectorId === 'DXI' || sectorId === 'INTERNACION' || sectorId === 'COMPRAS_STOCK') {
+        if (sectorId === 'GUARDIA' || sectorId === 'GUARDIA_GGO' || sectorId === 'QUIROFANO' || sectorId === 'EPIDEMIOLOGIA' || sectorId === 'DXI' || sectorId === 'INTERNACION' || sectorId === 'COMPRAS_STOCK') {
             setLoading(false);
             setLoadingPeticiones(false);
             return;
@@ -4187,6 +4188,58 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                 </div>
                             )}
 
+                            {/* ── SECTOR GUARDIA GINECO-OBSTÉTRICA (GGO) ── */}
+                            {!isUciOnly && (
+                                <div style={{
+                                    borderRadius: '10px',
+                                    border: `1.5px solid ${sectorId === 'GUARDIA_GGO' ? '#EC4899' : '#E2E8F0'}`,
+                                    background: '#FFFFFF',
+                                    overflow: 'hidden',
+                                    boxShadow: sectorId === 'GUARDIA_GGO' ? '0 4px 12px -2px rgba(236, 72, 153, 0.16)' : '0 1px 2px rgba(0,0,0,0.03)',
+                                    transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)'
+                                }}>
+                                    <button
+                                        type="button"
+                                        onClick={() => handleSelectSector('GUARDIA_GGO')}
+                                        style={{
+                                            width: '100%',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'space-between',
+                                            padding: '10px 12px',
+                                            background: sectorId === 'GUARDIA_GGO' ? '#FDF2F8' : '#F8FAFC',
+                                            border: 'none',
+                                            cursor: 'pointer',
+                                            transition: 'background 0.15s ease'
+                                        }}
+                                        onMouseEnter={e => { if (sectorId !== 'GUARDIA_GGO') e.currentTarget.style.background = '#F1F5F9'; }}
+                                        onMouseLeave={e => { if (sectorId !== 'GUARDIA_GGO') e.currentTarget.style.background = '#F8FAFC'; }}
+                                    >
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                            <span style={{ fontSize: '1.1rem' }}>🤰</span>
+                                            <div style={{ textAlign: 'left' }}>
+                                                <div style={{ fontSize: '0.8rem', fontWeight: 700, color: sectorId === 'GUARDIA_GGO' ? '#9D174D' : '#334155' }}>
+                                                    Guardia GGO
+                                                </div>
+                                                <div style={{ fontSize: '0.65rem', color: '#64748B' }}>
+                                                    Gineco-Obstétrica · Cuello Qx & Eco
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <span style={{
+                                            fontSize: '0.6rem',
+                                            fontWeight: 800,
+                                            padding: '2px 6px',
+                                            borderRadius: '999px',
+                                            background: sectorId === 'GUARDIA_GGO' ? '#DB2777' : '#FCE7F3',
+                                            color: sectorId === 'GUARDIA_GGO' ? '#FFFFFF' : '#9D174D',
+                                        }}>
+                                            Nuevo
+                                        </span>
+                                    </button>
+                                </div>
+                            )}
+
                             {/* ── SECTOR INTERNACIÓN (TABLERO INTEGRAL) ── */}
                             {!isUciOnly && (
                                 <div style={{
@@ -4296,7 +4349,16 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
 
                 {/* LIENZO PRINCIPAL DEL TELAR (MODULAR) */}
                 <div style={{ flex: 1, overflowY: 'auto', padding: '24px' }}>
-                    {sectorId === 'COMPRAS_STOCK' ? (
+                    {sectorId === 'GUARDIA_GGO' ? (
+                        <GuardiaGgoDashboard
+                            fechaDesde={fechaDesde}
+                            fechaHasta={fechaHasta}
+                            datePresetMode={datePresetMode}
+                            currentTab={sectorId === 'GUARDIA_GGO' ? routeTabId : null}
+                            onTabChange={(tab) => navigateToRoute('GUARDIA_GGO', tab)}
+                            addToast={addToast}
+                        />
+                    ) : sectorId === 'COMPRAS_STOCK' ? (
                         <ComprasConsumoStockDashboard
                             fechaDesde={fechaDesde}
                             fechaHasta={fechaHasta}

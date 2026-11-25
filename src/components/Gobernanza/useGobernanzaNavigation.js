@@ -4,6 +4,8 @@ import { useLocation, useNavigate } from 'react-router-dom';
 export const SECTOR_SLUGS = {
     'uci': 'UCI',
     'guardia': 'GUARDIA',
+    'ggo': 'GUARDIA_GGO',
+    'guardia_ggo': 'GUARDIA_GGO',
     'quirofano': 'QUIROFANO',
     'internacion': 'INTERNACION',
     'epidemiologia': 'EPIDEMIOLOGIA',
@@ -16,6 +18,7 @@ export const SECTOR_SLUGS = {
 export const SECTOR_TO_SLUG = {
     'UCI': 'uci',
     'GUARDIA': 'guardia',
+    'GUARDIA_GGO': 'ggo',
     'QUIROFANO': 'quirofano',
     'INTERNACION': 'internacion',
     'EPIDEMIOLOGIA': 'epidemiologia',

@@ -33,6 +33,7 @@ import { processQueueWaitingAlerts } from './sync_queue_auto_replies.mjs';
 import { syncTurnosContactCenter, syncWhatsAppCancellations } from './sync_turnos_contact_center.mjs';
 import { syncGuardiaInternado } from './sync_guardia_internado.mjs';
 import { syncGuardiaAdmisionesPaola } from './sync_guardia_admisiones_paola.mjs';
+import { syncGuardiaGGO } from './sync_guardia_ggo.mjs';
 import { getDxIAnalytics, getDxICasosNominales } from './sync_dxi.mjs';
 import { syncHospitalDeDia } from './sync_hospital_de_dia.mjs';
 import { runDailySync } from './daily_sync_job.mjs';
@@ -4457,6 +4458,18 @@ app.post('/api/salus/guardia-admisiones-ocupacion/sync', async (req, res) => {
         res.json({ success: true, ...result });
     } catch (err) {
         console.error('Error en /api/salus/guardia-admisiones-ocupacion/sync:', err.message);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// ── Endpoint HTTP de Guardia Gineco-Obstétrica (GGO) & Cuello de Botella Quirófano ──
+app.post('/api/salus/guardia-ggo/sync', async (req, res) => {
+    try {
+        const startYear = parseInt(req.body?.startYear || '2025', 10);
+        const result = await syncGuardiaGGO({ startYear });
+        res.json({ success: true, ...result });
+    } catch (err) {
+        console.error('Error en /api/salus/guardia-ggo/sync:', err.message);
         res.status(500).json({ success: false, error: err.message });
     }
 });

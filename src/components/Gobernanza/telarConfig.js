@@ -58,6 +58,17 @@ export const SECTORES_CONFIG = [
         activo: true
     },
     { 
+        id: 'GUARDIA_GGO', 
+        label: 'Guardia Gineco-Obstétrica (GGO)', 
+        shortLabel: 'Guardia GGO',
+        icon: '🤰', 
+        camasDefault: 0,
+        serviciosSalus: ['GUARDIAS GINECOLOGIA'],
+        descripcion: 'Demanda GGO (N1/N2/N3), derivación a Ecografía de Guardia y cuello de botella hacia Quirófano',
+        activo: true,
+        badge: 'Nuevo'
+    },
+    { 
         id: 'EPIDEMIOLOGIA', 
         label: 'Vigilancia Epidemiológica (Dr. Romano)', 
         shortLabel: 'Epidemiología',
