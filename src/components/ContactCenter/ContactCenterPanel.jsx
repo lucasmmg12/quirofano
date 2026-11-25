@@ -1327,12 +1327,14 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
             return [createdChat, ...current];
         });
 
-        setActiveChatId(chatId);
-        try {
-            localStorage.setItem('sa_cc_active_chat_id', chatId);
-            localStorage.setItem('sa_cc_filter_tab', 'asignadas_mi');
-        } catch (_) {}
-        setActiveSubTab('conversaciones');
+        if (meta?.navigateToChat !== false) {
+            setActiveChatId(chatId);
+            try {
+                localStorage.setItem('sa_cc_active_chat_id', chatId);
+                localStorage.setItem('sa_cc_filter_tab', 'asignadas_mi');
+            } catch (_) {}
+            setActiveSubTab('conversaciones');
+        }
 
         // Refrescar desde BD en segundo plano
         reloadInFlightRef.current = false;

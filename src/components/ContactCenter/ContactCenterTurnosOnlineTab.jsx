@@ -137,6 +137,7 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
     const [showGuiaModal, setShowGuiaModal] = useState(false);
     const [showQuickTips, setShowQuickTips] = useState(true);
     const [inlineNoteDraft, setInlineNoteDraft] = useState('');
+    const [sentSuccessModal, setSentSuccessModal] = useState(null);
     const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
     
     const [stats, setStats] = useState({
@@ -359,12 +360,24 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
                 };
             });
 
-            if (addToast) addToast(`Aviso enviado a ${casoTarget.nombre}. El chat quedó asociado a ${agentLabel} en Mis Chats.`, 'success');
+            const currentIdx = casosFiltrados.findIndex(c => c.key === casoTarget.key);
+            const nextCaso = casosFiltrados.find((c, i) => c.key !== casoTarget.key && i > currentIdx)
+                || casosFiltrados.find(c => c.key !== casoTarget.key)
+                || null;
+
+            setSentSuccessModal({
+                caso: casoTarget,
+                phone: res.phone || casoTarget.telefono,
+                agentLabel,
+                nextCaso
+            });
+
             if (onConversationStarted) {
                 onConversationStarted(res.phone, {
                     caso: casoTarget,
                     agente: activeAgent,
-                    displayContent: res.displayContent
+                    displayContent: res.displayContent,
+                    navigateToChat: false
                 });
             }
         } catch (err) {
@@ -468,13 +481,23 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
                         totalContactados: prev.totalContactados + 1
                     };
                 });
-                if (addToast) addToast(`Aviso enviado a ${caso.nombre}. El chat quedó asociado a ${agentLabel} en Mis Chats.`, 'success');
+                const currentIdx = casosFiltrados.findIndex(c => c.key === caso.key);
+                const nextCaso = casosFiltrados.find((c, i) => c.key !== caso.key && i > currentIdx)
+                    || casosFiltrados.find(c => c.key !== caso.key)
+                    || null;
                 setModalData(null);
+                setSentSuccessModal({
+                    caso,
+                    phone: res.phone || caso.telefono,
+                    agentLabel,
+                    nextCaso
+                });
                 if (onConversationStarted) {
                     onConversationStarted(res.phone, {
                         caso,
                         agente: activeAgent,
-                        displayContent: res.displayContent
+                        displayContent: res.displayContent,
+                        navigateToChat: false
                     });
                 }
                 return;
@@ -492,13 +515,23 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
             // Actualizar estado a "contactado"
             await handleUpdateEstado(caso, 'contactado', `Plantilla enviada por ${agentLabel}: "${modalData.plantillaId}"`);
 
-            if (addToast) addToast(`Mensaje de WhatsApp enviado a ${caso.nombre} y asociado a ${agentLabel}`, 'success');
+            const currentIdx2 = casosFiltrados.findIndex(c => c.key === caso.key);
+            const nextCaso2 = casosFiltrados.find((c, i) => c.key !== caso.key && i > currentIdx2)
+                || casosFiltrados.find(c => c.key !== caso.key)
+                || null;
             setModalData(null);
+            setSentSuccessModal({
+                caso,
+                phone: res?.phone || caso.telefono,
+                agentLabel,
+                nextCaso: nextCaso2
+            });
             if (onConversationStarted && res?.phone) {
                 onConversationStarted(res.phone, {
                     caso,
                     agente: activeAgent,
-                    displayContent: res.displayContent || texto
+                    displayContent: res.displayContent || texto,
+                    navigateToChat: false
                 });
             }
         } catch (err) {
@@ -641,7 +674,7 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
     };
 
     return (
-        <div style={{ padding: '16px 22px', maxWidth: '1460px', margin: '0 auto' }}>
+        <div style={{ padding: '12px 16px', width: '100%', maxWidth: '100%', margin: 0, boxSizing: 'border-box' }}>
             
             {/* ═══ HEADER DE AUDITORÍA, PROGRESO INBOX ZERO Y FILTROS ═══ */}
             <div style={{
@@ -2951,6 +2984,100 @@ export default function ContactCenterTurnosOnlineTab({ activeAgent, currentUser,
                             >
                                 Entendido, volver a la auditoría
                             </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+            {/* ═══ MODAL CONFIRMACIÓN "HECHO" AL ENVIAR AVISO WHATSAPP ═══ */}
+            {sentSuccessModal && (
+                <div
+                    onClick={() => setSentSuccessModal(null)}
+                    style={{
+                        position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.48)',
+                        backdropFilter: 'blur(3px)', display: 'flex', alignItems: 'center',
+                        justifyContent: 'center', zIndex: 10000, padding: '16px'
+                    }}
+                >
+                    <div
+                        onClick={e => e.stopPropagation()}
+                        style={{
+                            background: '#FFFFFF', borderRadius: '18px', width: '100%', maxWidth: '460px',
+                            boxShadow: '0 24px 48px -12px rgba(15, 23, 42, 0.25)',
+                            border: '1px solid #E2E8F0', overflow: 'hidden', textAlign: 'center'
+                        }}
+                    >
+                        <div style={{ padding: '28px 24px 20px' }}>
+                            <div style={{
+                                width: '60px', height: '60px', borderRadius: '999px',
+                                background: '#ECFDF5', border: '2px solid #A7F3D0',
+                                color: '#059669', display: 'flex', alignItems: 'center',
+                                justifyContent: 'center', margin: '0 auto 14px'
+                            }}>
+                                <CheckCircle2 size={32} />
+                            </div>
+                            <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: '#0F172A' }}>
+                                ¡Hecho! Aviso WhatsApp enviado
+                            </h3>
+                            <p style={{ margin: '8px 0 0', fontSize: '0.86rem', color: '#475569', lineHeight: 1.5 }}>
+                                Se notificó a <strong>{sentSuccessModal.caso?.nombre}</strong> ({sentSuccessModal.phone}).
+                                El caso pasó a <strong style={{ color: '#059669' }}>Contactado</strong> y el chat quedó asociado a{' '}
+                                <strong>{sentSuccessModal.agentLabel}</strong> en <em>Mis Chats</em>.
+                            </p>
+                        </div>
+
+                        <div style={{
+                            padding: '16px 22px', background: '#F8FAFC', borderTop: '1px solid #E2E8F0',
+                            display: 'flex', flexDirection: 'column', gap: '8px'
+                        }}>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    const next = sentSuccessModal.nextCaso;
+                                    setSentSuccessModal(null);
+                                    if (next?.key) setExpandedKey(next.key);
+                                }}
+                                style={{
+                                    width: '100%', padding: '11px 18px', borderRadius: '10px', border: 'none',
+                                    background: 'linear-gradient(135deg, #003B73 0%, #1E40AF 100%)',
+                                    color: '#FFFFFF', fontSize: '0.88rem', fontWeight: 800,
+                                    cursor: 'pointer', boxShadow: '0 4px 12px rgba(0, 59, 115, 0.22)'
+                                }}
+                            >
+                                {sentSuccessModal.nextCaso
+                                    ? `Continuar con ${sentSuccessModal.nextCaso.nombre} →`
+                                    : 'Listo, volver a la auditoría ✓'}
+                            </button>
+
+                            <div style={{ display: 'flex', gap: '8px' }}>
+                                {onOpenChatWithPhone && sentSuccessModal.phone && (
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            const ph = sentSuccessModal.phone;
+                                            setSentSuccessModal(null);
+                                            onOpenChatWithPhone(ph);
+                                        }}
+                                        style={{
+                                            flex: 1, padding: '8px 12px', borderRadius: '9px',
+                                            background: '#FFFFFF', border: '1px solid #CBD5E1',
+                                            color: '#334155', fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer'
+                                        }}
+                                    >
+                                        Abrir en Chat
+                                    </button>
+                                )}
+                                <button
+                                    type="button"
+                                    onClick={() => setSentSuccessModal(null)}
+                                    style={{
+                                        flex: 1, padding: '8px 12px', borderRadius: '9px',
+                                        background: '#FFFFFF', border: '1px solid #CBD5E1',
+                                        color: '#64748B', fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer'
+                                    }}
+                                >
+                                    Cerrar
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
