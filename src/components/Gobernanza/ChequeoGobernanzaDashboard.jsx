@@ -12,9 +12,8 @@ import {
 import * as XLSX from 'xlsx';
 import {
     MONTH_NAMES,
-    fetchChequeoVisitas,
-    fetchRenovacionAnualCandidates,
-    aggregateChequeoAnalytics,
+    fetchChequeoMayores,
+    aggregateFromMayoresMensual,
     fetchConversionWhatsAppData,
     computeConversionWhatsApp,
     fetchEncuestasCalidadChequeo
@@ -153,10 +152,11 @@ export default function ChequeoGobernanzaDashboard() {
     const [evolChartMode, setEvolChartMode] = useState('3d'); // '3d' | '2d'
     const [yoyChartMode, setYoyChartMode] = useState('2d'); // '3d' | '2d'
 
-    // Datos Pestañas 1 & 2 (recepciones_visitas CHQ)
-    const [rawVisitas, setRawVisitas] = useState([]);
+    // Datos pre-agregados ("Mayores" instantáneos < 150ms)
+    const [mayoresMensual, setMayoresMensual] = useState([]);
+    const [renovacionBySede, setRenovacionBySede] = useState(null);
+    const [metaInfo, setMetaInfo] = useState(null);
     const [loadingVisitas, setLoadingVisitas] = useState(true);
-    const [progressText, setProgressText] = useState('');
 
     // Datos Pestaña 3 (Conversión WA → SALUS)
     const [convRaw, setConvRaw] = useState(null);
@@ -168,17 +168,12 @@ export default function ChequeoGobernanzaDashboard() {
     const [auditSearch, setAuditSearch] = useState('');
     const [auditStatusFilter, setAuditStatusFilter] = useState('all');
 
-    // Datos Pestaña 4 (Calidad & NPS)
+    // Datos Pestaña 4 (Calidad & NPS — pre-cargados desde gob_chequeo_resumen)
     const [encuestas, setEncuestas] = useState([]);
     const [loadingEncuestas, setLoadingEncuestas] = useState(false);
     const [encuestasLoaded, setEncuestasLoaded] = useState(false);
     const [encuestaSubTab, setEncuestaSubTab] = useState('respondidas');
     const [encuestaSearch, setEncuestaSearch] = useState('');
-
-    // Datos Pestaña 5 (Renovación Anual)
-    const [renovacionData, setRenovacionData] = useState([]);
-    const [loadingRenovacion, setLoadingRenovacion] = useState(false);
-    const [renovacionLoaded, setRenovacionLoaded] = useState(false);
 
     const applyDatePreset = (preset) => {
         setDatePreset(preset);
@@ -201,24 +196,28 @@ export default function ChequeoGobernanzaDashboard() {
         }
     };
 
-    const loadVisitas = useCallback(async () => {
+    const loadMayores = useCallback(async () => {
         setLoadingVisitas(true);
         try {
-            const data = await fetchChequeoVisitas((msg) => setProgressText(msg));
-            setRawVisitas(data || []);
+            const res = await fetchChequeoMayores();
+            setMayoresMensual(res.mensualRows || []);
+            setRenovacionBySede(res.renovacionBySede || null);
+            setMetaInfo(res.meta || null);
+            if (Array.isArray(res.encuestasSnapshot)) {
+                setEncuestas(res.encuestasSnapshot);
+                setEncuestasLoaded(true);
+            }
         } catch (err) {
-            console.error('[ChequeoGobernanza] Error cargando visitas:', err);
+            console.error('[ChequeoGobernanza] Error cargando mayores:', err);
         } finally {
             setLoadingVisitas(false);
-            setProgressText('');
         }
     }, []);
 
-    useEffect(() => { loadVisitas(); }, [loadVisitas]);
+    useEffect(() => { loadMayores(); }, [loadMayores]);
 
     // Lazy load Pestaña 3: Conversión WA
     const convRange = useMemo(() => {
-        // Para conversión WA limitar por defecto a máximo 90d si el usuario está en histórico 2024-2026
         const start = fechaDesde < '2026-01-01' ? `${todayIso.slice(0, 7)}-01` : fechaDesde;
         const end = fechaHasta > todayIso ? todayIso : fechaHasta;
         return { startDate: start <= end ? start : end, endDate: end };
@@ -242,7 +241,7 @@ export default function ChequeoGobernanzaDashboard() {
         return () => { active = false; };
     }, [activeTab, convRange, convLoadedKey, convRaw]);
 
-    // Lazy load Pestaña 4: Encuestas
+    // Fallback Pestaña 4: solo si no vino en gob_chequeo_resumen
     useEffect(() => {
         if (activeTab !== 'calidad' || encuestasLoaded) return;
         let active = true;
@@ -259,30 +258,13 @@ export default function ChequeoGobernanzaDashboard() {
         return () => { active = false; };
     }, [activeTab, encuestasLoaded]);
 
-    // Lazy load Pestaña 5: Renovación Anual
-    useEffect(() => {
-        if (activeTab !== 'renovacion' || renovacionLoaded) return;
-        let active = true;
-        setLoadingRenovacion(true);
-        fetchRenovacionAnualCandidates()
-            .then(data => {
-                if (active) {
-                    setRenovacionData(data || []);
-                    setRenovacionLoaded(true);
-                }
-            })
-            .catch(err => console.error('[ChequeoGobernanza] Error renovación:', err))
-            .finally(() => { if (active) setLoadingRenovacion(false); });
-        return () => { active = false; };
-    }, [activeTab, renovacionLoaded]);
-
-    // Agregados principales (Pestañas 1 y 2)
-    const agg = useMemo(() => aggregateChequeoAnalytics(rawVisitas, {
+    // Agregados instantáneos desde la tabla de mayores (< 2ms)
+    const agg = useMemo(() => aggregateFromMayoresMensual(mayoresMensual, {
         fechaDesde,
         fechaHasta,
         sede: sedeFilter,
         viewType
-    }), [rawVisitas, fechaDesde, fechaHasta, sedeFilter, viewType]);
+    }), [mayoresMensual, fechaDesde, fechaHasta, sedeFilter, viewType]);
 
     // Agregados Pestaña 3 (Conversión WA)
     const convAnalytics = useMemo(() => {
@@ -374,45 +356,13 @@ export default function ChequeoGobernanzaDashboard() {
         };
     }, [encuestas, sedeFilter, encuestaSearch]);
 
-    // Agregados Pestaña 5 (Renovación Anual)
+    // Agregados Pestaña 5 (Renovación Anual — leídos directo del snapshot gob_chequeo_resumen)
     const renovacionProjection = useMemo(() => {
-        const filtered = renovacionData.filter(p => {
-            if (sedeFilter === 'TODAS') return true;
-            const c = String(p.centro || '').toUpperCase();
-            return sedeFilter === 'SAN LUIS' ? c.includes('SAN LUIS') : c.includes('SANTA FE');
-        });
-        const now = new Date();
-        const vencidosTotal = filtered.filter(p => p.meses_desde_ultima >= 12).length;
-        const vencidosContactables = filtered.filter(p => p.meses_desde_ultima >= 12 && p.telefono1).length;
-        const bars = [{ name: 'Ya Vencidos (≥12m)', total: vencidosTotal, contactables: vencidosContactables }];
-        let prox6Total = 0, prox6Contactables = 0;
-
-        for (let i = 1; i <= 6; i++) {
-            const targetMeses = 12 - i;
-            const dt = new Date(now.getFullYear(), now.getMonth() + i, 1);
-            const label = `${MONTH_NAMES[dt.getMonth()]} ${String(dt.getFullYear()).slice(2)}`;
-            const tot = filtered.filter(p => p.meses_desde_ultima === targetMeses).length;
-            const cont = filtered.filter(p => p.meses_desde_ultima === targetMeses && p.telefono1).length;
-            prox6Total += tot;
-            prox6Contactables += cont;
-            bars.push({ name: label, total: tot, contactables: cont });
-        }
-
-        const totalUniverso = vencidosTotal + prox6Total;
-        const totalContactables = vencidosContactables + prox6Contactables;
-        const sinTelefono = Math.max(0, totalUniverso - totalContactables);
-
-        return {
-            bars,
-            vencidosTotal,
-            vencidosContactables,
-            prox6Total,
-            totalUniverso,
-            totalContactables,
-            sinTelefono,
-            pctContactable: totalUniverso > 0 ? Math.round((totalContactables / totalUniverso) * 100) : 0,
-        };
-    }, [renovacionData, sedeFilter]);
+        const empty = { bars: [], vencidosTotal: 0, vencidosContactables: 0, prox6Total: 0, totalUniverso: 0, totalContactables: 0, sinTelefono: 0, pctContactable: 0 };
+        if (!renovacionBySede) return empty;
+        const key = sedeFilter === 'SANTA FE' || sedeFilter === 'SAN LUIS' ? sedeFilter : 'TODAS';
+        return renovacionBySede[key] || renovacionBySede.TODAS || empty;
+    }, [renovacionBySede, sedeFilter]);
 
     // Exportar Excel consolidado
     const handleExportExcel = () => {
@@ -496,7 +446,7 @@ export default function ChequeoGobernanzaDashboard() {
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', width: '100%' }}>
-            {/* ── HEADER Y CONTROLES GLOBALES (Estética Calidad-QOAG) ── */}
+            {/* ── HEADER Y CONTROLES GLOBALES (Estética Calidad-QOAG · Responsive sin desborde) ── */}
             <div style={{
                 background: '#FFFFFF',
                 border: '1px solid #E2E8F0',
@@ -505,84 +455,39 @@ export default function ChequeoGobernanzaDashboard() {
                 boxShadow: '0 1px 3px rgba(15, 23, 42, 0.03)',
                 display: 'flex',
                 flexDirection: 'column',
-                gap: '14px'
+                gap: '12px',
+                width: '100%',
+                minWidth: 0,
+                boxSizing: 'border-box'
             }}>
-                <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
                         <div style={{
                             width: '40px', height: '40px', borderRadius: '10px',
                             background: '#EFF6FF', color: COLOR_PRIMARY,
-                            display: 'flex', alignItems: 'center', justifyContent: 'center'
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
                         }}>
                             <HeartPulse size={22} />
                         </div>
-                        <div>
+                        <div style={{ minWidth: 0 }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                                <h2 style={{ margin: 0, fontSize: '1.12rem', fontWeight: 800, color: '#0F172A' }}>
+                                <h2 style={{ margin: 0, fontSize: '1.08rem', fontWeight: 800, color: '#0F172A' }}>
                                     Gobernanza · Chequeo Preventivo y Medicina Preventiva
                                 </h2>
                                 <span style={{
-                                    fontSize: '0.68rem', fontWeight: 800, padding: '2px 9px', borderRadius: '999px',
+                                    fontSize: '0.67rem', fontWeight: 800, padding: '2px 9px', borderRadius: '999px',
                                     background: '#ECFDF5', color: '#047857', border: '1px solid #A7F3D0'
                                 }}>
-                                    EN VIVO · {rawVisitas.length.toLocaleString('es-AR')} reg. CHQ
+                                    MAYORES PRE-AGREGADOS · {(metaInfo?.total_chq_rows || 0).toLocaleString('es-AR')} reg.
                                 </span>
                             </div>
-                            <p style={{ margin: '2px 0 0', fontSize: '0.78rem', color: '#64748B' }}>
+                            <p style={{ margin: '2px 0 0', fontSize: '0.76rem', color: '#64748B' }}>
                                 Circuito Preventivo vs. Informe · Asistencia Interanual 2024–2026 · Conversión WhatsApp → SALUS · NPS Calidad · Renovación Anual
                             </p>
                         </div>
                     </div>
 
-                    <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px' }}>
-                        {/* Presets de fecha */}
-                        <div style={{ display: 'flex', background: '#F1F5F9', padding: '3px', borderRadius: '8px', gap: '2px' }}>
-                            {[
-                                { id: 'mes', label: 'Mes Actual' },
-                                { id: '30d', label: '30 días' },
-                                { id: '2026', label: 'Año 2026' },
-                                { id: 'all', label: 'Histórico 24–26' }
-                            ].map(p => (
-                                <button
-                                    key={p.id}
-                                    type="button"
-                                    onClick={() => applyDatePreset(p.id)}
-                                    style={{
-                                        border: 'none', borderRadius: '6px', padding: '5px 9px',
-                                        fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer',
-                                        background: datePreset === p.id ? COLOR_PRIMARY : 'transparent',
-                                        color: datePreset === p.id ? '#FFFFFF' : '#475569'
-                                    }}
-                                >
-                                    {p.label}
-                                </button>
-                            ))}
-                        </div>
-
-                        <input
-                            type="date"
-                            value={fechaDesde}
-                            onChange={e => { setDatePreset('custom'); setFechaDesde(e.target.value); }}
-                            style={{ padding: '5px 8px', borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.75rem', color: '#0F172A' }}
-                        />
-                        <span style={{ fontSize: '0.72rem', color: '#94A3B8' }}>a</span>
-                        <input
-                            type="date"
-                            value={fechaHasta}
-                            onChange={e => { setDatePreset('custom'); setFechaHasta(e.target.value); }}
-                            style={{ padding: '5px 8px', borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.75rem', color: '#0F172A' }}
-                        />
-
-                        <select
-                            value={sedeFilter}
-                            onChange={e => setSedeFilter(e.target.value)}
-                            style={{ padding: '5px 10px', borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.75rem', fontWeight: 600, color: '#0F172A', background: '#FFFFFF' }}
-                        >
-                            <option value="TODAS">Todas las Sedes</option>
-                            <option value="SANTA FE">Sede Santa Fe</option>
-                            <option value="SAN LUIS">Sede San Luis</option>
-                        </select>
-
+                    <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '6px' }}>
                         <button
                             type="button"
                             onClick={handleExportExcel}
@@ -599,10 +504,8 @@ export default function ChequeoGobernanzaDashboard() {
                         <button
                             type="button"
                             onClick={() => {
-                                loadVisitas();
+                                loadMayores();
                                 setConvLoadedKey('');
-                                setEncuestasLoaded(false);
-                                setRenovacionLoaded(false);
                             }}
                             style={{
                                 display: 'inline-flex', alignItems: 'center', gap: '5px',
@@ -613,6 +516,58 @@ export default function ChequeoGobernanzaDashboard() {
                             <RefreshCw size={13} className={loadingVisitas ? 'animate-spin' : ''} /> Actualizar
                         </button>
                     </div>
+                </div>
+
+                {/* Fila de filtros (presets + fechas + sede) con wrap limpio sin cortar bordes */}
+                <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px', paddingTop: '8px', borderTop: '1px solid #F1F5F9' }}>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', background: '#F1F5F9', padding: '3px', borderRadius: '8px', gap: '2px' }}>
+                        {[
+                            { id: 'mes', label: 'Mes Actual' },
+                            { id: '30d', label: '30 días' },
+                            { id: '2026', label: 'Año 2026' },
+                            { id: 'all', label: 'Histórico 24–26' }
+                        ].map(p => (
+                            <button
+                                key={p.id}
+                                type="button"
+                                onClick={() => applyDatePreset(p.id)}
+                                style={{
+                                    border: 'none', borderRadius: '6px', padding: '5px 9px',
+                                    fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer',
+                                    background: datePreset === p.id ? COLOR_PRIMARY : 'transparent',
+                                    color: datePreset === p.id ? '#FFFFFF' : '#475569'
+                                }}
+                            >
+                                {p.label}
+                            </button>
+                        ))}
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flexWrap: 'wrap' }}>
+                        <input
+                            type="date"
+                            value={fechaDesde}
+                            onChange={e => { setDatePreset('custom'); setFechaDesde(e.target.value); }}
+                            style={{ padding: '5px 8px', borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.74rem', color: '#0F172A' }}
+                        />
+                        <span style={{ fontSize: '0.72rem', color: '#94A3B8' }}>a</span>
+                        <input
+                            type="date"
+                            value={fechaHasta}
+                            onChange={e => { setDatePreset('custom'); setFechaHasta(e.target.value); }}
+                            style={{ padding: '5px 8px', borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.74rem', color: '#0F172A' }}
+                        />
+                    </div>
+
+                    <select
+                        value={sedeFilter}
+                        onChange={e => setSedeFilter(e.target.value)}
+                        style={{ padding: '5px 10px', borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.74rem', fontWeight: 600, color: '#0F172A', background: '#FFFFFF' }}
+                    >
+                        <option value="TODAS">Todas las Sedes</option>
+                        <option value="SANTA FE">Sede Santa Fe</option>
+                        <option value="SAN LUIS">Sede San Luis</option>
+                    </select>
                 </div>
 
                 {/* Navegación por 5 pestañas temáticas */}
@@ -650,8 +605,7 @@ export default function ChequeoGobernanzaDashboard() {
                     padding: '64px 20px', textAlign: 'center', color: '#64748B'
                 }}>
                     <RefreshCw size={28} color={COLOR_PRIMARY} className="animate-spin" style={{ margin: '0 auto 12px' }} />
-                    <div style={{ fontWeight: 700, color: '#0F172A', fontSize: '0.92rem' }}>Cargando registros de Chequeo Preventivo...</div>
-                    {progressText && <div style={{ fontSize: '0.76rem', marginTop: '4px' }}>{progressText}</div>}
+                    <div style={{ fontWeight: 700, color: '#0F172A', fontSize: '0.92rem' }}>Cargando mayores de Chequeo Preventivo...</div>
                 </div>
             ) : activeTab === 'circuito' ? (
                 <>
@@ -1280,7 +1234,7 @@ export default function ChequeoGobernanzaDashboard() {
                     </>
                 )
             ) : (
-                loadingRenovacion ? (
+                loadingVisitas && !renovacionBySede ? (
                     <div style={{ background: '#FFFFFF', borderRadius: '14px', border: '1px solid #E2E8F0', padding: '54px 20px', textAlign: 'center', color: '#64748B' }}>
                         <RefreshCw size={26} color={COLOR_PRIMARY} className="animate-spin" style={{ margin: '0 auto 10px' }} />
                         <div style={{ fontWeight: 700, color: '#0F172A' }}>Calculando proyección de renovación anual (12 meses)...</div>

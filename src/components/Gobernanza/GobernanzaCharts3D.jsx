@@ -49,7 +49,23 @@ function rotatePt(x, y, z, rotY, rotX) {
     return [x1, y * cx - z1 * sx, y * sx + z1 * cx];
 }
 
-function phongShade(rgb, nx, ny, nz, alpha = 1) {
+function normalizeRgb(input) {
+    if (Array.isArray(input) && input.length >= 3) {
+        return [Number(input[0]) || 0, Number(input[1]) || 0, Number(input[2]) || 0];
+    }
+    if (typeof input === 'string' && input.trim()) {
+        const clean = input.trim().replace('#', '');
+        const full = clean.length === 3 ? clean.split('').map(c => c + c).join('') : clean;
+        const num = parseInt(full, 16);
+        if (!Number.isNaN(num)) {
+            return [(num >> 16) & 255, (num >> 8) & 255, num & 255];
+        }
+    }
+    return [0, 59, 115];
+}
+
+function phongShade(rgbIn, nx, ny, nz, alpha = 1) {
+    const rgb = normalizeRgb(rgbIn);
     const dot = Math.max(0, nx * -0.45 + ny * -0.65 + nz * 0.72);
     const spec = Math.pow(dot, 14) * 102;
     const k = 0.36 + dot * 0.72;
@@ -59,7 +75,8 @@ function phongShade(rgb, nx, ny, nz, alpha = 1) {
     return alpha < 1 ? `rgba(${r},${g},${b},${alpha})` : `rgb(${r},${g},${b})`;
 }
 
-function rgbCss(rgb) {
+function rgbCss(rgbIn) {
+    const rgb = normalizeRgb(rgbIn);
     return `rgb(${rgb[0]},${rgb[1]},${rgb[2]})`;
 }
 
@@ -276,10 +293,11 @@ export function AnilloToroidal3D({ title, subtitle, badgeRightLabel, badgeRightV
         let acc = 0;
         const stops = segments.map(s => {
             acc += Math.max(0, Number(s.value) || 0) / total;
-            return { end: acc, rgb: s.rgb };
+            return { end: acc, rgb: normalizeRgb(s.rgb || s.color) };
         });
 
         const getCol = (u) => {
+            if (!stops.length) return [0, 59, 115];
             for (const st of stops) {
                 if (u <= st.end) return st.rgb;
             }
@@ -352,7 +370,7 @@ export function AnilloToroidal3D({ title, subtitle, badgeRightLabel, badgeRightV
     const legendItems = segments.map(s => ({
         label: s.label,
         valueLabel: s.valueLabel || `${((Math.max(0, Number(s.value) || 0) * 100) / total).toFixed(1)}%`,
-        rgb: s.rgb,
+        rgb: normalizeRgb(s.rgb || s.color),
         detail: s.detail,
     }));
 
@@ -422,7 +440,7 @@ export function EmbudoConversion3D({ title, subtitle, badgeRightLabel, badgeRigh
                     quads.push({
                         pts,
                         z: (pts[0][2] + pts[1][2] + pts[2][2] + pts[3][2]) / 4,
-                        fill: phongShade(sg.rgb, norm[0], norm[1], norm[2])
+                        fill: phongShade(sg.rgb || sg.color, norm[0], norm[1], norm[2])
                     });
                 }
             });
@@ -451,7 +469,7 @@ export function EmbudoConversion3D({ title, subtitle, badgeRightLabel, badgeRigh
     const legendItems = stages.map(s => ({
         label: s.label,
         valueLabel: s.valueLabel || `${(Number(s.pct) || 0).toFixed(1)}%`,
-        rgb: s.rgb,
+        rgb: normalizeRgb(s.rgb || s.color),
         detail: s.detail,
     }));
 
@@ -480,9 +498,10 @@ export function CapsulaBalance3D({ title, subtitle, badgeRightLabel, badgeRightV
         let acc = 0;
         const stops = segments.map(s => {
             acc += Math.max(0, Number(s.value) || 0) / total;
-            return { end: acc, rgb: s.rgb };
+            return { end: acc, rgb: normalizeRgb(s.rgb || s.color) };
         });
         const getCol = (u) => {
+            if (!stops.length) return [0, 59, 115];
             for (const st of stops) if (u <= st.end) return st.rgb;
             return stops[stops.length - 1].rgb;
         };
@@ -557,7 +576,7 @@ export function CapsulaBalance3D({ title, subtitle, badgeRightLabel, badgeRightV
     const legendItems = segments.map(s => ({
         label: s.label,
         valueLabel: s.valueLabel || `${((Math.max(0, Number(s.value) || 0) * 100) / total).toFixed(1)}%`,
-        rgb: s.rgb,
+        rgb: normalizeRgb(s.rgb || s.color),
         detail: s.detail,
     }));
 

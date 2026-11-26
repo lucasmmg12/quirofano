@@ -51,6 +51,169 @@ function getLast7(phone) {
 }
 
 /**
+ * 0. LECTURA INSTANTÁNEA DE TABLAS DE MAYORES (< 150ms)
+ * Lee gob_chequeo_mensual (~108 filas) y gob_chequeo_resumen (3 filas) en paralelo.
+ */
+export async function fetchChequeoMayores() {
+    const [mensualRes, resumenRes] = await Promise.all([
+        supabase
+            .from('gob_chequeo_mensual')
+            .select('*')
+            .order('periodo', { ascending: true }),
+        supabase
+            .from('gob_chequeo_resumen')
+            .select('clave, payload, synced_at')
+    ]);
+
+    if (mensualRes.error) throw mensualRes.error;
+    const resumenMap = {};
+    (resumenRes.data || []).forEach(r => {
+        resumenMap[r.clave] = { payload: r.payload, synced_at: r.synced_at };
+    });
+
+    return {
+        mensualRows: mensualRes.data || [],
+        renovacionBySede: resumenMap.renovacion_anual?.payload || null,
+        encuestasSnapshot: resumenMap.encuestas_calidad?.payload?.items || null,
+        meta: resumenMap.meta?.payload || null,
+    };
+}
+
+/**
+ * Agrega en < 2ms los mayores mensuales de gob_chequeo_mensual según período, sede y vista.
+ */
+export function aggregateFromMayoresMensual(mensualRows = [], {
+    fechaDesde = '',
+    fechaHasta = '',
+    sede = 'TODAS',
+    viewType = 'comparativa',
+} = {}) {
+    const startYM = fechaDesde ? fechaDesde.substring(0, 7) : '2000-01';
+    const endYM = fechaHasta ? fechaHasta.substring(0, 7) : '2099-12';
+    const sedeKey = sede === 'SANTA FE' || sede === 'SAN LUIS' ? sede : 'TODAS';
+
+    const rowsForSede = mensualRows.filter(r => r.sede === sedeKey);
+    const inRange = rowsForSede.filter(r => r.periodo >= startYM && r.periodo <= endYM);
+
+    // Interanual 2024-2026 (independiente del rango de fechas)
+    const yoyMap = { '2024': Array(12).fill(0), '2025': Array(12).fill(0), '2026': Array(12).fill(0) };
+    rowsForSede.forEach(r => {
+        const yr = String(r.periodo || '').substring(0, 4);
+        const mo = parseInt(String(r.periodo || '').substring(5, 7), 10) - 1;
+        if (yoyMap[yr] && mo >= 0 && mo <= 11) {
+            yoyMap[yr][mo] += viewType === 'informe' ? (Number(r.inf_presentes) || 0) : (Number(r.chq_presentes) || 0);
+        }
+    });
+    const yoyData = MONTH_NAMES.map((name, idx) => ({
+        label: name,
+        y2024: yoyMap['2024'][idx] || 0,
+        y2025: yoyMap['2025'][idx] || 0,
+        y2026: yoyMap['2026'][idx] || 0,
+    }));
+
+    let uniquePatients = 0, totalAgendados = 0, uniqueAusentes = 0;
+    let uniqueInfPresentes = 0, totalInfAgendados = 0, uniqueInfAusentes = 0;
+    let demoraSum = 0, demoraCnt = 0, edadSum = 0, edadCnt = 0;
+    const osAgg = {};
+    const medAgg = {};
+    const ageBinsAgg = AGE_BINS.map(b => ({ key: b.key, label: b.label, count: 0 }));
+
+    const months = inRange.map(r => {
+        const chqAg = Number(r.chq_agendados) || 0;
+        const chqPr = Number(r.chq_presentes) || 0;
+        const chqAu = Number(r.chq_ausentes) || 0;
+        const chqPe = Number(r.chq_pendientes) || 0;
+        const infAg = Number(r.inf_agendados) || 0;
+        const infPr = Number(r.inf_presentes) || 0;
+        const infAu = Number(r.inf_ausentes) || 0;
+        const infPe = Number(r.inf_pendientes) || 0;
+
+        uniquePatients += chqPr;
+        totalAgendados += chqAg;
+        uniqueAusentes += chqAu;
+        uniqueInfPresentes += infPr;
+        totalInfAgendados += infAg;
+        uniqueInfAusentes += infAu;
+        demoraSum += Number(r.demora_dias_sum) || 0;
+        demoraCnt += Number(r.demora_dias_cnt) || 0;
+        edadSum += Number(r.edad_sum) || 0;
+        edadCnt += Number(r.edad_cnt) || 0;
+
+        (Array.isArray(r.top_os) ? r.top_os : []).forEach(it => {
+            if (it?.name) osAgg[it.name] = (osAgg[it.name] || 0) + (Number(it.value) || 0);
+        });
+        (Array.isArray(r.top_medicos) ? r.top_medicos : []).forEach(it => {
+            if (it?.name) medAgg[it.name] = (medAgg[it.name] || 0) + (Number(it.value) || 0);
+        });
+        (Array.isArray(r.age_bins) ? r.age_bins : []).forEach(it => {
+            const target = ageBinsAgg.find(b => b.key === it?.key);
+            if (target) target.count += (Number(it.count) || 0);
+        });
+
+        const [y, mo] = String(r.periodo).split('-');
+        const moName = MONTH_NAMES[parseInt(mo, 10) - 1] || mo;
+        const targetPres = viewType === 'informe' ? infPr : chqPr;
+        const targetAus = viewType === 'informe' ? infAu : chqAu;
+        const resolved = targetPres + targetAus;
+
+        return {
+            month: r.periodo,
+            label: `${moName} ${y.slice(2)}`,
+            labelFull: `${moName} ${y}`,
+            agendados: chqAg,
+            presentes: chqPr,
+            ausentes: chqAu,
+            pendientes: chqPe,
+            infAgendados: infAg,
+            infPresentes: infPr,
+            infAusentes: infAu,
+            infPendientes: infPe,
+            tasaAsistenciaMes: resolved > 0 ? Math.round((targetPres / resolved) * 100) : 0,
+            tasaRetornoMes: chqPr > 0 ? Math.round((infPr / chqPr) * 100) : 0,
+        };
+    });
+
+    // Desglose de informes por sede (SL vs SF) en el período
+    const sfInf = mensualRows.filter(r => r.sede === 'SANTA FE' && r.periodo >= startYM && r.periodo <= endYM).reduce((s, r) => s + (Number(r.inf_presentes) || 0), 0);
+    const slInf = mensualRows.filter(r => r.sede === 'SAN LUIS' && r.periodo >= startYM && r.periodo <= endYM).reduce((s, r) => s + (Number(r.inf_presentes) || 0), 0);
+    const centrosInf = [
+        ...(sfInf > 0 ? [{ name: 'Santa Fe', value: sfInf }] : []),
+        ...(slInf > 0 ? [{ name: 'San Luis', value: slInf }] : []),
+    ];
+
+    const sortedOS = Object.entries(osAgg).sort((a, b) => b[1] - a[1]);
+    const topOS = sortedOS.slice(0, 6).map(([name, value]) => ({ name, value }));
+    const othersOS = sortedOS.slice(6).reduce((s, [, v]) => s + v, 0);
+    if (othersOS > 0) topOS.push({ name: 'Otras', value: othersOS });
+
+    const topMedicosInf = Object.entries(medAgg)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 8)
+        .map(([name, value]) => ({ name, value }));
+
+    const resolvedGlobal = uniquePatients + uniqueAusentes;
+    return {
+        months,
+        yoyData,
+        uniquePatients,
+        totalAgendados,
+        uniqueAusentes,
+        uniqueInfPresentes,
+        totalInfAgendados,
+        uniqueInfAusentes,
+        tasaRetornoInforme: uniquePatients > 0 ? Math.round((uniqueInfPresentes / uniquePatients) * 100) : 0,
+        tasaAsistenciaGlobal: resolvedGlobal > 0 ? Math.round((uniquePatients / resolvedGlobal) * 100) : 0,
+        avgDiasInforme: demoraCnt > 0 ? Math.round(demoraSum / demoraCnt) : 0,
+        avgAge: edadCnt > 0 ? Math.round((edadSum / edadCnt) * 10) / 10 : 0,
+        ageValidCount: edadCnt,
+        ageDistribution: ageBinsAgg,
+        topOS,
+        topMedicosInf,
+        centrosInf,
+    };
+}
+
+/**
  * 1. Trae todas las visitas CHQ de recepciones_visitas (2024–2026+)
  */
 export async function fetchChequeoVisitas(onProgress = null) {

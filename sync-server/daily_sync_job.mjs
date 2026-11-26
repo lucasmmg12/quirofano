@@ -33,6 +33,7 @@ import { getDxIAnalytics, getDxICasosNominales } from './sync_dxi.mjs';
 import { syncInternacionGobernanza } from './sync_internacion_gobernanza.mjs';
 import { syncComprasConsumoStock } from './sync_compras_consumo_stock.mjs';
 import { syncGuardiaGGO } from './sync_guardia_ggo.mjs';
+import { syncChequeoGobernanza } from './sync_chequeo_gobernanza.mjs';
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || 'https://hakysnqiryimxbwdslwe.supabase.co';
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY;
@@ -594,12 +595,23 @@ export async function runDailySync({ skipDoctors = false } = {}) {
     // ──────────────────────────────────────────────────────────
     // PASO 14: Tablero Guardia Gineco-Obstétrica (GGO) & Cuello de Botella Qx
     // ──────────────────────────────────────────────────────────
-    log('PASO 14/14: Sincronizando Guardia Gineco-Obstétrica (GGO + Eco Guardia + Cuello de Botella Quirófano)...');
+    log('PASO 14/15: Sincronizando Guardia Gineco-Obstétrica (GGO + Eco Guardia + Cuello de Botella Quirófano)...');
     try {
         await syncGuardiaGGO({ startYear: 2025 });
         log('Paso 14 completado: Tablero Guardia GGO actualizado.');
     } catch (eGgo) {
         log(`⚠️ Error no bloqueante en Paso 14 (Guardia GGO): ${eGgo.message}`);
+    }
+
+    // ──────────────────────────────────────────────────────────
+    // PASO 15: Tablero Chequeo Preventivo (Mayores Pre-agregados)
+    // ──────────────────────────────────────────────────────────
+    log('PASO 15/15: Sincronizando Mayores de Chequeo Preventivo (gob_chequeo_mensual & resumen)...');
+    try {
+        await syncChequeoGobernanza();
+        log('Paso 15 completado: Mayores de Chequeo Preventivo actualizados.');
+    } catch (eChq) {
+        log(`⚠️ Error no bloqueante en Paso 15 (Chequeo Preventivo): ${eChq.message}`);
     }
 
     const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
