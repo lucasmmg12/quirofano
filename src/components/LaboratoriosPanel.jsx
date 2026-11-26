@@ -1063,7 +1063,7 @@ export default function LaboratoriosPanel({ addToast, currentUser }) {
     // Render
     // ═══════════════════════════════════════
     return (
-        <div className="content animate-fade-in" style={{ padding: '24px', maxWidth: '1400px', margin: '0 auto', width: '100%' }}>
+        <div className="content animate-fade-in" style={{ padding: '20px 24px', maxWidth: '100%', width: '100%', margin: 0, boxSizing: 'border-box' }}>
 
             {/* Header */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
