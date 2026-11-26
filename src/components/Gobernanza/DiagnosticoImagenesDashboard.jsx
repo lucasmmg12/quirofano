@@ -3300,7 +3300,7 @@ export default function DiagnosticoImagenesDashboard({
                         </div>
 
                         {/* Contenedor del Gráfico (3D Topográfico WebGL o 2D Recharts) */}
-                        <div style={{ width: '100%', height: progressionViewMode === '3d' ? '420px' : '300px', marginTop: '6px', minWidth: 0, position: 'relative' }}>
+                        <div style={{ width: '100%', height: progressionViewMode === '3d' ? '470px' : '300px', marginTop: '6px', minWidth: 0, position: 'relative' }}>
                             {loading ? (
                                 <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748B', gap: '8px' }}>
                                     <RefreshCw className="animate-spin" size={18} color={COLOR_PRIMARY} />
@@ -3315,7 +3315,7 @@ export default function DiagnosticoImagenesDashboard({
                             ) : progressionViewMode === '3d' ? (() => {
                                 const totalColor = selectedModalidad !== 'TODAS'
                                     ? (MODALIDADES_TABS.find(t => t.id === selectedModalidad)?.badgeColor || '#E11D48')
-                                    : '#2563EB';
+                                    : '#1D4ED8';
                                 const totalLabel = selectedAgenda !== 'TODAS'
                                     ? 'Total Estudio'
                                     : selectedModalidad !== 'TODAS'
@@ -3323,18 +3323,18 @@ export default function DiagnosticoImagenesDashboard({
                                         : 'Total General';
                                 const topoSeries = [];
                                 if (visibleSeries.total) topoSeries.push({ key: 'total', label: totalLabel, shortLabel: totalLabel, color: totalColor });
-                                if (visibleSeries.obraSocial) topoSeries.push({ key: 'obraSocial', label: 'Con Obra Social', shortLabel: 'Obra Social', color: '#0F766E' });
+                                if (visibleSeries.obraSocial) topoSeries.push({ key: 'obraSocial', label: 'Con Obra Social', shortLabel: 'Obra Social', color: '#0D9488' });
                                 if (selectedModalidad === 'TODAS' && selectedAgenda === 'TODAS') {
                                     [
-                                        { key: 'ECOGRAFIA', label: 'Ecografía', shortLabel: 'Ecografía', color: '#06B6D4' },
-                                        { key: 'RADIOLOGIA', label: 'Radiología (RX)', shortLabel: 'Radiología', color: '#6366F1' },
-                                        { key: 'MAMOGRAFIA', label: 'Mamografía', shortLabel: 'Mamografía', color: '#EC4899' },
-                                        { key: 'TOMOGRAFIA', label: 'Tomografía (TC)', shortLabel: 'Tomografía', color: '#F59E0B' },
-                                        { key: 'DENSITOMETRIA', label: 'Densitometría', shortLabel: 'Densitometría', color: '#10B981' },
+                                        { key: 'ECOGRAFIA', label: 'Ecografía', shortLabel: 'Ecografía', color: '#0284C7' },
+                                        { key: 'RADIOLOGIA', label: 'Radiología (RX)', shortLabel: 'Radiología', color: '#7C3AED' },
+                                        { key: 'MAMOGRAFIA', label: 'Mamografía', shortLabel: 'Mamografía', color: '#DB2777' },
+                                        { key: 'TOMOGRAFIA', label: 'Tomografía (TC)', shortLabel: 'Tomografía', color: '#D97706' },
+                                        { key: 'DENSITOMETRIA', label: 'Densitometría', shortLabel: 'Densitometría', color: '#16A34A' },
                                         { key: 'ECOCARDIO', label: 'Ecocardiograma', shortLabel: 'Ecocardio', color: '#E11D48' }
                                     ].forEach(s => { if (visibleSeries[s.key]) topoSeries.push(s); });
                                 } else {
-                                    if (visibleSeries.ambulatorio) topoSeries.push({ key: 'ambulatorio', label: 'Ambulatorio', shortLabel: 'Ambulatorio', color: '#10B981' });
+                                    if (visibleSeries.ambulatorio) topoSeries.push({ key: 'ambulatorio', label: 'Ambulatorio', shortLabel: 'Ambulatorio', color: '#16A34A' });
                                     if (visibleSeries.hospitalizacion) topoSeries.push({ key: 'hospitalizacion', label: 'Hospitalización', shortLabel: 'Hospitalización', color: '#7C3AED' });
                                 }
                                 if (visibleSeries.particular) topoSeries.push({ key: 'particular', label: 'Particulares', shortLabel: 'Particulares', color: '#EA580C' });
@@ -3343,7 +3343,7 @@ export default function DiagnosticoImagenesDashboard({
                                         data={progressionChartData}
                                         series={topoSeries.length ? topoSeries : [{ key: 'total', label: totalLabel, shortLabel: totalLabel, color: totalColor }]}
                                         granularity={activeGranularity}
-                                        height={420}
+                                        height={470}
                                     />
                                 );
                             })() : (

@@ -1,16 +1,23 @@
 import React, { useEffect, useRef, useState, useMemo } from 'react';
 
 /**
- * DxiSuperficieTopografica3D.jsx
- * Visualización 3D WebGL nativa (sin dependencias externas) de Superficie Topográfica Esculpida
- * para la Progresión Temporal de Diagnóstico por Imágenes (DxI).
+ * DxiSuperficieTopografica3D.jsx — v3.0 Full-Width & High-Contrast Multi-Lane 3D Engine
  *
- * Estética Calidad-QOAG:
- *  - Malla paramétrica de alta densidad (160×64 = ~20.480 triángulos GPU) con shaders Blinn-Phong + Fresnel
- *  - Leyenda de planos Z en tarjeta flotante limpia (cero solapamiento al girar 360°)
- *  - Etiquetas de eje X con anti-colisión dinámica (mín. 54px entre fechas) y margen seguro inferior
- *  - Eje Y con cápsulas numéricas limpias y callout único de pico máximo con línea conectora
- *  - Tooltip clínico flotante al pasar el cursor sobre cualquier fecha/período
+ * Soluciona los 2 problemas clave:
+ *  1. OCUPA TODO EL ESPACIO (Full-Width 92%+ del contenedor):
+ *     - Geometría panorámica ancha (WORLD_W = 28.0) con proyección adaptativa al aspect-ratio
+ *       para que el gráfico llene de borde a borde el contenedor sin dejar grandes espacios vacíos.
+ *     - La leyenda lateral pesada se reemplaza por una barra superior compacta e interactiva
+ *       que permite resaltar o aislar cada serie al pasar el mouse o hacer clic.
+ *  2. DIFERENCIACIÓN TOTAL DE COLORES (Cero mezcla borrosa):
+ *     - Cada serie (Total General, Obra Social, Ecografía, Radiología, Mamografía, Tomografía,
+ *       Densitometría, Ecocardiograma, Particulares) se dibuja en su propio CARRIL 3D INDEPENDIENTE
+ *       con su color institucional puro de alto contraste, cresta luminosa superior, paredes
+ *       volumétricas biseladas y etiqueta directa en el extremo del carril.
+ *     - Incluye 3 modos 3D intercambiables al instante:
+ *       • "Crestas 3D" (Cintas volumétricas extrusionadas por serie — por defecto)
+ *       • "Columnas 3D" (Prismas 3D apilados/agrupados por día y modalidad)
+ *       • "Superficie 3D" (Terreno 3D segmentado por franjas de color puro sin mezcla grisácea)
  */
 
 function hexToRgb01(hex) {
@@ -23,16 +30,17 @@ function hexToRgb01(hex) {
 function niceCeil(val) {
     if (!val || val <= 0) return 4;
     if (val <= 4) return 4;
-    if (val <= 8) return 8;
-    if (val <= 16) return 16;
+    if (val <= 10) return 10;
     const mag = Math.pow(10, Math.floor(Math.log10(val)));
     const norm = val / mag;
     if (norm <= 1.2) return Math.ceil(1.2 * mag);
-    if (norm <= 1.6) return Math.ceil(1.6 * mag);
+    if (norm <= 1.5) return Math.ceil(1.5 * mag);
     if (norm <= 2) return 2 * mag;
     if (norm <= 2.5) return 2.5 * mag;
+    if (norm <= 3) return 3 * mag;
     if (norm <= 4) return 4 * mag;
     if (norm <= 5) return 5 * mag;
+    if (norm <= 6) return 6 * mag;
     if (norm <= 8) return 8 * mag;
     return 10 * mag;
 }
@@ -56,7 +64,7 @@ function evalSmooth(values, u) {
         (2 * p0 - 5 * p1 + 4 * p2 - p3) * t2 +
         (-p0 + 3 * p1 - 3 * p2 + p3) * t3
     );
-    const localMax = Math.max(p1, p2) * 1.05;
+    const localMax = Math.max(p1, p2) * 1.04;
     return Math.max(0, Math.min(localMax, v));
 }
 
@@ -107,7 +115,7 @@ function projectPoint(mvp, x, y, z, w, h) {
     const cy = mvp[1] * x + mvp[5] * y + mvp[9] * z + mvp[13];
     const cw = mvp[3] * x + mvp[7] * y + mvp[11] * z + mvp[15];
     if (cw <= 0.001) return null;
-    return { sx: (cx / cw * 0.5 + 0.5) * w, sy: (0.5 - cy / cw * 0.5) * h };
+    return { sx: (cx / cw * 0.5 + 0.5) * w, sy: (0.5 - cy / cw * 0.5) * h, depth: cw };
 }
 
 const VS_SRC = `
@@ -121,7 +129,7 @@ const VS_SRC = `
   varying vec4 vCol;
   void main() {
     vec3 p = vec3(aPos.x, aPos.y * uScaleY, aPos.z);
-    vec3 n = normalize(vec3(aNorm.x, aNorm.y / max(0.06, uScaleY), aNorm.z));
+    vec3 n = normalize(vec3(aNorm.x, aNorm.y / max(0.08, uScaleY), aNorm.z));
     vPos = p;
     vNorm = n;
     vCol = aCol;
@@ -138,53 +146,69 @@ const FS_SRC = `
   varying vec4 vCol;
   void main() {
     if (uWire > 0.5) {
-      gl_FragColor = vec4(vCol.rgb * 0.72, 0.85);
+      gl_FragColor = vec4(vCol.rgb * 0.85, 0.92);
       return;
     }
     vec3 N = normalize(vNorm);
     if (!gl_FrontFacing) N = -N;
     vec3 V = normalize(uCamPos - vPos);
-    vec3 L1 = normalize(vec3(11.0, 22.0, 14.0));
-    vec3 L2 = normalize(vec3(-14.0, 10.0, -12.0));
+    vec3 L1 = normalize(vec3(10.0, 24.0, 16.0));
+    vec3 L2 = normalize(vec3(-14.0, 12.0, -10.0));
 
-    float hemi = 0.5 + 0.5 * N.y;
-    vec3 amb = mix(vec3(0.46, 0.52, 0.60), vec3(0.80, 0.84, 0.90), hemi) * 0.60;
-
+    float hemi = 0.52 + 0.48 * N.y;
     float d1 = max(dot(N, L1), 0.0);
+    float d2 = max(dot(N, L2), 0.0) * 0.25;
+
     vec3 H1 = normalize(L1 + V);
-    float spec1 = pow(max(dot(N, H1), 0.0), 52.0) * 0.48;
+    float spec = pow(max(dot(N, H1), 0.0), 42.0) * 0.34;
+    float fresnel = pow(1.0 - max(dot(N, V), 0.0), 3.0) * 0.16;
 
-    float d2 = max(dot(N, L2), 0.0) * 0.30;
-    vec3 rimCol = vec3(0.35, 0.72, 0.98) * d2;
-
-    float fresnel = pow(1.0 - max(dot(N, V), 0.0), 3.2) * 0.22;
-
-    vec3 col = vCol.rgb * (amb + d1 * 0.82) + rimCol * vCol.rgb + vec3(spec1 + fresnel);
-    col += vCol.rgb * clamp(vPos.y * 0.025, 0.0, 0.14);
+    // Conserva la pureza cromática de cada serie con sombreado clínico tridimensional
+    float lightFactor = 0.52 * hemi + 0.54 * d1 + d2;
+    vec3 col = vCol.rgb * lightFactor + vec3(spec + fresnel * 0.5);
     gl_FragColor = vec4(clamp(col, 0.0, 1.0), vCol.a);
   }
 `;
+
+// Paleta de alta distinción cromática por clave para evitar colores parecidos
+const HIGH_CONTRAST_COLORS = {
+    total: '#1D4ED8',         // Azul Rey Intenso
+    obraSocial: '#0D9488',    // Teal Esmeralda
+    particular: '#EA580C',    // Naranja Vivo
+    ECOGRAFIA: '#0284C7',     // Cyan Cobalto
+    RADIOLOGIA: '#7C3AED',    // Violeta Profundo
+    MAMOGRAFIA: '#DB2777',    // Magenta Clínico
+    TOMOGRAFIA: '#D97706',    // Ámbar Dorado
+    DENSITOMETRIA: '#16A34A', // Verde Clínico Puro
+    ECOCARDIO: '#E11D48',     // Rojo Carmesí
+    ambulatorio: '#16A34A',
+    hospitalizacion: '#7C3AED'
+};
 
 export default function DxiSuperficieTopografica3D({
     data = [],
     series = [],
     granularity = 'dia',
-    height = 420
+    height = 460
 }) {
     const wrapRef = useRef(null);
     const glCanvasRef = useRef(null);
     const hudCanvasRef = useRef(null);
 
+    // Modos 3D: 'ribbons' (Crestas 3D independientes), 'bars' (Columnas 3D), 'surface' (Superficie por franjas puras)
+    const [visualMode, setVisualMode] = useState('ribbons');
+    const [scaleMode, setScaleMode] = useState('global'); // 'global' (Escala real) | 'normalized' (Comparativa % por serie)
+    const [focusedSeriesKey, setFocusedSeriesKey] = useState(null);
     const [showWire, setShowWire] = useState(false);
     const [autoRotate, setAutoRotate] = useState(false);
     const [activePreset, setActivePreset] = useState('iso');
-    const [hoverState, setHoverState] = useState(null); // { idx, x, y }
+    const [hoverState, setHoverState] = useState(null);
     const [webglError, setWebglError] = useState(false);
-    const [triCount, setTriCount] = useState(0);
 
+    // Cámara inicial ajustada para ocupar TODO el ancho y alto del lienzo
     const camRef = useRef({
-        yaw: -0.46, pitch: 0.44, radius: 22.8,
-        tYaw: -0.46, tPitch: 0.44, tRadius: 22.8,
+        yaw: -0.34, pitch: 0.42, radius: 23.5,
+        tYaw: -0.34, tPitch: 0.42, tRadius: 23.5,
         vYaw: 0, vPitch: 0,
         dragging: false, lx: 0, ly: 0,
         mx: -999, my: -999, hoveredIdx: -1
@@ -195,19 +219,28 @@ export default function DxiSuperficieTopografica3D({
     useEffect(() => { showWireRef.current = showWire; }, [showWire]);
     useEffect(() => { autoRotateRef.current = autoRotate; }, [autoRotate]);
 
-    // Preparar series activas con slots Z centrados y totales
+    // Series con colores de alto contraste garantizados y orden de atrás hacia adelante (mayor volumen atrás)
     const preparedSeries = useMemo(() => {
         const list = (series || []).filter(s => s && s.key);
         const count = list.length;
         return list.map((s, idx) => {
+            const distinctColor = HIGH_CONTRAST_COLORS[s.key] || s.color || '#1D4ED8';
             const values = data.map(d => Number(d?.[s.key]) || 0);
             const sum = values.reduce((a, b) => a + b, 0);
+            const maxVal = Math.max(1, ...values);
+            let peakIdx = 0;
+            values.forEach((v, i) => { if (v > values[peakIdx]) peakIdx = i; });
+            // zSlot: idx=0 (Total) al fondo (-Z), las demás hacia el frente (+Z)
             const zSlot = count === 1 ? 0 : (idx - (count - 1) / 2);
             return {
                 ...s,
-                rgb: hexToRgb01(s.color),
+                color: distinctColor,
+                rgb: hexToRgb01(distinctColor),
                 values,
                 sum,
+                maxVal,
+                peakIdx,
+                peakVal: values[peakIdx] || 0,
                 zSlot
             };
         });
@@ -215,38 +248,23 @@ export default function DxiSuperficieTopografica3D({
 
     const maxScaleVal = useMemo(() => {
         let maxV = 0;
-        preparedSeries.forEach(s => {
+        const activeList = focusedSeriesKey
+            ? preparedSeries.filter(s => s.key === focusedSeriesKey)
+            : preparedSeries;
+        (activeList.length ? activeList : preparedSeries).forEach(s => {
             s.values.forEach(v => { if (v > maxV) maxV = v; });
         });
         return niceCeil(maxV);
-    }, [preparedSeries]);
-
-    // Pico principal de la primera serie (normalmente Total)
-    const peakData = useMemo(() => {
-        if (!preparedSeries.length || !data.length) return null;
-        const primary = preparedSeries[0];
-        let bestIdx = -1, bestVal = 0;
-        primary.values.forEach((v, i) => {
-            if (v > bestVal) { bestVal = v; bestIdx = i; }
-        });
-        if (bestIdx < 0 || bestVal <= 0) return null;
-        return {
-            idx: bestIdx,
-            val: bestVal,
-            label: data[bestIdx]?.label || '',
-            color: primary.color,
-            zSlot: primary.zSlot
-        };
-    }, [preparedSeries, data]);
+    }, [preparedSeries, focusedSeriesKey]);
 
     const applyPreset = (preset) => {
         setAutoRotate(false);
         setActivePreset(preset);
         const c = camRef.current;
-        if (preset === 'iso') { c.tYaw = -0.46; c.tPitch = 0.44; c.tRadius = 22.8; }
-        if (preset === 'front') { c.tYaw = 0.0; c.tPitch = 0.16; c.tRadius = 23.2; }
-        if (preset === 'side') { c.tYaw = -1.16; c.tPitch = 0.36; c.tRadius = 21.8; }
-        if (preset === 'top') { c.tYaw = -0.08; c.tPitch = 1.24; c.tRadius = 24.8; }
+        if (preset === 'iso') { c.tYaw = -0.34; c.tPitch = 0.42; c.tRadius = 23.5; }
+        if (preset === 'front') { c.tYaw = 0.0; c.tPitch = 0.22; c.tRadius = 22.0; }
+        if (preset === 'side') { c.tYaw = -1.08; c.tPitch = 0.36; c.tRadius = 23.0; }
+        if (preset === 'top') { c.tYaw = 0.0; c.tPitch = 1.26; c.tRadius = 25.0; }
     };
 
     useEffect(() => {
@@ -264,7 +282,6 @@ export default function DxiSuperficieTopografica3D({
 
         const hud = hudCanvas.getContext('2d');
 
-        // Compilar shaders
         const compile = (type, src) => {
             const sh = gl.createShader(type);
             gl.shaderSource(sh, src);
@@ -287,26 +304,35 @@ export default function DxiSuperficieTopografica3D({
         const uScaleY = gl.getUniformLocation(prog, 'uScaleY');
         const uWire = gl.getUniformLocation(prog, 'uWire');
 
-        const WORLD_W = 18.4;
-        const WORLD_H = 5.2;
-        const Z_STEP = preparedSeries.length > 5 ? 1.25 : 1.6;
-        const maxZSlot = Math.max(1.2, (preparedSeries.length - 1) / 2 + 0.55);
+        // DIMENSIONES PANORÁMICAS AMPLIAS PARA OCUPAR TODO EL ANCHO DEL CONTENEDOR
+        const WORLD_W = 29.0;
+        const WORLD_H = 7.4;
+        const sCount = preparedSeries.length;
+        const Z_STEP = sCount > 6 ? 1.32 : sCount > 3 ? 1.65 : 2.1;
+        const maxZSlot = Math.max(1.0, (sCount - 1) / 2 + 0.55);
         const zMin = -maxZSlot * Z_STEP;
         const zMax = maxZSlot * Z_STEP;
 
         const dayToX = (i) => data.length === 1 ? 0 : (-WORLD_W * 0.5 + (i / (data.length - 1)) * WORLD_W);
-        const valToY = (v) => (v / maxScaleVal) * WORLD_H;
+        const getValY = (val, s) => {
+            if (scaleMode === 'normalized') {
+                return (val / Math.max(1, s.maxVal)) * WORLD_H;
+            }
+            return (val / maxScaleVal) * WORLD_H;
+        };
 
-        // Construir geometría topográfica de alta densidad (160×64 = 20.480 triángulos + balizas)
         const pos = [], norm = [], col = [];
         const wirePos = [], wireCol = [];
-        let tris = 0;
 
         const pushTri = (p1, p2, p3, n1, n2, n3, c1, c2, c3) => {
             pos.push(p1[0], p1[1], p1[2], p2[0], p2[1], p2[2], p3[0], p3[1], p3[2]);
             norm.push(n1[0], n1[1], n1[2], n2[0], n2[1], n2[2], n3[0], n3[1], n3[2]);
             col.push(c1[0], c1[1], c1[2], c1[3], c2[0], c2[1], c2[2], c2[3], c3[0], c3[1], c3[2], c3[3]);
-            tris++;
+        };
+
+        const addQuad = (p1, p2, p3, p4, n, c1, c2, c3, c4) => {
+            pushTri(p1, p2, p3, n, n, n, c1, c2, c3);
+            pushTri(p1, p3, p4, n, n, n, c1, c3, c4);
         };
 
         const addQuadSmooth = (p1, p2, p3, p4, n1, n2, n3, n4, c1, c2, c3, c4) => {
@@ -314,123 +340,228 @@ export default function DxiSuperficieTopografica3D({
             pushTri(p1, p3, p4, n1, n3, n4, c1, c3, c4);
         };
 
-        const addSphere = (cx, cy, cz, r, segU, segV, rgba) => {
-            for (let iv = 0; iv < segV; iv++) {
-                const v1 = (iv / segV) * Math.PI, v2 = ((iv + 1) / segV) * Math.PI;
-                for (let iu = 0; iu < segU; iu++) {
-                    const u1 = (iu / segU) * Math.PI * 2, u2 = ((iu + 1) / segU) * Math.PI * 2;
-                    const pt = (u, v) => {
-                        const nx = Math.sin(v) * Math.cos(u), ny = Math.cos(v), nz = Math.sin(v) * Math.sin(u);
-                        return { p: [cx + nx * r, cy + ny * r, cz + nz * r], n: [nx, ny, nz] };
-                    };
-                    const a = pt(u1, v1), b = pt(u2, v1), c = pt(u2, v2), d = pt(u1, v2);
-                    addQuadSmooth(a.p, b.p, c.p, d.p, a.n, b.n, c.n, d.n, rgba, rgba, rgba, rgba);
-                }
-            }
+        const addBox = (x0, y0, z0, x1, y1, z1, topCol, sideCol, baseCol) => {
+            // Top
+            addQuad([x0, y1, z0], [x0, y1, z1], [x1, y1, z1], [x1, y1, z0], [0, 1, 0], topCol, topCol, topCol, topCol);
+            // Front (+Z)
+            addQuad([x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1], [0, 0, 1], baseCol, baseCol, sideCol, sideCol);
+            // Back (-Z)
+            addQuad([x1, y0, z0], [x0, y0, z0], [x0, y1, z0], [x1, y1, z0], [0, 0, -1], baseCol, baseCol, sideCol, sideCol);
+            // Left (-X)
+            addQuad([x0, y0, z0], [x0, y0, z1], [x0, y1, z1], [x0, y1, z0], [-1, 0, 0], baseCol, baseCol, sideCol, sideCol);
+            // Right (+X)
+            addQuad([x1, y0, z1], [x1, y0, z0], [x1, y1, z0], [x1, y1, z1], [1, 0, 0], baseCol, baseCol, sideCol, sideCol);
         };
 
-        const NX = 156;
-        const NZ = 64;
-        const gridP = [], gridC = [], gridN = [];
-        const lerp3 = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
-        const cLow = [0.06, 0.52, 0.82];
-        const cMid = [0.06, 0.72, 0.50];
-        const cHi = [0.46, 0.25, 0.90];
-        const cPeak = [0.88, 0.12, 0.30];
-        const sigma = Z_STEP * 0.36;
-        const twoSigmaSq = 2 * sigma * sigma;
+        // ── CONSTRUCCIÓN DE GEOMETRÍA SEGÚN EL MODO 3D ELEGIDO ──
+        if (visualMode === 'ribbons') {
+            // MODO 1 (POR DEFECTO): CRESTAS / CINTAS 3D INDEPENDIENTES POR SERIE (100% diferenciación de color)
+            const NX = Math.max(120, Math.min(220, data.length * 6));
+            const halfThick = Z_STEP * 0.28;
 
-        for (let iz = 0; iz <= NZ; iz++) {
-            const z = zMin + (iz / NZ) * (zMax - zMin);
-            const rowP = [], rowC = [], rowN = [];
-            for (let ix = 0; ix <= NX; ix++) {
-                const u = ix / NX;
-                const x = -WORLD_W * 0.5 + u * WORLD_W;
-                let num = 0, den = 0, sr = 0, sg = 0, sb = 0;
+            preparedSeries.forEach((s) => {
+                const isDimmed = focusedSeriesKey && focusedSeriesKey !== s.key;
+                const alpha = isDimmed ? 0.16 : 0.96;
+                const [r, g, b] = s.rgb;
+
+                // Colores puros de la serie: cima brillante, cuerpo saturado, base profunda
+                const crestCol = [Math.min(1, r * 1.18 + 0.12), Math.min(1, g * 1.18 + 0.12), Math.min(1, b * 1.18 + 0.12), alpha];
+                const topCol = [Math.min(1, r * 1.05 + 0.04), Math.min(1, g * 1.05 + 0.04), Math.min(1, b * 1.05 + 0.04), alpha];
+                const baseCol = [r * 0.58, g * 0.58, b * 0.58, isDimmed ? 0.10 : 0.88];
+
+                const zCenter = s.zSlot * Z_STEP;
+                const zB = zCenter - halfThick;
+                const zF = zCenter + halfThick;
+
+                const samples = [];
+                for (let ix = 0; ix <= NX; ix++) {
+                    const u = ix / NX;
+                    const x = -WORLD_W * 0.5 + u * WORLD_W;
+                    const rawV = evalSmooth(s.values, u);
+                    const y = Math.max(0.05, getValY(rawV, s));
+                    samples.push({ x, y });
+                }
+
+                for (let ix = 0; ix < NX; ix++) {
+                    const pL = samples[ix];
+                    const pR = samples[ix + 1];
+                    const dx = pR.x - pL.x;
+                    const dy = pR.y - pL.y;
+                    const len = Math.hypot(dx, dy) || 1;
+                    const topN = [-dy / len, dx / len, 0];
+
+                    // Techo de la cinta 3D (cresta brillante)
+                    addQuadSmooth(
+                        [pL.x, pL.y, zB], [pL.x, pL.y, zF], [pR.x, pR.y, zF], [pR.x, pR.y, zB],
+                        topN, topN, topN, topN,
+                        crestCol, crestCol, crestCol, crestCol
+                    );
+
+                    // Pared frontal (+Z)
+                    addQuad(
+                        [pL.x, 0, zF], [pR.x, 0, zF], [pR.x, pR.y, zF], [pL.x, pL.y, zF],
+                        [0, 0, 1],
+                        baseCol, baseCol, topCol, topCol
+                    );
+
+                    // Pared trasera (-Z)
+                    addQuad(
+                        [pR.x, 0, zB], [pL.x, 0, zB], [pL.x, pL.y, zB], [pR.x, pR.y, zB],
+                        [0, 0, -1],
+                        baseCol, baseCol, topCol, topCol
+                    );
+
+                    // Líneas de cresta para el modo Vectores
+                    wirePos.push(
+                        pL.x, pL.y + 0.02, zF, pR.x, pR.y + 0.02, zF,
+                        pL.x, pL.y + 0.02, zB, pR.x, pR.y + 0.02, zB
+                    );
+                    for (let k = 0; k < 4; k++) wireCol.push(r, g, b, 1);
+                }
+
+                // Tapas laterales izquierda y derecha de la cinta
+                const first = samples[0], last = samples[NX];
+                addQuad([first.x, 0, zB], [first.x, 0, zF], [first.x, first.y, zF], [first.x, first.y, zB], [-1, 0, 0], baseCol, baseCol, topCol, topCol);
+                addQuad([last.x, 0, zF], [last.x, 0, zB], [last.x, last.y, zB], [last.x, last.y, zF], [1, 0, 0], baseCol, baseCol, topCol, topCol);
+            });
+        } else if (visualMode === 'bars') {
+            // MODO 2: COLUMNAS / PRISMAS 3D POR FECHA Y SERIE
+            const stepX = data.length > 1 ? WORLD_W / (data.length - 1) : 2.0;
+            const halfW = Math.min(0.42, stepX * 0.34);
+            const halfD = Z_STEP * 0.28;
+
+            preparedSeries.forEach((s) => {
+                const isDimmed = focusedSeriesKey && focusedSeriesKey !== s.key;
+                const alpha = isDimmed ? 0.16 : 0.96;
+                const [r, g, b] = s.rgb;
+                const topCol = [Math.min(1, r * 1.18 + 0.10), Math.min(1, g * 1.18 + 0.10), Math.min(1, b * 1.18 + 0.10), alpha];
+                const sideCol = [r, g, b, alpha];
+                const baseCol = [r * 0.55, g * 0.55, b * 0.55, isDimmed ? 0.10 : 0.90];
+                const zC = s.zSlot * Z_STEP;
+
+                for (let i = 0; i < data.length; i++) {
+                    const v = s.values[i] || 0;
+                    const y = Math.max(0.06, getValY(v, s));
+                    const xC = dayToX(i);
+                    addBox(xC - halfW, 0, zC - halfD, xC + halfW, y, zC + halfD, topCol, sideCol, baseCol);
+                }
+            });
+        } else {
+            // MODO 3: SUPERFICIE 3D SEGMENTADA POR FRANJAS DE COLOR PURO (Sin mezcla borrosa)
+            const NX = 156;
+            const NZ = Math.max(48, preparedSeries.length * 10);
+            const gridP = [], gridC = [], gridN = [];
+            const sigma = Z_STEP * 0.34;
+            const twoSigmaSq = 2 * sigma * sigma;
+
+            for (let iz = 0; iz <= NZ; iz++) {
+                const z = zMin + (iz / NZ) * (zMax - zMin);
+                const rowP = [], rowC = [], rowN = [];
+
+                // Encontrar la serie dominante más cercana en Z para mantener su color 100% PURO
+                let nearestSeries = preparedSeries[0];
+                let minDz = Infinity;
                 for (let sIdx = 0; sIdx < preparedSeries.length; sIdx++) {
                     const s = preparedSeries[sIdx];
-                    const dz = z - s.zSlot * Z_STEP;
-                    const w = Math.exp(-(dz * dz) / twoSigmaSq);
-                    const h = evalSmooth(s.values, u);
-                    num += h * w;
-                    den += w;
-                    sr += s.rgb[0] * w;
-                    sg += s.rgb[1] * w;
-                    sb += s.rgb[2] * w;
+                    const dz = Math.abs(z - s.zSlot * Z_STEP);
+                    if (dz < minDz) { minDz = dz; nearestSeries = s; }
                 }
-                const rawH = den > 0.001 ? num / Math.max(1, den) : 0;
-                const normH = Math.min(1, rawH / maxScaleVal);
-                let colH = normH < 0.35
-                    ? lerp3(cLow, cMid, normH / 0.35)
-                    : normH < 0.70
-                        ? lerp3(cMid, cHi, (normH - 0.35) / 0.35)
-                        : lerp3(cHi, cPeak, (normH - 0.70) / 0.30);
-                const sCol = [sr / Math.max(0.01, den), sg / Math.max(0.01, den), sb / Math.max(0.01, den)];
-                const fin = lerp3(colH, sCol, 0.46);
-                rowP.push([x, valToY(rawH), z]);
-                rowC.push([fin[0], fin[1], fin[2], 0.96]);
-                rowN.push([0, 1, 0]);
+
+                for (let ix = 0; ix <= NX; ix++) {
+                    const u = ix / NX;
+                    const x = -WORLD_W * 0.5 + u * WORLD_W;
+                    let num = 0, den = 0;
+                    for (let sIdx = 0; sIdx < preparedSeries.length; sIdx++) {
+                        const s = preparedSeries[sIdx];
+                        const dz = z - s.zSlot * Z_STEP;
+                        const w = Math.exp(-(dz * dz) / twoSigmaSq);
+                        const h = getValY(evalSmooth(s.values, u), s);
+                        num += h * w;
+                        den += w;
+                    }
+                    const y = den > 0.001 ? num / Math.max(1, den) : 0;
+                    const isDimmed = focusedSeriesKey && focusedSeriesKey !== nearestSeries.key;
+                    const [r, g, b] = nearestSeries.rgb;
+                    const ridgeBoost = Math.exp(-(minDz * minDz) / (twoSigmaSq * 0.8));
+                    const cr = Math.min(1, r * (0.75 + 0.32 * ridgeBoost));
+                    const cg = Math.min(1, g * (0.75 + 0.32 * ridgeBoost));
+                    const cb = Math.min(1, b * (0.75 + 0.32 * ridgeBoost));
+
+                    rowP.push([x, y, z]);
+                    rowC.push([cr, cg, cb, isDimmed ? 0.18 : 0.96]);
+                    rowN.push([0, 1, 0]);
+                }
+                gridP.push(rowP);
+                gridC.push(rowC);
+                gridN.push(rowN);
             }
-            gridP.push(rowP);
-            gridC.push(rowC);
-            gridN.push(rowN);
+
+            for (let iz = 0; iz <= NZ; iz++) {
+                for (let ix = 0; ix <= NX; ix++) {
+                    const pL = gridP[iz][Math.max(0, ix - 1)], pR = gridP[iz][Math.min(NX, ix + 1)];
+                    const pD = gridP[Math.max(0, iz - 1)][ix], pU = gridP[Math.min(NZ, iz + 1)][ix];
+                    const dx = pR[0] - pL[0], dyx = pR[1] - pL[1];
+                    const dz = pU[2] - pD[2], dyz = pU[1] - pD[1];
+                    const nx = -dyx / (dx || 1), ny = 1, nz = -dyz / (dz || 1);
+                    const l = Math.hypot(nx, ny, nz) || 1;
+                    gridN[iz][ix] = [nx / l, ny / l, nz / l];
+                }
+            }
+
+            for (let iz = 0; iz < NZ; iz++) {
+                for (let ix = 0; ix < NX; ix++) {
+                    addQuadSmooth(
+                        gridP[iz][ix], gridP[iz + 1][ix], gridP[iz + 1][ix + 1], gridP[iz][ix + 1],
+                        gridN[iz][ix], gridN[iz + 1][ix], gridN[iz + 1][ix + 1], gridN[iz][ix + 1],
+                        gridC[iz][ix], gridC[iz + 1][ix], gridC[iz + 1][ix + 1], gridC[iz][ix + 1]
+                    );
+                }
+            }
         }
 
-        // Normales suavizadas
-        for (let iz = 0; iz <= NZ; iz++) {
-            for (let ix = 0; ix <= NX; ix++) {
-                const pL = gridP[iz][Math.max(0, ix - 1)], pR = gridP[iz][Math.min(NX, ix + 1)];
-                const pD = gridP[Math.max(0, iz - 1)][ix], pU = gridP[Math.min(NZ, iz + 1)][ix];
-                const dx = pR[0] - pL[0], dyx = pR[1] - pL[1];
-                const dz = pU[2] - pD[2], dyz = pU[1] - pD[1];
-                const nx = -dyx / (dx || 1), ny = 1, nz = -dyz / (dz || 1);
-                const l = Math.hypot(nx, ny, nz) || 1;
-                gridN[iz][ix] = [nx / l, ny / l, nz / l];
-            }
-        }
-
-        for (let iz = 0; iz < NZ; iz++) {
-            for (let ix = 0; ix < NX; ix++) {
-                addQuadSmooth(
-                    gridP[iz][ix], gridP[iz + 1][ix], gridP[iz + 1][ix + 1], gridP[iz][ix + 1],
-                    gridN[iz][ix], gridN[iz + 1][ix], gridN[iz + 1][ix + 1], gridN[iz][ix + 1],
-                    gridC[iz][ix], gridC[iz + 1][ix], gridC[iz + 1][ix + 1], gridC[iz][ix + 1]
+        // Si no se llenó wirePos (en barras o superficie), construirlo desde triángulos
+        if (wirePos.length === 0) {
+            const totalTris = pos.length / 9;
+            for (let t = 0; t < totalTris; t += 2) {
+                const i = t * 9, ci = t * 12;
+                const r = col[ci], g = col[ci + 1], b = col[ci + 2];
+                wirePos.push(
+                    pos[i], pos[i + 1], pos[i + 2], pos[i + 3], pos[i + 4], pos[i + 5],
+                    pos[i + 3], pos[i + 4], pos[i + 5], pos[i + 6], pos[i + 7], pos[i + 8]
                 );
+                for (let k = 0; k < 4; k++) wireCol.push(r, g, b, 1);
             }
         }
 
-        // Esfera blanca limpia en la cima del pico principal
-        if (peakData) {
-            addSphere(dayToX(peakData.idx), valToY(peakData.val) + 0.14, peakData.zSlot * Z_STEP, 0.16, 18, 12, [1, 1, 1, 1]);
-        }
-
-        // Wireframe para el botón "Ver Vectores"
-        for (let t = 0; t < tris; t += 2) {
-            const i = t * 9, ci = t * 12;
-            const r = col[ci], g = col[ci + 1], b = col[ci + 2];
-            wirePos.push(
-                pos[i], pos[i + 1], pos[i + 2], pos[i + 3], pos[i + 4], pos[i + 5],
-                pos[i + 3], pos[i + 4], pos[i + 5], pos[i + 6], pos[i + 7], pos[i + 8],
-                pos[i + 6], pos[i + 7], pos[i + 8], pos[i], pos[i + 1], pos[i + 2]
-            );
-            for (let k = 0; k < 6; k++) wireCol.push(r, g, b, 1);
-        }
-
-        setTriCount(tris);
-
-        // Plataforma base clínica
+        // Plataforma base clínica más ancha con carriles guía por serie
         const fPos = [], fNorm = [], fCol = [];
         const addFloorQuad = (p1, p2, p3, p4, n, rgba) => {
             fPos.push(...p1, ...p2, ...p3, ...p1, ...p3, ...p4);
             for (let k = 0; k < 6; k++) { fNorm.push(...n); fCol.push(...rgba); }
         };
-        const fw = WORLD_W * 0.5 + 0.75;
-        const fd = zMax + 0.45;
-        addFloorQuad([-fw, -0.02, -fd], [-fw, -0.02, fd], [fw, -0.02, fd], [fw, -0.02, -fd], [0, 1, 0], [0.97, 0.985, 1.0, 0.96]);
-        addFloorQuad([-fw, -0.20, fd], [fw, -0.20, fd], [fw, -0.02, fd], [-fw, -0.02, fd], [0, 0, 1], [0.85, 0.90, 0.96, 1.0]);
-        addFloorQuad([fw, -0.20, -fd], [-fw, -0.20, -fd], [-fw, -0.02, -fd], [fw, -0.02, -fd], [0, 0, -1], [0.82, 0.87, 0.94, 1.0]);
-        addFloorQuad([-fw, -0.20, -fd], [-fw, -0.20, fd], [-fw, -0.02, fd], [-fw, -0.02, -fd], [-1, 0, 0], [0.83, 0.88, 0.95, 1.0]);
-        addFloorQuad([fw, -0.20, fd], [fw, -0.20, -fd], [fw, -0.02, -fd], [fw, -0.02, fd], [1, 0, 0], [0.87, 0.91, 0.97, 1.0]);
+        const fw = WORLD_W * 0.5 + 0.9;
+        const fd = zMax + 0.65;
+        addFloorQuad([-fw, -0.03, -fd], [-fw, -0.03, fd], [fw, -0.03, fd], [fw, -0.03, -fd], [0, 1, 0], [0.965, 0.98, 1.0, 0.95]);
+        addFloorQuad([-fw, -0.22, fd], [fw, -0.22, fd], [fw, -0.03, fd], [-fw, -0.03, fd], [0, 0, 1], [0.84, 0.89, 0.95, 1.0]);
+        addFloorQuad([fw, -0.22, -fd], [-fw, -0.22, -fd], [-fw, -0.03, -fd], [fw, -0.03, -fd], [0, 0, -1], [0.82, 0.87, 0.94, 1.0]);
+        addFloorQuad([-fw, -0.22, -fd], [-fw, -0.22, fd], [-fw, -0.03, fd], [-fw, -0.03, -fd], [-1, 0, 0], [0.83, 0.88, 0.95, 1.0]);
+        addFloorQuad([fw, -0.22, fd], [fw, -0.22, -fd], [fw, -0.03, -fd], [fw, -0.03, fd], [1, 0, 0], [0.86, 0.91, 0.97, 1.0]);
+
+        // Alfombra de color sutil en la base de cada carril para identificar el carril aún con valores bajos
+        preparedSeries.forEach((s) => {
+            const zC = s.zSlot * Z_STEP;
+            const laneHalf = Z_STEP * 0.36;
+            const [r, g, b] = s.rgb;
+            const isDim = focusedSeriesKey && focusedSeriesKey !== s.key;
+            addFloorQuad(
+                [-WORLD_W * 0.5, -0.01, zC - laneHalf],
+                [-WORLD_W * 0.5, -0.01, zC + laneHalf],
+                [WORLD_W * 0.5, -0.01, zC + laneHalf],
+                [WORLD_W * 0.5, -0.01, zC - laneHalf],
+                [0, 1, 0],
+                [r, g, b, isDim ? 0.04 : 0.15]
+            );
+        });
 
         const mkBuf = (arr) => {
             const b = gl.createBuffer();
@@ -451,7 +582,7 @@ export default function DxiSuperficieTopografica3D({
 
         const resize = () => {
             const dpr = Math.min(window.devicePixelRatio || 1, 2);
-            const w = wrap.clientWidth || 800;
+            const w = wrap.clientWidth || 960;
             const h = wrap.clientHeight || height;
             glCanvas.width = w * dpr;
             glCanvas.height = h * dpr;
@@ -484,41 +615,43 @@ export default function DxiSuperficieTopografica3D({
             gl.drawArrays(mode, 0, count);
         };
 
-        let animY = 0.08;
+        let animY = 0.12;
         let rafId = 0;
         let lastHoverIdx = -1;
 
         const render = () => {
             rafId = requestAnimationFrame(render);
-            const w = wrap.clientWidth || 800;
+            const w = wrap.clientWidth || 960;
             const h = wrap.clientHeight || height;
             const c = camRef.current;
 
-            if (animY < 1) animY = Math.min(1, animY + 0.055);
+            if (animY < 1) animY = Math.min(1, animY + 0.06);
             const easedY = 1 - Math.pow(1 - animY, 3);
 
             if (!c.dragging) {
                 if (autoRotateRef.current) {
-                    c.yaw += 0.0042;
+                    c.yaw += 0.004;
                     c.tYaw = c.yaw;
                 } else {
-                    c.yaw += (c.tYaw - c.yaw) * 0.1 + c.vYaw;
-                    c.pitch = Math.max(0.10, Math.min(1.38, c.pitch + (c.tPitch - c.pitch) * 0.1 + c.vPitch));
-                    c.vYaw *= 0.88;
-                    c.vPitch *= 0.88;
+                    c.yaw += (c.tYaw - c.yaw) * 0.12 + c.vYaw;
+                    c.pitch = Math.max(0.10, Math.min(1.38, c.pitch + (c.tPitch - c.pitch) * 0.12 + c.vPitch));
+                    c.vYaw *= 0.86;
+                    c.vPitch *= 0.86;
                 }
             }
-            c.radius += (c.tRadius - c.radius) * 0.12;
+            c.radius += (c.tRadius - c.radius) * 0.14;
 
-            // Desplazar ligeramente el target hacia abajo para dar aire al pico arriba y a las fechas abajo
-            const target = [0, 1.55, 0];
+            // AJUSTE DINÁMICO DE FOV Y DISTANCIA PARA LLENAR EL 92%+ DEL ANCHO Y ALTO DEL CONTENEDOR
+            const aspect = w / Math.max(1, h);
+            const effectiveRadius = c.radius * (aspect < 1.6 ? (1.6 / Math.max(0.9, aspect)) * 0.92 : 0.88);
+            const target = [0, WORLD_H * 0.36, 0];
             const eye = [
-                target[0] + c.radius * Math.cos(c.pitch) * Math.sin(c.yaw),
-                target[1] + c.radius * Math.sin(c.pitch),
-                target[2] + c.radius * Math.cos(c.pitch) * Math.cos(c.yaw)
+                target[0] + effectiveRadius * Math.cos(c.pitch) * Math.sin(c.yaw),
+                target[1] + effectiveRadius * Math.sin(c.pitch),
+                target[2] + effectiveRadius * Math.cos(c.pitch) * Math.cos(c.yaw)
             ];
 
-            const proj = mat4Perspective(35 * Math.PI / 180, w / Math.max(1, h), 0.2, 120);
+            const proj = mat4Perspective(32 * Math.PI / 180, aspect, 0.2, 160);
             const view = mat4LookAt(eye, target, [0, 1, 0]);
             const mvp = mat4Mul(proj, view);
 
@@ -532,7 +665,7 @@ export default function DxiSuperficieTopografica3D({
             gl.uniform1f(uWire, 0.0);
             bindAndDraw(fPosBuf, fNormBuf, fColBuf, floorVerts, gl.TRIANGLES);
 
-            // 2. Superficie Topográfica
+            // 2. Geometría 3D principal
             gl.uniform1f(uScaleY, easedY);
             if (!showWireRef.current) {
                 gl.uniform1f(uWire, 0.0);
@@ -542,55 +675,133 @@ export default function DxiSuperficieTopografica3D({
                 bindAndDraw(bufWirePos, null, bufWireCol, wireVerts, gl.LINES);
             }
 
-            // 3. HUD 2D limpio y anti-solapamiento
+            // 3. HUD 2D de alta precisión: Crestas vectoriales nítidas, etiquetas por carril, ejes y picos
             hud.clearRect(0, 0, w, h);
 
             const backZ = Math.cos(c.yaw) >= 0 ? -fd + 0.1 : fd - 0.1;
             const frontZ = -backZ;
 
-            // Eje Y: 5 marcas limpias (0%, 25%, 50%, 75%, 100%)
-            const yTicks = [0, maxScaleVal * 0.25, maxScaleVal * 0.5, maxScaleVal * 0.75, maxScaleVal];
-            const leftX = -WORLD_W * 0.5 - 0.45;
-            const rightX = WORLD_W * 0.5 + 0.45;
-            const yLabelSideX = Math.sin(c.yaw) > 0.65 ? rightX + 0.7 : leftX - 0.7;
+            // Eje Y: Marcas horizontales de referencia
+            const yTicks = [0, 0.25, 0.5, 0.75, 1.0];
+            const leftX = -WORLD_W * 0.5 - 0.55;
+            const rightX = WORLD_W * 0.5 + 0.55;
+            const yLabelSideX = Math.sin(c.yaw) > 0.55 ? rightX + 0.65 : leftX - 0.65;
 
-            yTicks.forEach((tk, idx) => {
-                const y = valToY(tk);
+            yTicks.forEach((frac, idx) => {
+                const y = frac * WORLD_H;
                 const a = projectPoint(mvp, leftX, y, backZ, w, h);
                 const b = projectPoint(mvp, rightX, y, backZ, w, h);
                 if (a && b) {
                     hud.beginPath();
                     hud.moveTo(a.sx, a.sy);
                     hud.lineTo(b.sx, b.sy);
-                    hud.strokeStyle = idx === 0 ? 'rgba(148, 163, 184, 0.55)' : 'rgba(148, 163, 184, 0.28)';
-                    hud.lineWidth = idx === 0 ? 1.2 : 1;
+                    hud.strokeStyle = idx === 0 ? 'rgba(148, 163, 184, 0.6)' : 'rgba(148, 163, 184, 0.26)';
+                    hud.lineWidth = idx === 0 ? 1.3 : 1;
                     hud.setLineDash(idx === 0 ? [] : [4, 4]);
                     hud.stroke();
                     hud.setLineDash([]);
                 }
                 const lp = projectPoint(mvp, yLabelSideX, y, backZ, w, h);
-                if (lp && lp.sy > 18 && lp.sy < h - 22) {
-                    const txt = Math.round(tk).toLocaleString('es-AR');
+                if (lp && lp.sy > 46 && lp.sy < h - 22) {
+                    const txt = scaleMode === 'normalized'
+                        ? `${Math.round(frac * 100)}%`
+                        : Math.round(frac * maxScaleVal).toLocaleString('es-AR');
                     hud.font = '700 10.5px Inter, -apple-system, sans-serif';
                     const tw = hud.measureText(txt).width + 12;
-                    const bx = lp.sx - tw / 2;
-                    const by = lp.sy - 9;
-                    hud.fillStyle = 'rgba(255, 255, 255, 0.88)';
-                    hud.strokeStyle = '#E2E8F0';
+                    hud.fillStyle = 'rgba(255, 255, 255, 0.92)';
+                    hud.strokeStyle = '#CBD5E1';
                     hud.lineWidth = 1;
                     hud.beginPath();
-                    hud.roundRect(bx, by, tw, 18, 6);
+                    hud.roundRect(lp.sx - tw / 2, lp.sy - 9, tw, 18, 6);
                     hud.fill();
                     hud.stroke();
-                    hud.fillStyle = '#475569';
+                    hud.fillStyle = '#334155';
                     hud.textAlign = 'center';
                     hud.fillText(txt, lp.sx, lp.sy + 3.5);
                 }
             });
 
-            // Líneas del piso + detección de hover por fecha
+            // Trazo vectorial luminoso en la cresta superior de cada carril + etiqueta directa del carril
+            const laneLabels = [];
+            preparedSeries.forEach((s) => {
+                const isDimmed = focusedSeriesKey && focusedSeriesKey !== s.key;
+                const zC = s.zSlot * Z_STEP;
+
+                // Cresta superior nítida en Canvas 2D para máxima definición de cada color
+                if (visualMode !== 'bars') {
+                    hud.beginPath();
+                    let started = false;
+                    const steps = Math.max(70, data.length * 3);
+                    for (let k = 0; k <= steps; k++) {
+                        const u = k / steps;
+                        const x = -WORLD_W * 0.5 + u * WORLD_W;
+                        const y = Math.max(0.05, getValY(evalSmooth(s.values, u), s)) * easedY;
+                        const pt = projectPoint(mvp, x, y + 0.03, zC, w, h);
+                        if (pt) {
+                            if (!started) { hud.moveTo(pt.sx, pt.sy); started = true; }
+                            else hud.lineTo(pt.sx, pt.sy);
+                        }
+                    }
+                    hud.strokeStyle = s.color;
+                    hud.globalAlpha = isDimmed ? 0.20 : 0.95;
+                    hud.lineWidth = focusedSeriesKey === s.key ? 3.2 : 2.1;
+                    hud.stroke();
+                    hud.globalAlpha = 1;
+                }
+
+                // Etiqueta de carril en el borde derecho/izquierdo según ángulo de cámara
+                const labelOnRight = Math.sin(c.yaw) <= 0.25;
+                const endIdx = labelOnRight ? data.length - 1 : 0;
+                const endX = labelOnRight ? WORLD_W * 0.5 + 0.55 : -WORLD_W * 0.5 - 0.55;
+                const endY = Math.max(0.15, getValY(s.values[endIdx] || 0, s) * easedY * 0.55);
+                const lPt = projectPoint(mvp, endX, endY, zC, w, h);
+                if (lPt && lPt.sx > 18 && lPt.sx < w - 18 && lPt.sy > 48 && lPt.sy < h - 24) {
+                    laneLabels.push({
+                        s,
+                        sx: lPt.sx,
+                        sy: lPt.sy,
+                        isDimmed
+                    });
+                }
+            });
+
+            // Anti-colisión vertical entre etiquetas de carril 3D
+            laneLabels.sort((a, b) => a.sy - b.sy);
+            for (let i = 1; i < laneLabels.length; i++) {
+                if (laneLabels[i].sy - laneLabels[i - 1].sy < 19) {
+                    laneLabels[i].sy = laneLabels[i - 1].sy + 19;
+                }
+            }
+            laneLabels.forEach(({ s, sx, sy, isDimmed }) => {
+                if (sy > h - 22) return;
+                const txt = `${s.shortLabel || s.label}`;
+                hud.font = '700 10px Inter, -apple-system, sans-serif';
+                const tw = hud.measureText(txt).width + 18;
+                const bx = Math.max(8, Math.min(w - tw - 8, sx - tw / 2));
+                hud.globalAlpha = isDimmed ? 0.30 : 0.96;
+                hud.fillStyle = '#FFFFFF';
+                hud.strokeStyle = s.color;
+                hud.lineWidth = 1.5;
+                hud.beginPath();
+                hud.roundRect(bx, sy - 9, tw, 18, 999);
+                hud.fill();
+                hud.stroke();
+
+                // Punto de color puro
+                hud.fillStyle = s.color;
+                hud.beginPath();
+                hud.arc(bx + 7, sy, 3.5, 0, Math.PI * 2);
+                hud.fill();
+
+                hud.fillStyle = '#0F172A';
+                hud.textAlign = 'left';
+                hud.fillText(txt, bx + 13, sy + 3.5);
+                hud.globalAlpha = 1;
+            });
+
+            // Líneas de fecha en el piso + detección de hover por columna temporal
             let bestIdx = -1;
-            let bestDist = 26;
+            let bestDist = 28;
             const dateLabelCandidates = [];
 
             for (let i = 0; i < data.length; i++) {
@@ -599,7 +810,7 @@ export default function DxiSuperficieTopografica3D({
                 const p2 = projectPoint(mvp, x, 0.01, fd - 0.1, w, h);
                 if (p1 && p2) {
                     const midX = (p1.sx + p2.sx) * 0.5;
-                    if (!c.dragging && c.mx > 0 && c.my > 32 && c.my < h - 20) {
+                    if (!c.dragging && c.mx > 0 && c.my > 42 && c.my < h - 16) {
                         const dist = Math.abs(c.mx - midX);
                         if (dist < bestDist) { bestDist = dist; bestIdx = i; }
                     }
@@ -607,16 +818,36 @@ export default function DxiSuperficieTopografica3D({
                     hud.beginPath();
                     hud.moveTo(p1.sx, p1.sy);
                     hud.lineTo(p2.sx, p2.sy);
-                    hud.strokeStyle = isHov ? 'rgba(0, 59, 115, 0.65)' : 'rgba(203, 213, 225, 0.35)';
-                    hud.lineWidth = isHov ? 2.2 : 0.75;
+                    hud.strokeStyle = isHov ? 'rgba(29, 78, 216, 0.75)' : 'rgba(203, 213, 225, 0.38)';
+                    hud.lineWidth = isHov ? 2.4 : 0.8;
                     hud.stroke();
+
+                    // Si está en hover, dibujar puntos luminosos sobre cada serie en esa fecha
+                    if (isHov) {
+                        preparedSeries.forEach(s => {
+                            const val = s.values[i] || 0;
+                            const py = Math.max(0.06, getValY(val, s)) * easedY;
+                            const pz = s.zSlot * Z_STEP;
+                            const pt = projectPoint(mvp, x, py, pz, w, h);
+                            if (pt) {
+                                hud.fillStyle = '#FFFFFF';
+                                hud.strokeStyle = s.color;
+                                hud.lineWidth = 2.5;
+                                hud.beginPath();
+                                hud.arc(pt.sx, pt.sy, 4.5, 0, Math.PI * 2);
+                                hud.fill();
+                                hud.stroke();
+                            }
+                        });
+                    }
                 }
 
-                const lp = projectPoint(mvp, x, -0.04, frontZ + (frontZ > 0 ? 0.52 : -0.52), w, h);
-                if (lp && lp.sx > 34 && lp.sx < w - 34 && lp.sy > 24 && lp.sy < h - 14) {
+                const lp = projectPoint(mvp, x, -0.05, frontZ + (frontZ > 0 ? 0.55 : -0.55), w, h);
+                if (lp && lp.sx > 28 && lp.sx < w - 28 && lp.sy > 46 && lp.sy < h - 10) {
                     dateLabelCandidates.push({ i, sx: lp.sx, sy: lp.sy, label: data[i]?.label || '' });
                 }
             }
+
             c.hoveredIdx = bestIdx;
             if (bestIdx !== lastHoverIdx) {
                 lastHoverIdx = bestIdx;
@@ -626,22 +857,20 @@ export default function DxiSuperficieTopografica3D({
                 setHoverState({ idx: bestIdx, x: c.mx, y: c.my });
             }
 
-            // Dibujar fechas del eje X con ANTI-COLISIÓN (mínimo 56px entre etiquetas)
+            // Etiquetas de fechas en eje X con anti-colisión
             dateLabelCandidates.sort((a, b) => a.sx - b.sx);
             let lastDrawnX = -999;
-            dateLabelCandidates.forEach((item, k) => {
+            dateLabelCandidates.forEach((item) => {
                 const isFirstOrLast = item.i === 0 || item.i === data.length - 1;
                 const isHov = item.i === c.hoveredIdx;
-                const minGap = isHov ? 36 : 56;
+                const minGap = isHov ? 34 : 52;
                 if (!isHov && item.sx - lastDrawnX < minGap) {
-                    // Si es la última fecha y está muy cerca, evitar pisarla
-                    if (!isFirstOrLast) return;
-                    if (item.sx - lastDrawnX < 40) return;
+                    if (!isFirstOrLast || item.sx - lastDrawnX < 38) return;
                 }
                 lastDrawnX = item.sx;
                 hud.font = isHov ? '800 10.5px Inter, -apple-system, sans-serif' : '600 10px Inter, -apple-system, sans-serif';
                 const tw = hud.measureText(item.label).width + 10;
-                const safeY = Math.min(h - 14, item.sy);
+                const safeY = Math.min(h - 12, item.sy);
                 if (isHov) {
                     hud.fillStyle = '#003B73';
                     hud.beginPath();
@@ -649,7 +878,7 @@ export default function DxiSuperficieTopografica3D({
                     hud.fill();
                     hud.fillStyle = '#FFFFFF';
                 } else {
-                    hud.fillStyle = 'rgba(255, 255, 255, 0.80)';
+                    hud.fillStyle = 'rgba(255, 255, 255, 0.88)';
                     hud.beginPath();
                     hud.roundRect(item.sx - tw / 2, safeY - 9, tw, 16, 5);
                     hud.fill();
@@ -659,29 +888,34 @@ export default function DxiSuperficieTopografica3D({
                 hud.fillText(item.label, item.sx, safeY + 3);
             });
 
-            // Callout único del Pico Máximo con línea conectora sutil
-            if (peakData) {
-                const xPk = dayToX(peakData.idx);
-                const yPk = valToY(peakData.val) * easedY + 0.16;
-                const zPk = peakData.zSlot * Z_STEP;
+            // Callout del Pico Máximo de la serie enfocada o principal
+            const targetPeakSeries = focusedSeriesKey
+                ? preparedSeries.find(s => s.key === focusedSeriesKey) || preparedSeries[0]
+                : preparedSeries[0];
+
+            if (targetPeakSeries && targetPeakSeries.peakVal > 0) {
+                const xPk = dayToX(targetPeakSeries.peakIdx);
+                const yPk = getValY(targetPeakSeries.peakVal, targetPeakSeries) * easedY;
+                const zPk = targetPeakSeries.zSlot * Z_STEP;
                 const pTop = projectPoint(mvp, xPk, yPk, zPk, w, h);
-                const pBadge = projectPoint(mvp, xPk, yPk + 0.78, zPk, w, h);
+                const pBadge = projectPoint(mvp, xPk, yPk + 0.95, zPk, w, h);
                 if (pTop && pBadge) {
-                    const by = Math.max(20, pBadge.sy);
+                    const by = Math.max(54, pBadge.sy);
                     hud.beginPath();
-                    hud.moveTo(pTop.sx, pTop.sy - 4);
+                    hud.moveTo(pTop.sx, pTop.sy - 3);
                     hud.lineTo(pBadge.sx, by + 11);
-                    hud.strokeStyle = 'rgba(225, 29, 72, 0.65)';
-                    hud.lineWidth = 1.4;
+                    hud.strokeStyle = targetPeakSeries.color;
+                    hud.lineWidth = 1.6;
                     hud.setLineDash([3, 3]);
                     hud.stroke();
                     hud.setLineDash([]);
 
-                    const txt = `Pico: ${peakData.val.toLocaleString('es-AR')} (${peakData.label})`;
+                    const pkLabel = data[targetPeakSeries.peakIdx]?.label || '';
+                    const txt = `Pico ${targetPeakSeries.shortLabel || targetPeakSeries.label}: ${targetPeakSeries.peakVal.toLocaleString('es-AR')} (${pkLabel})`;
                     hud.font = '800 10.5px Inter, -apple-system, sans-serif';
                     const tw = hud.measureText(txt).width + 16;
                     const bx = Math.max(12, Math.min(w - tw - 12, pBadge.sx - tw / 2));
-                    hud.fillStyle = '#0F172A';
+                    hud.fillStyle = targetPeakSeries.color;
                     hud.beginPath();
                     hud.roundRect(bx, by - 11, tw, 22, 999);
                     hud.fill();
@@ -702,7 +936,7 @@ export default function DxiSuperficieTopografica3D({
             gl.deleteShader(vs);
             gl.deleteShader(fs);
         };
-    }, [data, preparedSeries, maxScaleVal, peakData, height]);
+    }, [data, preparedSeries, maxScaleVal, height, visualMode, scaleMode, focusedSeriesKey]);
 
     const handlePointerDown = (e) => {
         setAutoRotate(false);
@@ -727,8 +961,8 @@ export default function DxiSuperficieTopografica3D({
             const dy = e.clientY - c.ly;
             c.lx = e.clientX;
             c.ly = e.clientY;
-            c.vYaw = dx * 0.007;
-            c.vPitch = dy * 0.0055;
+            c.vYaw = dx * 0.0068;
+            c.vPitch = dy * 0.0052;
             c.yaw += c.vYaw;
             c.pitch = Math.max(0.10, Math.min(1.38, c.pitch + c.vPitch));
             c.tYaw = c.yaw;
@@ -767,7 +1001,7 @@ export default function DxiSuperficieTopografica3D({
     }
 
     const hoveredRow = hoverState && data[hoverState.idx] ? data[hoverState.idx] : null;
-    const wrapW = wrapRef.current?.clientWidth || 900;
+    const wrapW = wrapRef.current?.clientWidth || 960;
 
     return (
         <div
@@ -782,8 +1016,8 @@ export default function DxiSuperficieTopografica3D({
                 width: '100%',
                 height: `${height}px`,
                 borderRadius: '12px',
-                border: '1px solid #E2E8F0',
-                background: 'radial-gradient(ellipse at 50% 24%, #FFFFFF 0%, #F1F6FC 68%, #E4EEF9 100%)',
+                border: '1px solid #CBD5E1',
+                background: 'linear-gradient(180deg, #F8FAFC 0%, #EFF6FF 55%, #E2E8F0 100%)',
                 overflow: 'hidden',
                 cursor: 'grab',
                 userSelect: 'none',
@@ -793,175 +1027,243 @@ export default function DxiSuperficieTopografica3D({
             <canvas ref={glCanvasRef} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', display: 'block' }} />
             <canvas ref={hudCanvasRef} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', display: 'block', pointerEvents: 'none' }} />
 
-            {/* ── LEYENDA FLOTANTE LIMPIA (Planos de Profundidad Z: atrás → adelante, CERO solapamiento) ── */}
+            {/* ── BARRA SUPERIOR FULL-WIDTH: CARRILES 3D DE COLOR PURO + CONTROLES (Cero desperdicio de espacio lateral) ── */}
             <div
                 onPointerDown={e => e.stopPropagation()}
                 style={{
                     position: 'absolute',
-                    top: '12px',
-                    left: '14px',
-                    background: 'rgba(255, 255, 255, 0.90)',
-                    backdropFilter: 'blur(8px)',
-                    border: '1px solid #E2E8F0',
-                    borderRadius: '10px',
-                    padding: '9px 12px',
-                    boxShadow: '0 4px 14px rgba(15, 23, 42, 0.06)',
-                    maxWidth: '240px',
-                    pointerEvents: 'auto'
-                }}
-            >
-                <div style={{
-                    fontSize: '0.64rem',
-                    fontWeight: 800,
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.05em',
-                    color: '#64748B',
-                    marginBottom: '6px',
+                    top: '8px',
+                    left: '10px',
+                    right: '10px',
                     display: 'flex',
+                    flexWrap: 'wrap',
                     alignItems: 'center',
                     justifyContent: 'space-between',
-                    gap: '10px'
+                    gap: '6px',
+                    pointerEvents: 'none',
+                    zIndex: 10
+                }}
+            >
+                {/* Píldoras interactivas de cada carril 3D (Clic o Hover para resaltar una serie específica) */}
+                <div style={{
+                    display: 'flex',
+                    flexWrap: 'wrap',
+                    alignItems: 'center',
+                    gap: '5px',
+                    background: 'rgba(255, 255, 255, 0.92)',
+                    backdropFilter: 'blur(8px)',
+                    border: '1px solid #CBD5E1',
+                    borderRadius: '10px',
+                    padding: '4px 8px',
+                    boxShadow: '0 2px 10px rgba(15, 23, 42, 0.06)',
+                    pointerEvents: 'auto',
+                    maxWidth: '100%'
                 }}>
-                    <span>Planos 3D (fondo → frente)</span>
-                    <span style={{ color: '#003B73', fontWeight: 700 }}>{triCount > 0 ? `${(triCount / 1000).toFixed(1)}k △` : ''}</span>
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                    {preparedSeries.map((s, idx) => (
-                        <div key={s.key} style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                            gap: '10px',
-                            fontSize: '0.72rem'
-                        }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
+                    <span style={{ fontSize: '0.64rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase', marginRight: '2px' }}>
+                        Carriles 3D:
+                    </span>
+                    {preparedSeries.map((s) => {
+                        const isFocused = focusedSeriesKey === s.key;
+                        const isDimmed = focusedSeriesKey && !isFocused;
+                        return (
+                            <button
+                                key={s.key}
+                                type="button"
+                                onClick={() => setFocusedSeriesKey(prev => prev === s.key ? null : s.key)}
+                                title={`Clic para aislar/restaurar "${s.label}" (${s.sum.toLocaleString('es-AR')} estudios)`}
+                                style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '5px',
+                                    padding: '2px 8px',
+                                    borderRadius: '999px',
+                                    border: `1.5px solid ${s.color}`,
+                                    background: isFocused ? s.color : '#FFFFFF',
+                                    color: isFocused ? '#FFFFFF' : '#0F172A',
+                                    opacity: isDimmed ? 0.45 : 1,
+                                    fontSize: '0.69rem',
+                                    fontWeight: 700,
+                                    cursor: 'pointer',
+                                    transition: 'all 0.15s ease'
+                                }}
+                            >
                                 <span style={{
-                                    width: '9px',
-                                    height: '9px',
+                                    width: '8px',
+                                    height: '8px',
                                     borderRadius: '50%',
-                                    background: s.color,
-                                    flexShrink: 0,
-                                    boxShadow: `0 0 0 2px ${s.color}25`
+                                    background: isFocused ? '#FFFFFF' : s.color,
+                                    flexShrink: 0
                                 }} />
-                                <span style={{
-                                    color: '#1E293B',
-                                    fontWeight: idx === 0 ? 800 : 600,
-                                    whiteSpace: 'nowrap',
-                                    overflow: 'hidden',
-                                    textOverflow: 'ellipsis'
+                                <span>{s.shortLabel || s.label}</span>
+                                <strong style={{
+                                    color: isFocused ? '#FFFFFF' : s.color,
+                                    fontVariantNumeric: 'tabular-nums',
+                                    marginLeft: '1px'
                                 }}>
-                                    {s.shortLabel || s.label}
-                                </span>
-                            </div>
-                            <span style={{
-                                color: '#475569',
-                                fontWeight: 700,
-                                fontVariantNumeric: 'tabular-nums',
-                                flexShrink: 0
-                            }}>
-                                {s.sum.toLocaleString('es-AR')}
-                            </span>
-                        </div>
-                    ))}
+                                    {s.sum.toLocaleString('es-AR')}
+                                </strong>
+                            </button>
+                        );
+                    })}
+                    {focusedSeriesKey && (
+                        <button
+                            type="button"
+                            onClick={() => setFocusedSeriesKey(null)}
+                            style={{
+                                border: 'none',
+                                background: '#EFF6FF',
+                                color: '#1D4ED8',
+                                borderRadius: '999px',
+                                padding: '2px 8px',
+                                fontSize: '0.67rem',
+                                fontWeight: 800,
+                                cursor: 'pointer'
+                            }}
+                        >
+                            Ver todas
+                        </button>
+                    )}
                 </div>
-            </div>
 
-            {/* ── CONTROLES DE CÁMARA DISCRETOS (esquina superior derecha) ── */}
-            <div
-                onPointerDown={e => e.stopPropagation()}
-                style={{
-                    position: 'absolute',
-                    top: '12px',
-                    right: '14px',
+                {/* Selector de Geometría 3D + Escala + Cámara */}
+                <div style={{
                     display: 'flex',
                     flexWrap: 'wrap',
                     alignItems: 'center',
                     gap: '4px',
-                    background: 'rgba(255, 255, 255, 0.90)',
+                    background: 'rgba(255, 255, 255, 0.92)',
                     backdropFilter: 'blur(8px)',
-                    border: '1px solid #E2E8F0',
+                    border: '1px solid #CBD5E1',
                     borderRadius: '10px',
                     padding: '4px',
-                    boxShadow: '0 4px 14px rgba(15, 23, 42, 0.06)'
-                }}
-            >
-                {[
-                    { id: 'iso', label: 'Isométrica' },
-                    { id: 'front', label: 'Frontal' },
-                    { id: 'side', label: 'Lateral' },
-                    { id: 'top', label: 'Cenital' }
-                ].map(p => (
+                    boxShadow: '0 2px 10px rgba(15, 23, 42, 0.06)',
+                    pointerEvents: 'auto'
+                }}>
+                    {/* Selector de modo geométrico 3D */}
+                    {[
+                        { id: 'ribbons', label: 'Crestas 3D' },
+                        { id: 'bars', label: 'Columnas 3D' },
+                        { id: 'surface', label: 'Superficie 3D' }
+                    ].map(m => (
+                        <button
+                            key={m.id}
+                            type="button"
+                            onClick={() => setVisualMode(m.id)}
+                            style={{
+                                border: 'none',
+                                borderRadius: '7px',
+                                padding: '4px 8px',
+                                fontSize: '0.69rem',
+                                fontWeight: 800,
+                                cursor: 'pointer',
+                                background: visualMode === m.id ? '#003B73' : 'transparent',
+                                color: visualMode === m.id ? '#FFFFFF' : '#334155'
+                            }}
+                        >
+                            {m.label}
+                        </button>
+                    ))}
+
+                    <div style={{ width: '1px', height: '15px', background: '#CBD5E1', margin: '0 2px' }} />
+
+                    {/* Escala Real vs Escala Normalizada (%) para ver modalidades chicas con claridad */}
                     <button
-                        key={p.id}
                         type="button"
-                        onClick={() => applyPreset(p.id)}
+                        onClick={() => setScaleMode(prev => prev === 'global' ? 'normalized' : 'global')}
+                        title="Alternar entre Escala Real Absoluta y Escala Comparativa 100% por serie (ideal para ver modalidades de menor volumen con altura completa)"
+                        style={{
+                            border: '1px solid #BFDBFE',
+                            borderRadius: '7px',
+                            padding: '3px 8px',
+                            fontSize: '0.68rem',
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                            background: scaleMode === 'normalized' ? '#1D4ED8' : '#EFF6FF',
+                            color: scaleMode === 'normalized' ? '#FFFFFF' : '#1D4ED8'
+                        }}
+                    >
+                        {scaleMode === 'normalized' ? 'Escala: % Serie' : 'Escala: Real'}
+                    </button>
+
+                    <div style={{ width: '1px', height: '15px', background: '#CBD5E1', margin: '0 2px' }} />
+
+                    {[
+                        { id: 'iso', label: 'Isométrica' },
+                        { id: 'front', label: 'Frontal' },
+                        { id: 'side', label: 'Lateral' },
+                        { id: 'top', label: 'Cenital' }
+                    ].map(p => (
+                        <button
+                            key={p.id}
+                            type="button"
+                            onClick={() => applyPreset(p.id)}
+                            style={{
+                                border: 'none',
+                                borderRadius: '7px',
+                                padding: '4px 7px',
+                                fontSize: '0.68rem',
+                                fontWeight: 700,
+                                cursor: 'pointer',
+                                background: activePreset === p.id ? '#0F172A' : 'transparent',
+                                color: activePreset === p.id ? '#FFFFFF' : '#475569'
+                            }}
+                        >
+                            {p.label}
+                        </button>
+                    ))}
+
+                    <button
+                        type="button"
+                        onClick={() => setShowWire(v => !v)}
+                        title="Mostrar malla vectorial"
                         style={{
                             border: 'none',
                             borderRadius: '7px',
-                            padding: '4px 8px',
-                            fontSize: '0.70rem',
+                            padding: '4px 7px',
+                            fontSize: '0.68rem',
                             fontWeight: 700,
                             cursor: 'pointer',
-                            background: activePreset === p.id ? '#003B73' : 'transparent',
-                            color: activePreset === p.id ? '#FFFFFF' : '#475569',
-                            transition: 'all 0.15s ease'
+                            background: showWire ? '#0F172A' : 'transparent',
+                            color: showWire ? '#FFFFFF' : '#475569'
                         }}
                     >
-                        {p.label}
+                        ⬡ Vectores
                     </button>
-                ))}
-                <div style={{ width: '1px', height: '16px', background: '#E2E8F0', margin: '0 2px' }} />
-                <button
-                    type="button"
-                    onClick={() => setShowWire(v => !v)}
-                    title="Mostrar malla poligonal de vectores"
-                    style={{
-                        border: 'none',
-                        borderRadius: '7px',
-                        padding: '4px 8px',
-                        fontSize: '0.70rem',
-                        fontWeight: 700,
-                        cursor: 'pointer',
-                        background: showWire ? '#003B73' : 'transparent',
-                        color: showWire ? '#FFFFFF' : '#475569'
-                    }}
-                >
-                    ⬡ Vectores
-                </button>
-                <button
-                    type="button"
-                    onClick={() => setAutoRotate(v => !v)}
-                    title="Activar/pausar rotación automática"
-                    style={{
-                        border: 'none',
-                        borderRadius: '7px',
-                        padding: '4px 8px',
-                        fontSize: '0.70rem',
-                        fontWeight: 700,
-                        cursor: 'pointer',
-                        background: autoRotate ? '#003B73' : 'transparent',
-                        color: autoRotate ? '#FFFFFF' : '#475569'
-                    }}
-                >
-                    ↻ Giro
-                </button>
+                    <button
+                        type="button"
+                        onClick={() => setAutoRotate(v => !v)}
+                        title="Rotación 360° automática"
+                        style={{
+                            border: 'none',
+                            borderRadius: '7px',
+                            padding: '4px 7px',
+                            fontSize: '0.68rem',
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                            background: autoRotate ? '#0F172A' : 'transparent',
+                            color: autoRotate ? '#FFFFFF' : '#475569'
+                        }}
+                    >
+                        ↻ Giro
+                    </button>
+                </div>
             </div>
 
             {/* ── TOOLTIP CLÍNICO FLOTANTE EN HOVER ── */}
             {hoveredRow && hoverState && (
                 <div style={{
                     position: 'absolute',
-                    left: `${Math.min(wrapW - 235, Math.max(14, hoverState.x + 16))}px`,
-                    top: `${Math.min(height - 175, Math.max(14, hoverState.y - 24))}px`,
-                    background: 'rgba(15, 23, 42, 0.94)',
+                    left: `${Math.min(wrapW - 245, Math.max(12, hoverState.x + 16))}px`,
+                    top: `${Math.min(height - 190, Math.max(52, hoverState.y - 20))}px`,
+                    background: 'rgba(15, 23, 42, 0.95)',
                     backdropFilter: 'blur(8px)',
                     color: '#FFFFFF',
                     borderRadius: '10px',
                     padding: '10px 13px',
-                    minWidth: '215px',
+                    minWidth: '225px',
                     fontSize: '0.74rem',
-                    border: '1px solid rgba(255, 255, 255, 0.14)',
-                    boxShadow: '0 10px 26px rgba(15, 23, 42, 0.28)',
+                    border: '1px solid rgba(255, 255, 255, 0.16)',
+                    boxShadow: '0 10px 26px rgba(15, 23, 42, 0.32)',
                     pointerEvents: 'none',
                     zIndex: 25
                 }}>
@@ -985,8 +1287,8 @@ export default function DxiSuperficieTopografica3D({
                             gap: '12px',
                             margin: '3px 0'
                         }}>
-                            <span style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#E2E8F0' }}>
-                                <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: s.color }} />
+                            <span style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#F1F5F9', fontWeight: 600 }}>
+                                <span style={{ width: '9px', height: '9px', borderRadius: '50%', background: s.color, boxShadow: `0 0 6px ${s.color}` }} />
                                 {s.shortLabel || s.label}
                             </span>
                             <strong style={{ color: '#FFFFFF', fontVariantNumeric: 'tabular-nums' }}>
@@ -996,23 +1298,6 @@ export default function DxiSuperficieTopografica3D({
                     ))}
                 </div>
             )}
-
-            {/* ── INDICADOR SUTIL DE INTERACCIÓN ── */}
-            <div style={{
-                position: 'absolute',
-                bottom: '10px',
-                right: '14px',
-                background: 'rgba(255, 255, 255, 0.85)',
-                border: '1px solid #E2E8F0',
-                borderRadius: '999px',
-                padding: '3px 10px',
-                fontSize: '0.67rem',
-                fontWeight: 600,
-                color: '#64748B',
-                pointerEvents: 'none'
-            }}>
-                Arrastrá para girar 360° · Rueda para zoom
-            </div>
         </div>
     );
 }
