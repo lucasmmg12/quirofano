@@ -12,7 +12,9 @@ export const SECTOR_SLUGS = {
     'dxi': 'DXI',
     'compras_stock': 'COMPRAS_STOCK',
     'compras': 'COMPRAS_STOCK',
-    'compras-stock': 'COMPRAS_STOCK'
+    'compras-stock': 'COMPRAS_STOCK',
+    'chequeo': 'CHEQUEO',
+    'chequeo_preventivo': 'CHEQUEO'
 };
 
 export const SECTOR_TO_SLUG = {
@@ -23,7 +25,8 @@ export const SECTOR_TO_SLUG = {
     'INTERNACION': 'internacion',
     'EPIDEMIOLOGIA': 'epidemiologia',
     'DXI': 'dxi',
-    'COMPRAS_STOCK': 'compras_stock'
+    'COMPRAS_STOCK': 'compras_stock',
+    'CHEQUEO': 'chequeo'
 };
 
 const STORAGE_KEY = 'gobernanza_active_route';

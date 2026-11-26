@@ -39,6 +39,7 @@ import DiagnosticoImagenesDashboard from './DiagnosticoImagenesDashboard';
 import InternacionDashboard from './InternacionDashboard';
 import ComprasConsumoStockDashboard from './ComprasConsumoStockDashboard';
 import GuardiaGgoDashboard from './GuardiaGgoDashboard';
+import ChequeoGobernanzaDashboard from './ChequeoGobernanzaDashboard';
 import { useGobernanzaNavigation } from './useGobernanzaNavigation';
 
 const SIDEBAR_INDICATOR_GROUPS = [
@@ -816,7 +817,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
     }, [sectorId, fechaDesde, fechaHasta]);
 
     const fetchData = async () => {
-        if (sectorId === 'GUARDIA' || sectorId === 'GUARDIA_GGO' || sectorId === 'QUIROFANO' || sectorId === 'EPIDEMIOLOGIA' || sectorId === 'DXI' || sectorId === 'INTERNACION' || sectorId === 'COMPRAS_STOCK') {
+        if (sectorId === 'GUARDIA' || sectorId === 'GUARDIA_GGO' || sectorId === 'QUIROFANO' || sectorId === 'EPIDEMIOLOGIA' || sectorId === 'DXI' || sectorId === 'INTERNACION' || sectorId === 'COMPRAS_STOCK' || sectorId === 'CHEQUEO') {
             setLoading(false);
             setLoadingPeticiones(false);
             return;
@@ -1666,7 +1667,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
         // 2. Sincronizar contexto activo para que Beto IA responda exactamente con los mismos números del dashboard
         if (typeof window !== 'undefined') {
             window.__telar_active_sector = sectorId;
-            const isBedOccupancySector = !['GUARDIA', 'QUIROFANO', 'EPIDEMIOLOGIA', 'DXI', 'INTERNACION', 'COMPRAS_STOCK'].includes(sectorId);
+            const isBedOccupancySector = !['GUARDIA', 'GUARDIA_GGO', 'QUIROFANO', 'EPIDEMIOLOGIA', 'DXI', 'INTERNACION', 'COMPRAS_STOCK', 'CHEQUEO'].includes(sectorId);
 
             if (isBedOccupancySector) {
                 const uciPayload = {
@@ -4343,13 +4344,72 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                     </button>
                                 </div>
                             )}
+
+                            {/* ── SECTOR CHEQUEO PREVENTIVO ── */}
+                            {!isUciOnly && (
+                                <div style={{
+                                    borderRadius: '10px',
+                                    border: `1.5px solid ${sectorId === 'CHEQUEO' ? '#059669' : '#E2E8F0'}`,
+                                    background: '#FFFFFF',
+                                    overflow: 'hidden',
+                                    boxShadow: sectorId === 'CHEQUEO' ? '0 4px 12px -2px rgba(5, 150, 105, 0.16)' : '0 1px 2px rgba(0,0,0,0.03)',
+                                    transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)'
+                                }}>
+                                    <button
+                                        type="button"
+                                        onClick={() => handleSelectSector('CHEQUEO')}
+                                        style={{
+                                            width: '100%',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'space-between',
+                                            padding: '10px 12px',
+                                            background: sectorId === 'CHEQUEO' ? '#ECFDF5' : '#F8FAFC',
+                                            border: 'none',
+                                            cursor: 'pointer',
+                                            transition: 'background 0.15s ease'
+                                        }}
+                                        onMouseEnter={e => { if (sectorId !== 'CHEQUEO') e.currentTarget.style.background = '#F1F5F9'; }}
+                                        onMouseLeave={e => { if (sectorId !== 'CHEQUEO') e.currentTarget.style.background = '#F8FAFC'; }}
+                                    >
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                            <span style={{ fontSize: '1.1rem' }}>🩺</span>
+                                            <div style={{ textAlign: 'left' }}>
+                                                <div style={{ fontSize: '0.8rem', fontWeight: 700, color: sectorId === 'CHEQUEO' ? '#065F46' : '#334155' }}>
+                                                    Chequeo Preventivo
+                                                </div>
+                                                <div style={{ fontSize: '0.65rem', color: '#64748B' }}>
+                                                    Informes, WA, NPS, Renov. (2024+)
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <span style={{
+                                            fontSize: '0.6rem',
+                                            fontWeight: 800,
+                                            padding: '2px 6px',
+                                            borderRadius: '999px',
+                                            background: sectorId === 'CHEQUEO' ? '#059669' : '#DCFCE7',
+                                            color: sectorId === 'CHEQUEO' ? '#FFFFFF' : '#047857',
+                                        }}>
+                                            Nuevo
+                                        </span>
+                                    </button>
+                                </div>
+                            )}
                         </div>
                     </div>
                 )}
 
                 {/* LIENZO PRINCIPAL DEL TELAR (MODULAR) */}
                 <div style={{ flex: 1, overflowY: 'auto', padding: '24px' }}>
-                    {sectorId === 'GUARDIA_GGO' ? (
+                    {sectorId === 'CHEQUEO' ? (
+                        <ChequeoGobernanzaDashboard
+                            fechaDesdeTelar={fechaDesde}
+                            fechaHastaTelar={fechaHasta}
+                            currentTab={sectorId === 'CHEQUEO' ? routeTabId : null}
+                            onTabChange={(tab) => navigateToRoute('CHEQUEO', tab)}
+                        />
+                    ) : sectorId === 'GUARDIA_GGO' ? (
                         <GuardiaGgoDashboard
                             fechaDesde={fechaDesde}
                             fechaHasta={fechaHasta}

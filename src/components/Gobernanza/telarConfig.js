@@ -111,6 +111,17 @@ export const SECTORES_CONFIG = [
         descripcion: 'Tablero Integrado de Compras, Proveedores, Consumos por Servicio, Cobertura de Stock y Auditoría (2024+)',
         activo: true,
         badge: 'Nuevo'
+    },
+    {
+        id: 'CHEQUEO',
+        label: 'Chequeo Preventivo',
+        shortLabel: 'Chequeo Preventivo',
+        icon: '🩺',
+        camasDefault: 0,
+        serviciosSalus: ['CHEQUEO'],
+        descripcion: 'Circuito Preventivo vs. Informe, Asistencia Interanual 2024–2026, Conversión WA → SALUS, NPS Calidad y Renovación Anual',
+        activo: true,
+        badge: 'Nuevo'
     }
 ];
 
