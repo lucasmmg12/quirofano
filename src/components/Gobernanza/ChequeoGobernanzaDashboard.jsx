@@ -469,20 +469,9 @@ export default function ChequeoGobernanzaDashboard() {
                             <HeartPulse size={22} />
                         </div>
                         <div style={{ minWidth: 0 }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                                <h2 style={{ margin: 0, fontSize: '1.08rem', fontWeight: 800, color: '#0F172A' }}>
-                                    Gobernanza · Chequeo Preventivo y Medicina Preventiva
-                                </h2>
-                                <span style={{
-                                    fontSize: '0.67rem', fontWeight: 800, padding: '2px 9px', borderRadius: '999px',
-                                    background: '#ECFDF5', color: '#047857', border: '1px solid #A7F3D0'
-                                }}>
-                                    MAYORES PRE-AGREGADOS · {(metaInfo?.total_chq_rows || 0).toLocaleString('es-AR')} reg.
-                                </span>
-                            </div>
-                            <p style={{ margin: '2px 0 0', fontSize: '0.76rem', color: '#64748B' }}>
-                                Circuito Preventivo vs. Informe · Asistencia Interanual 2024–2026 · Conversión WhatsApp → SALUS · NPS Calidad · Renovación Anual
-                            </p>
+                            <h2 style={{ margin: 0, fontSize: '1.08rem', fontWeight: 800, color: '#0F172A' }}>
+                                Gobernanza · Chequeo Preventivo y Medicina Preventiva
+                            </h2>
                         </div>
                     </div>
 
