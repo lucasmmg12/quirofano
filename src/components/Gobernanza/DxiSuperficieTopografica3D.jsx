@@ -220,7 +220,7 @@ export default function DxiSuperficieTopografica3D({
     const [flowTrigger, setFlowTrigger] = useState(0);
     const [showWire, setShowWire] = useState(false);
     const [autoRotate, setAutoRotate] = useState(false);
-    const [activePreset, setActivePreset] = useState('iso');
+    const [activePreset, setActivePreset] = useState('front');
     const [hoverState, setHoverState] = useState(null);
     const [webglError, setWebglError] = useState(false);
 
@@ -246,17 +246,18 @@ export default function DxiSuperficieTopografica3D({
                 // Sumar a la selección múltiple (varias juntas)
                 next = [...prev, key];
             }
-            // Encuadre dinámico: si queda 1 sola serie, acercar y centrar suavemente la cámara
+            // Mantener encuadre frontal limpio en selección individual o múltiple
             const c = camRef.current;
             if (next.length === 1) {
-                c.tYaw = -0.22;
-                c.tPitch = 0.34;
+                c.tYaw = 0.0;
+                c.tPitch = 0.20;
                 c.tRadius = 20.5;
-                setActivePreset('iso');
+                setActivePreset('front');
             } else if (prev.length === 1 && next.length !== 1) {
-                c.tYaw = -0.34;
-                c.tPitch = 0.42;
-                c.tRadius = 23.5;
+                c.tYaw = 0.0;
+                c.tPitch = 0.22;
+                c.tRadius = 22.0;
+                setActivePreset('front');
             }
             return next;
         });
@@ -266,17 +267,17 @@ export default function DxiSuperficieTopografica3D({
     const handleResetAllSeries = () => {
         setSelectedKeys([]);
         const c = camRef.current;
-        c.tYaw = -0.34;
-        c.tPitch = 0.42;
-        c.tRadius = 23.5;
-        setActivePreset('iso');
+        c.tYaw = 0.0;
+        c.tPitch = 0.22;
+        c.tRadius = 22.0;
+        setActivePreset('front');
         setFlowTrigger(t => t + 1);
     };
 
-    // Cámara inicial ajustada para ocupar TODO el ancho y alto del lienzo
+    // Cámara inicial siempre en vista Frontal ocupando todo el ancho del lienzo
     const camRef = useRef({
-        yaw: -0.34, pitch: 0.42, radius: 23.5,
-        tYaw: -0.34, tPitch: 0.42, tRadius: 23.5,
+        yaw: 0.0, pitch: 0.22, radius: 22.0,
+        tYaw: 0.0, tPitch: 0.22, tRadius: 22.0,
         vYaw: 0, vPitch: 0,
         dragging: false, lx: 0, ly: 0,
         mx: -999, my: -999, hoveredIdx: -1
