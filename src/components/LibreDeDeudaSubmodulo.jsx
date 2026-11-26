@@ -250,7 +250,7 @@ export default function LibreDeDeudaSubmodulo({ addToast, currentUser, initialPa
     const { fechaTexto, p1, p2, p3 } = getCertText();
 
     return (
-        <div style={{ padding: '20px', maxWidth: '1400px', margin: '0 auto', fontFamily: "'Segoe UI', Roboto, Helvetica, Arial, sans-serif" }}>
+        <div style={{ padding: '20px', width: '100%', maxWidth: '100%', margin: 0, fontFamily: "'Segoe UI', Roboto, Helvetica, Arial, sans-serif" }}>
             
             {/* Header / Submódulo Navigation */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>

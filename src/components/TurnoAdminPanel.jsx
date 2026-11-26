@@ -412,14 +412,14 @@ export default function TurnoAdminPanel({ addToast, currentUser }) {
 
     if (loading) {
         return (
-            <div style={{ padding: '20px', maxWidth: '1400px', margin: '0 auto' }}>
+            <div style={{ padding: '20px', width: '100%', maxWidth: '100%', margin: 0 }}>
                 <SkeletonCardGrid cards={6} />
             </div>
         );
     }
 
     return (
-        <div style={{ padding: '20px', maxWidth: '1400px', margin: '0 auto' }}>
+        <div style={{ padding: '20px', width: '100%', maxWidth: '100%', margin: 0 }}>
             {/* ═══ NOTIFICACIÓN DE DERIVACIÓN ═══ */}
             {derivNotif && (
                 <div style={{

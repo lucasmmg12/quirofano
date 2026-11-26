@@ -149,7 +149,7 @@ export default function UserActivityAuditoria() {
     const totalPages = Math.max(1, Math.ceil(totalRecords / pageSize));
 
     return (
-        <div style={{ padding: '24px', maxWidth: '1400px', margin: '0 auto', fontFamily: "'Inter', sans-serif" }}>
+        <div style={{ padding: '24px', width: '100%', maxWidth: '100%', margin: 0, fontFamily: "'Inter', sans-serif" }}>
             
             {/* --- Seccion 1: Resumen de Actividad --- */}
             <div style={{ marginBottom: '32px' }}>

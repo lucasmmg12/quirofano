@@ -277,7 +277,7 @@ export default function ContactCenterIncentivosTab({ activeAgent, currentUser, a
     }, [liquidacion]);
 
     return (
-        <div style={{ padding: '4px 0 20px 0', maxWidth: '1400px', margin: '0 auto' }}>
+        <div style={{ padding: '4px 0 20px 0', width: '100%', maxWidth: '100%', margin: 0 }}>
             
             {/* ═════════════════════════════════════════════════════════════════ */}
             {/* 1. ENCABEZADO Y SELECTOR DE PERÍODO                              */}

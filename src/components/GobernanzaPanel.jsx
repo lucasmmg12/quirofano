@@ -401,7 +401,7 @@ export default function GobernanzaPanel({ currentUser }) {
         const rg = RENDICION_GOBIERNO_DATA;
         return (
             <div style={{ minHeight: '100vh', background: '#f8fafc', padding: '32px 40px', fontFamily: "'Inter', sans-serif" }}>
-                <div style={{ maxWidth: '1280px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                <div style={{ width: '100%', maxWidth: '100%', margin: 0, display: 'flex', flexDirection: 'column', gap: '24px' }}>
                     {/* Header Institucional */}
                     <div style={{
                         background: 'linear-gradient(135deg, #0D3B66 0%, #1e3a8a 100%)',
@@ -704,7 +704,7 @@ export default function GobernanzaPanel({ currentUser }) {
             {/* Contenido Principal */}
             <div style={{ flex: 1, overflowY: 'auto', padding: '32px' }}>
                 {activeTab === 'memoria' && (
-                    <div style={{ maxWidth: '1240px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                    <div style={{ width: '100%', maxWidth: '100%', margin: 0, display: 'flex', flexDirection: 'column', gap: '24px' }}>
                         {/* Banner Institucional Sanatorio Argentino */}
                         <div style={{
                             background: 'linear-gradient(135deg, #0D3B66 0%, #1E40AF 65%, #2563EB 100%)',

@@ -12,7 +12,7 @@ export default function ContactCenterPermisosTab({ allowedUsers = [], onToggleUs
     });
 
     return (
-        <div style={{ maxWidth: '960px', margin: '0 auto', width: '100%', display: 'flex', flexDirection: 'column', gap: '22px' }}>
+        <div style={{ width: '100%', maxWidth: '100%', margin: 0, display: 'flex', flexDirection: 'column', gap: '22px' }}>
             {/* Header del Panel de Seguridad */}
             <div style={{
                 background: 'linear-gradient(135deg, #0F2942 0%, #1E3A8A 100%)',

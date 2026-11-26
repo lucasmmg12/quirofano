@@ -143,7 +143,7 @@ export default function GobernanzaDocumentos({ proyectoId, currentUser }) {
     if (loading) return <div style={{ padding: '40px', textAlign: 'center' }}><Loader2 className="animate-spin" size={32} color="#94a3b8" /></div>;
 
     return (
-        <div style={{ maxWidth: '900px', margin: '0 auto' }}>
+        <div style={{ width: '100%', maxWidth: '100%', margin: 0 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
                 <h3 style={{ margin: 0, color: '#0f172a', fontWeight: 800 }}>Documentos del Proyecto</h3>
                 <div>

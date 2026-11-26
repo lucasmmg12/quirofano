@@ -318,7 +318,7 @@ export default function ContactCenterCancelacionesTab({
     };
 
     return (
-        <div style={{ maxWidth: '1440px', margin: '0 auto', paddingBottom: '40px' }}>
+        <div style={{ width: '100%', maxWidth: '100%', margin: 0, paddingBottom: '40px' }}>
             {/* Header del Módulo */}
             <div style={{
                 background: '#FFFFFF',

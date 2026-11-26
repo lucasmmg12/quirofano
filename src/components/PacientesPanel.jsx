@@ -268,7 +268,7 @@ export default function PacientesPanel({ addToast, currentUser }) {
     // ═══════ LIST VIEW ═══════
     if (view === 'list') {
         return (
-            <div className="content no-print view-transition-enter" style={{ maxWidth: '1200px', margin: '0 auto' }}>
+            <div className="content no-print view-transition-enter" style={{ width: '100%', maxWidth: '100%', margin: 0 }}>
 
                 {/* Stats */}
                 {stats && (
@@ -627,7 +627,7 @@ export default function PacientesPanel({ addToast, currentUser }) {
     // ═══════ DETAIL VIEW (FICHA 360°) ═══════
     const pac = selectedPaciente;
     return (
-        <div className="content no-print view-transition-enter" style={{ maxWidth: '1100px', margin: '0 auto' }}>
+        <div className="content no-print view-transition-enter" style={{ width: '100%', maxWidth: '100%', margin: 0 }}>
 
             {/* Back button */}
             <button

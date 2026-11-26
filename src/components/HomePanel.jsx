@@ -362,7 +362,7 @@ export default function HomePanel({
     const currentQuote = FRASES_MOTIVADORAS[quoteIdx % FRASES_MOTIVADORAS.length];
 
     return (
-        <div className="content no-print view-transition-enter" style={{ maxWidth: '1160px', margin: '0 auto', paddingBottom: '28px' }}>
+        <div className="content no-print view-transition-enter" style={{ width: '100%', maxWidth: '100%', margin: 0, paddingBottom: '28px' }}>
 
             {/* ═══════ 1. BANNER DE BIENVENIDA + FRASE MOTIVADORA + BUSCADOR DE AYUDA ═══════ */}
             <div style={{

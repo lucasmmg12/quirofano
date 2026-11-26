@@ -513,7 +513,7 @@ export default function FichasAdmisionesPanel({ isPublic = false, currentUser = 
     return (
         <div style={{
             padding: isPublic ? '20px 24px' : '24px 32px',
-            maxWidth: '1440px', margin: '0 auto',
+            width: '100%', maxWidth: '100%', margin: 0,
             fontFamily: "'Inter', -apple-system, sans-serif"
         }}>
             {/* Circuito de fichas: paso 1 */}

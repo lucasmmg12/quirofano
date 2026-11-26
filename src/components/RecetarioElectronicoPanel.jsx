@@ -386,7 +386,7 @@ export default function RecetarioElectronicoPanel({ addToast, currentUser }) {
     });
 
     return (
-        <div className="content view-transition-enter" style={{ maxWidth: '1440px', margin: '0 auto', paddingBottom: '48px' }}>
+        <div className="content view-transition-enter" style={{ width: '100%', maxWidth: '100%', margin: 0, paddingBottom: '48px' }}>
             {/* ENCABEZADO DEL MÓDULO (No sale al imprimir) */}
             <div
                 className="no-print"

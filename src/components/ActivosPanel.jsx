@@ -116,7 +116,7 @@ export default function ActivosPanel({ currentUser, addToast }) {
     };
 
     return (
-        <div className="content animate-fade-in" style={{ padding: '24px', maxWidth: '1200px', margin: '0 auto', fontFamily: "'Inter', sans-serif" }}>
+        <div className="content animate-fade-in" style={{ padding: '24px', width: '100%', maxWidth: '100%', margin: 0, fontFamily: "'Inter', sans-serif" }}>
             
             {/* Header & Controls */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>

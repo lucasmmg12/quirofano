@@ -151,7 +151,7 @@ export default function UserActivityResumen() {
         : 1;
 
     return (
-        <div className="content no-print" style={{ padding: '24px', maxWidth: '1200px', margin: '0 auto' }}>
+        <div className="content no-print" style={{ padding: '24px', width: '100%', maxWidth: '100%', margin: 0 }}>
             {/* ── Header ── */}
             <div className="animate-fade-in" style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'space-between',
