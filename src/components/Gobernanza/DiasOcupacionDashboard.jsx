@@ -430,9 +430,27 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
     const [especDropdownOpen, setEspecDropdownOpen] = useState(false);
     const especDropdownRef = useRef(null);
     const [camasTotales, setCamasTotales] = useState(16);
-    const [datePresetMode, setDatePresetMode] = useState('este_mes'); // 'este_mes' | 'mes_anterior' | 'personalizado'
-    const [fechaDesde, setFechaDesde] = useState(() => getPrimerDiaMes());
-    const [fechaHasta, setFechaHasta] = useState(() => getUltimoDiaMes());
+    const savedTelarDates = useMemo(() => {
+        try {
+            const raw = localStorage.getItem('telar_date_filter_v1');
+            if (!raw) return null;
+            const parsed = JSON.parse(raw);
+            if (parsed?.fechaDesde && parsed?.fechaHasta && /^\d{4}-\d{2}-\d{2}$/.test(parsed.fechaDesde) && /^\d{4}-\d{2}-\d{2}$/.test(parsed.fechaHasta)) {
+                return parsed;
+            }
+        } catch { /* ignore */ }
+        return null;
+    }, []);
+    const [datePresetMode, setDatePresetMode] = useState(() => savedTelarDates?.datePresetMode || 'este_mes'); // 'este_mes' | 'mes_anterior' | 'personalizado'
+    const [fechaDesde, setFechaDesde] = useState(() => savedTelarDates?.fechaDesde || getPrimerDiaMes());
+    const [fechaHasta, setFechaHasta] = useState(() => savedTelarDates?.fechaHasta || getUltimoDiaMes());
+
+    // Mantener el filtro de fechas del Telar bloqueado y persistido al cambiar entre tableros o recargar
+    useEffect(() => {
+        try {
+            localStorage.setItem('telar_date_filter_v1', JSON.stringify({ datePresetMode, fechaDesde, fechaHasta }));
+        } catch { /* ignore */ }
+    }, [datePresetMode, fechaDesde, fechaHasta]);
 
     // === ESTADOS MODULARES DE INDICADORES ===
     const [activeIndicatorIds, setActiveIndicatorIds] = useState(() => {
@@ -2752,7 +2770,9 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                 display: 'flex',
                 flexDirection: 'column',
                 gap: '10px',
-                zIndex: 10
+                position: 'sticky',
+                top: 0,
+                zIndex: 35
             }}>
                 {/* FILA SUPERIOR 1: TÍTULO DEL SECTOR, SUB-SELECTORES Y TARJETA DESTACADA DE ÚLTIMA ACTUALIZACIÓN */}
                 <div style={{
@@ -3277,6 +3297,25 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                     title="Fecha Hasta"
                                 />
                             </div>
+
+                            <span
+                                title="El rango de fechas queda bloqueado y fijo al cambiar entre tableros del Telar"
+                                style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '4px',
+                                    padding: '4px 8px',
+                                    borderRadius: '7px',
+                                    background: '#EFF6FF',
+                                    border: '1px solid #BFDBFE',
+                                    color: '#1E40AF',
+                                    fontSize: '0.70rem',
+                                    fontWeight: 700,
+                                    whiteSpace: 'nowrap'
+                                }}
+                            >
+                                🔒 Fijo
+                            </span>
                         </div>
 
                     </div>

@@ -137,14 +137,31 @@ function HorizontalBarItem({ label, count, total, color }) {
     );
 }
 
-export default function ChequeoGobernanzaDashboard() {
+export default function ChequeoGobernanzaDashboard({
+    fechaDesdeTelar = null,
+    fechaHastaTelar = null,
+    currentTab = null,
+    onTabChange = null,
+} = {}) {
     const todayIso = useMemo(() => getTodayIso(), []);
-    const [activeTab, setActiveTab] = useState('circuito'); // 'circuito' | 'asistencia' | 'conversion' | 'calidad' | 'renovacion'
+    const [activeTab, setActiveTabState] = useState(currentTab || 'circuito'); // 'circuito' | 'asistencia' | 'conversion' | 'calidad' | 'renovacion'
+    const setActiveTab = (tab) => {
+        setActiveTabState(tab);
+        if (onTabChange) onTabChange(tab);
+    };
+    useEffect(() => {
+        if (currentTab && ['circuito', 'asistencia', 'conversion', 'calidad', 'renovacion'].includes(currentTab)) {
+            setActiveTabState(currentTab);
+        }
+    }, [currentTab]);
 
-    // Filtros globales
-    const [datePreset, setDatePreset] = useState('2026'); // 'mes' | '30d' | '2026' | 'all' | 'custom'
-    const [fechaDesde, setFechaDesde] = useState('2026-01-01');
-    const [fechaHasta, setFechaHasta] = useState(todayIso);
+    // Filtros globales: supeditado al filtro maestro del Telar cuando está embebido en él
+    const isTelarControlled = Boolean(fechaDesdeTelar && fechaHastaTelar);
+    const [datePreset, setDatePreset] = useState('2026'); // fallback solo modo standalone
+    const [localFechaDesde, setLocalFechaDesde] = useState('2026-01-01');
+    const [localFechaHasta, setLocalFechaHasta] = useState(todayIso);
+    const fechaDesde = isTelarControlled ? fechaDesdeTelar : localFechaDesde;
+    const fechaHasta = isTelarControlled ? fechaHastaTelar : localFechaHasta;
     const [sedeFilter, setSedeFilter] = useState('TODAS'); // 'TODAS' | 'SANTA FE' | 'SAN LUIS'
     const [viewType, setViewType] = useState('comparativa'); // 'comparativa' | 'preventivo' | 'informe'
 
@@ -180,19 +197,19 @@ export default function ChequeoGobernanzaDashboard() {
         const now = new Date();
         const end = getTodayIso();
         if (preset === 'mes') {
-            setFechaDesde(`${end.slice(0, 7)}-01`);
-            setFechaHasta(end);
+            setLocalFechaDesde(`${end.slice(0, 7)}-01`);
+            setLocalFechaHasta(end);
         } else if (preset === '30d') {
             const d = new Date(now);
             d.setDate(d.getDate() - 29);
-            setFechaDesde(d.toLocaleDateString('en-CA', { timeZone: 'America/Argentina/San_Juan' }));
-            setFechaHasta(end);
+            setLocalFechaDesde(d.toLocaleDateString('en-CA', { timeZone: 'America/Argentina/San_Juan' }));
+            setLocalFechaHasta(end);
         } else if (preset === '2026') {
-            setFechaDesde('2026-01-01');
-            setFechaHasta(end);
+            setLocalFechaDesde('2026-01-01');
+            setLocalFechaHasta(end);
         } else if (preset === 'all') {
-            setFechaDesde('2024-01-01');
-            setFechaHasta('2026-12-31');
+            setLocalFechaDesde('2024-01-01');
+            setLocalFechaHasta('2026-12-31');
         }
     };
 
@@ -506,46 +523,55 @@ export default function ChequeoGobernanzaDashboard() {
                     </div>
                 </div>
 
-                {/* Fila de filtros (presets + fechas + sede) con wrap limpio sin cortar bordes */}
-                <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px', paddingTop: '8px', borderTop: '1px solid #F1F5F9' }}>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', background: '#F1F5F9', padding: '3px', borderRadius: '8px', gap: '2px' }}>
-                        {[
-                            { id: 'mes', label: 'Mes Actual' },
-                            { id: '30d', label: '30 días' },
-                            { id: '2026', label: 'Año 2026' },
-                            { id: 'all', label: 'Histórico 24–26' }
-                        ].map(p => (
-                            <button
-                                key={p.id}
-                                type="button"
-                                onClick={() => applyDatePreset(p.id)}
-                                style={{
-                                    border: 'none', borderRadius: '6px', padding: '5px 9px',
-                                    fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer',
-                                    background: datePreset === p.id ? COLOR_PRIMARY : 'transparent',
-                                    color: datePreset === p.id ? '#FFFFFF' : '#475569'
-                                }}
-                            >
-                                {p.label}
-                            </button>
-                        ))}
-                    </div>
+                {/* Fila de filtros: en modo Telar se supedita al filtro superior fijo (solo Sede aquí) */}
+                <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '8px', paddingTop: '8px', borderTop: '1px solid #F1F5F9' }}>
+                    {isTelarControlled ? (
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '4px 10px', borderRadius: '8px', background: '#EFF6FF', border: '1px solid #BFDBFE', fontSize: '0.73rem', fontWeight: 700, color: COLOR_PRIMARY }}>
+                            <Calendar size={13} />
+                            <span>Período Telar activo: {fechaDesde.split('-').reverse().join('/')} — {fechaHasta.split('-').reverse().join('/')}</span>
+                        </div>
+                    ) : (
+                        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px' }}>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', background: '#F1F5F9', padding: '3px', borderRadius: '8px', gap: '2px' }}>
+                                {[
+                                    { id: 'mes', label: 'Mes Actual' },
+                                    { id: '30d', label: '30 días' },
+                                    { id: '2026', label: 'Año 2026' },
+                                    { id: 'all', label: 'Histórico 24–26' }
+                                ].map(p => (
+                                    <button
+                                        key={p.id}
+                                        type="button"
+                                        onClick={() => applyDatePreset(p.id)}
+                                        style={{
+                                            border: 'none', borderRadius: '6px', padding: '5px 9px',
+                                            fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer',
+                                            background: datePreset === p.id ? COLOR_PRIMARY : 'transparent',
+                                            color: datePreset === p.id ? '#FFFFFF' : '#475569'
+                                        }}
+                                    >
+                                        {p.label}
+                                    </button>
+                                ))}
+                            </div>
 
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flexWrap: 'wrap' }}>
-                        <input
-                            type="date"
-                            value={fechaDesde}
-                            onChange={e => { setDatePreset('custom'); setFechaDesde(e.target.value); }}
-                            style={{ padding: '5px 8px', borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.74rem', color: '#0F172A' }}
-                        />
-                        <span style={{ fontSize: '0.72rem', color: '#94A3B8' }}>a</span>
-                        <input
-                            type="date"
-                            value={fechaHasta}
-                            onChange={e => { setDatePreset('custom'); setFechaHasta(e.target.value); }}
-                            style={{ padding: '5px 8px', borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.74rem', color: '#0F172A' }}
-                        />
-                    </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flexWrap: 'wrap' }}>
+                                <input
+                                    type="date"
+                                    value={fechaDesde}
+                                    onChange={e => { setDatePreset('custom'); setLocalFechaDesde(e.target.value); }}
+                                    style={{ padding: '5px 8px', borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.74rem', color: '#0F172A' }}
+                                />
+                                <span style={{ fontSize: '0.72rem', color: '#94A3B8' }}>a</span>
+                                <input
+                                    type="date"
+                                    value={fechaHasta}
+                                    onChange={e => { setDatePreset('custom'); setLocalFechaHasta(e.target.value); }}
+                                    style={{ padding: '5px 8px', borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.74rem', color: '#0F172A' }}
+                                />
+                            </div>
+                        </div>
+                    )}
 
                     <select
                         value={sedeFilter}
