@@ -8,6 +8,7 @@ import EpidemiologiaDashboard from './Gobernanza/EpidemiologiaDashboard';
 import DiagnosticoImagenesDashboard from './Gobernanza/DiagnosticoImagenesDashboard';
 import InternacionDashboard from './Gobernanza/InternacionDashboard';
 import ComprasConsumoStockDashboard from './Gobernanza/ComprasConsumoStockDashboard';
+import ChequeoGobernanzaDashboard from './Gobernanza/ChequeoGobernanzaDashboard';
 
 function AutoExpandTextarea({ value, onChange, placeholder, style, minHeight = 80, ...props }) {
     const textareaRef = useRef(null);
@@ -83,7 +84,12 @@ export default function GobernanzaIndicadores({ proyectoId, currentUser, proyect
         lowerName.includes('farmacia') ||
         lowerName.includes('consumo')
     );
-    const hasInteractiveDashboard = isGuardia || isQuirofano || isUci || isEpidemiologia || isDxi || isInternacion || isComprasStock;
+    const isChequeo = Boolean(
+        lowerName.includes('chequeo') ||
+        lowerName.includes('preventivo') ||
+        proyectoId === '02d78330-a0a9-4203-a7de-6755241437ac'
+    );
+    const hasInteractiveDashboard = isGuardia || isQuirofano || isUci || isEpidemiologia || isDxi || isInternacion || isComprasStock || isChequeo;
     const [viewMode, setViewMode] = useState('especificaciones');
     const [indicadores, setIndicadores] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -235,6 +241,8 @@ export default function GobernanzaIndicadores({ proyectoId, currentUser, proyect
                             ? 'Monitoreo asistencial y analítico del Servicio de Guardia Clínica (SALUS)' 
                             : isQuirofano
                             ? 'Monitoreo de actividad quirúrgica, ocupación de salas, bloques y suspensiones (SALUS)'
+                            : isChequeo
+                            ? 'Tablero integral de Chequeo Preventivo: Circuito vs. Informe, Asistencia Interanual, Conversión WA, NPS y Renovación Anual'
                             : 'Catálogo técnico de indicadores de gobernanza y queries SQL asociadas.'}
                     </p>
                 </div>
@@ -331,6 +339,10 @@ export default function GobernanzaIndicadores({ proyectoId, currentUser, proyect
 
             {isComprasStock && viewMode === 'graficos' && (
                 <ComprasConsumoStockDashboard />
+            )}
+
+            {isChequeo && viewMode === 'graficos' && (
+                <ChequeoGobernanzaDashboard />
             )}
 
             {/* Vista 2: Catálogo de Especificaciones Técnicas y SQL */}
