@@ -1087,11 +1087,17 @@ export default function DxiSuperficieTopografica3D({
         setHoverState(null);
     };
 
-    const handleWheel = (e) => {
-        e.preventDefault();
-        const c = camRef.current;
-        c.tRadius = Math.max(12, Math.min(36, c.tRadius + e.deltaY * 0.014));
-    };
+    useEffect(() => {
+        const el = wrapRef.current;
+        if (!el) return;
+        const onWheelNative = (e) => {
+            e.preventDefault();
+            const c = camRef.current;
+            c.tRadius = Math.max(12, Math.min(36, c.tRadius + e.deltaY * 0.014));
+        };
+        el.addEventListener('wheel', onWheelNative, { passive: false });
+        return () => el.removeEventListener('wheel', onWheelNative);
+    }, []);
 
     if (webglError) {
         return (
@@ -1114,7 +1120,6 @@ export default function DxiSuperficieTopografica3D({
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerUp}
             onPointerLeave={handlePointerLeave}
-            onWheel={handleWheel}
             style={{
                 position: 'relative',
                 width: '100%',

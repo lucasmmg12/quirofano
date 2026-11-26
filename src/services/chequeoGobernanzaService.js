@@ -63,6 +63,7 @@ export async function fetchChequeoMayores() {
         supabase
             .from('gob_chequeo_resumen')
             .select('clave, payload, synced_at')
+            .in('clave', ['renovacion_anual', 'encuestas_calidad', 'meta'])
     ]);
 
     if (mensualRes.error) throw mensualRes.error;
@@ -512,35 +513,22 @@ export function aggregateChequeoAnalytics(rawData = [], {
 
 /**
  * 4. Embudo de Conversión WhatsApp (line_recepciones) → SALUS (salus_turnos_conversion)
+ * Lee el mayor pre-cruzado `conversion_wa_mayores` en 1 sola consulta (< 300ms) en lugar de
+ * paginar 67k+ mensajes y 59k+ turnos en el navegador.
  */
-export async function fetchConversionWhatsAppData({ startDate, endDate }) {
-    const startIso = `${startDate}T00:00:00-03:00`;
-    const endPlus30 = new Date(`${endDate}T23:59:59-03:00`);
-    endPlus30.setDate(endPlus30.getDate() + 30);
-    const endPlus30Iso = endPlus30.toISOString();
+export async function fetchConversionWhatsAppData() {
+    const { data, error } = await supabase
+        .from('gob_chequeo_resumen')
+        .select('payload, synced_at')
+        .eq('clave', 'conversion_wa_mayores')
+        .maybeSingle();
 
-    const [messages, turnos] = await Promise.all([
-        paginateQuery((from, to) =>
-            supabase
-                .from('whatsapp_messages')
-                .select('phone, direction, created_at, sender_name, content')
-                .eq('line_id', 'line_recepciones')
-                .gte('created_at', startIso)
-                .lte('created_at', endPlus30Iso)
-                .order('created_at', { ascending: true })
-                .range(from, to)
-        ),
-        paginateQuery((from, to) =>
-            supabase
-                .from('salus_turnos_conversion')
-                .select('id_visita, paciente, dni, edad, sexo, obra_social, centro, especialidad, medico, tipo_visita, categoria_turno, fecha_visita, hora_visita, fecha_creacion, usuario_creacion, asistencia, tel1_last7, tel2_last7, synced_at')
-                .gte('fecha_visita', startDate)
-                .order('fecha_visita', { ascending: true })
-                .range(from, to)
-        ),
-    ]);
-
-    return { messages, turnos };
+    if (error) throw error;
+    return {
+        mode: 'mayores',
+        phones: Array.isArray(data?.payload?.phones) ? data.payload.phones : [],
+        synced_at: data?.synced_at || null,
+    };
 }
 
 export function computeConversionWhatsApp(rawData, {
@@ -551,7 +539,6 @@ export function computeConversionWhatsApp(rawData, {
     categoriaFilter = 'all',
 } = {}) {
     if (!rawData) return null;
-    const { messages = [], turnos = [] } = rawData;
 
     const startMs = new Date(`${startDate}T00:00:00-03:00`).getTime();
     const endMs = new Date(`${endDate}T23:59:59-03:00`).getTime();
@@ -577,31 +564,6 @@ export function computeConversionWhatsApp(rawData, {
         return { key: dateStr, label: `${dd}/${m}` };
     };
 
-    const byPhone = new Map();
-    for (const m of messages) {
-        const ts = new Date(m.created_at).getTime();
-        if (!byPhone.has(m.phone)) {
-            byPhone.set(m.phone, { phone: m.phone, last7: getLast7(m.phone), senderName: '', incInPeriod: [], outAll: [] });
-        }
-        const e = byPhone.get(m.phone);
-        if (m.direction === 'incoming') {
-            if (m.sender_name && !e.senderName) e.senderName = m.sender_name;
-            if (ts >= startMs && ts <= endMs) e.incInPeriod.push({ ts, created_at: m.created_at });
-        } else {
-            const isBot = (m.sender_name || '').includes('Dora') || (m.content || '').includes('Encuesta de Satisfacción');
-            if (!isBot) e.outAll.push({ ts, created_at: m.created_at });
-        }
-    }
-
-    const turnosByLast7 = new Map();
-    for (const t of turnos) {
-        if (categoriaFilter !== 'all' && t.categoria_turno !== categoriaFilter) continue;
-        [t.tel1_last7, t.tel2_last7].filter(Boolean).forEach(k => {
-            if (!turnosByLast7.has(k)) turnosByLast7.set(k, []);
-            turnosByLast7.get(k).push(t);
-        });
-    }
-
     const dailyMap = new Map();
     const cur = new Date(`${startDate}T12:00:00`);
     const endD = new Date(`${endDate}T12:00:00`);
@@ -624,64 +586,72 @@ export function computeConversionWhatsApp(rawData, {
     const sexoCounts = { Mujer: 0, Hombre: 0, 'Sin dato': 0 };
     const auditRows = [];
 
-    for (const entry of byPhone.values()) {
-        if (!entry.incInPeriod.length) continue;
-        totalIngresadas++;
-        const firstInc = entry.incInPeriod[0];
-        const firstDate = new Date(firstInc.ts).toLocaleDateString('en-CA', { timeZone: 'America/Argentina/San_Juan' });
+    const phoneList = Array.isArray(rawData.phones) ? rawData.phones : [];
 
-        const firstReply = entry.outAll.find(o => o.ts >= firstInc.ts);
-        const respondida = Boolean(firstReply);
+    for (const entry of phoneList) {
+        const incArr = entry.i || [];
+        const firstIncTs = incArr.find(ts => ts >= startMs && ts <= endMs);
+        if (!firstIncTs) continue;
+
+        totalIngresadas++;
+        const firstDate = new Date(firstIncTs).toLocaleDateString('en-CA', { timeZone: 'America/Argentina/San_Juan' });
+
+        const outArr = entry.o || [];
+        const firstReplyTs = outArr.find(ts => ts >= firstIncTs);
+        const respondida = Boolean(firstReplyTs);
         let frtMin = null;
         if (respondida) {
             totalRespondidas++;
-            frtMin = Math.round((firstReply.ts - firstInc.ts) / 60000);
+            frtMin = Math.round((firstReplyTs - firstIncTs) / 60000);
             if (frtMin >= 0 && frtMin <= 4320) frtList.push(frtMin);
         }
 
-        const cands = entry.last7 ? (turnosByLast7.get(entry.last7) || []) : [];
+        const cands = (entry.t || []).filter(t => categoriaFilter === 'all' || t.ca === categoriaFilter);
         const matched = cands.filter(t => {
             if (attributionMode === 'strict') {
-                if (!t.fecha_creacion) return false;
-                const cms = new Date(t.fecha_creacion).getTime();
-                return cms >= (firstInc.ts - 600000) && cms <= (firstInc.ts + windowMs);
+                if (!t.fc) return false;
+                const cms = new Date(t.fc).getTime();
+                return cms >= (firstIncTs - 600000) && cms <= (firstIncTs + windowMs);
             }
-            const vms = new Date(`${t.fecha_visita}T23:59:59-03:00`).getTime();
-            return t.fecha_visita >= firstDate && vms <= (firstInc.ts + 60 * 86400000);
+            if (!t.fv) return false;
+            const vms = new Date(`${t.fv}T23:59:59-03:00`).getTime();
+            return t.fv >= firstDate && vms <= (firstIncTs + 60 * 86400000);
         });
-        const uniqueTurnos = [...new Map(matched.map(t => [t.id_visita, t])).values()];
+        const uniqueTurnos = matched.length > 1
+            ? [...new Map(matched.map(t => [t.id, t])).values()]
+            : matched;
         const hasTurno = uniqueTurnos.length > 0;
 
         let estadoPaciente = 'Sin turno';
         let best = null;
         if (hasTurno) {
             totalAsignados++;
-            const pres = uniqueTurnos.find(t => (t.asistencia || '').toLowerCase() === 'presente');
-            const fut = uniqueTurnos.find(t => t.fecha_visita >= todayStr);
+            const pres = uniqueTurnos.find(t => (t.as || '').toLowerCase() === 'presente');
+            const fut = uniqueTurnos.find(t => t.fv >= todayStr);
             best = pres || fut || uniqueTurnos[0];
-            const an = (best.asistencia || '').trim().toLowerCase();
+            const an = (best.as || '').trim().toLowerCase();
 
             if (pres) { totalConcretados++; estadoPaciente = 'Concretado'; asistenciaCounts.Presente++; }
-            else if (best.fecha_visita >= todayStr) { totalFuturos++; estadoPaciente = 'Pendiente Futuro'; asistenciaCounts['Futuro Pendiente']++; }
+            else if (best.fv >= todayStr) { totalFuturos++; estadoPaciente = 'Pendiente Futuro'; asistenciaCounts['Futuro Pendiente']++; }
             else if (an.includes('justificada') && !an.includes('injustificada')) { estadoPaciente = 'Ausencia Justificada'; asistenciaCounts['Ausencia Justificada']++; }
             else if (an.includes('injustificada')) { estadoPaciente = 'Ausencia Injustificada'; asistenciaCounts['Ausencia Injustificada']++; }
             else { estadoPaciente = 'Ausente / Sin marcar'; asistenciaCounts['Sin marcar']++; }
 
-            const cat = best.categoria_turno || 'Otros Ambulatorios';
+            const cat = best.ca || 'Otros Ambulatorios';
             tipoTurnoCounts[cat] = (tipoTurnoCounts[cat] || 0) + 1;
 
-            const sr = String(best.centro || 'Sin sede').toUpperCase();
-            const sedeName = sr.includes('SANTA FE') ? 'Sede Santa Fe' : sr.includes('SAN LUIS') ? 'Sede San Luis' : (best.centro || 'Sin sede');
+            const sr = String(best.ce || 'Sin sede').toUpperCase();
+            const sedeName = sr.includes('SANTA FE') ? 'Sede Santa Fe' : sr.includes('SAN LUIS') ? 'Sede San Luis' : (best.ce || 'Sin sede');
             if (!sedeMap[sedeName]) sedeMap[sedeName] = { sede: sedeName, asignados: 0, concretados: 0 };
             sedeMap[sedeName].asignados++;
             if (pres) sedeMap[sedeName].concretados++;
 
-            const os = (best.obra_social || 'Particular / Sin dato').replace(/^\d+\s*-\s*/, '').trim();
+            const os = (best.os || 'Particular / Sin dato').replace(/^\d+\s*-\s*/, '').trim();
             if (!osMap[os]) osMap[os] = { obraSocial: os, asignados: 0, concretados: 0 };
             osMap[os].asignados++;
             if (pres) osMap[os].concretados++;
 
-            const sx = (best.sexo || '').toLowerCase();
+            const sx = (best.sx || '').toLowerCase();
             if (sx.includes('mujer') || sx === 'f') sexoCounts.Mujer++;
             else if (sx.includes('hombre') || sx.includes('masc') || sx === 'm') sexoCounts.Hombre++;
             else sexoCounts['Sin dato']++;
@@ -697,17 +667,17 @@ export function computeConversionWhatsApp(rawData, {
         }
 
         auditRows.push({
-            phone: entry.phone,
-            paciente: best?.paciente || entry.senderName || entry.phone,
-            dni: best?.dni || '',
-            fechaConsulta: firstInc.created_at,
+            phone: entry.p,
+            paciente: best?.pa || entry.n || entry.p,
+            dni: best?.dn || '',
+            fechaConsulta: new Date(firstIncTs).toISOString(),
             respondida,
             frtMinutes: frtMin,
             tieneTurno: hasTurno,
-            fechaVisita: best?.fecha_visita || '—',
-            tipoTurno: best?.categoria_turno || '—',
-            obraSocial: best?.obra_social || '—',
-            centro: best?.centro || '—',
+            fechaVisita: best?.fv || '—',
+            tipoTurno: best?.ca || '—',
+            obraSocial: best?.os || '—',
+            centro: best?.ce || '—',
             estadoPaciente,
         });
     }

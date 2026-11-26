@@ -226,6 +226,96 @@ function buildRenovacionSnapshot(rows) {
     return bySede;
 }
 
+function getLast7(phone) {
+    const d = String(phone || '').replace(/\D/g, '');
+    return d.length >= 7 ? d.slice(-7) : '';
+}
+
+function buildConversionWaMayores(messages, turnos) {
+    const byPhone = new Map();
+    for (const m of messages) {
+        if (!m.phone || !m.created_at) continue;
+        const ts = new Date(m.created_at).getTime();
+        if (!Number.isFinite(ts)) continue;
+        const dayKey = new Date(ts).toLocaleDateString('en-CA', { timeZone: 'America/Argentina/San_Juan' });
+
+        if (!byPhone.has(m.phone)) {
+            byPhone.set(m.phone, {
+                p: m.phone,
+                l7: getLast7(m.phone),
+                n: '',
+                incByDay: new Map(),
+                outByDay: new Map(),
+            });
+        }
+        const e = byPhone.get(m.phone);
+        if (m.direction === 'incoming') {
+            if (m.sender_name && !e.n) e.n = String(m.sender_name).slice(0, 60);
+            if (!e.incByDay.has(dayKey) || ts < e.incByDay.get(dayKey)) {
+                e.incByDay.set(dayKey, ts);
+            }
+        } else {
+            const isBot = (m.sender_name || '').includes('Dora') || (m.content || '').includes('Encuesta de Satisfacción');
+            if (!isBot) {
+                if (!e.outByDay.has(dayKey) || ts < e.outByDay.get(dayKey)) {
+                    e.outByDay.set(dayKey, ts);
+                }
+            }
+        }
+    }
+
+    const turnosByLast7 = new Map();
+    for (const t of turnos) {
+        const compact = {
+            id: t.id_visita,
+            pa: t.paciente || '',
+            dn: t.dni || '',
+            sx: t.sexo || '',
+            os: t.obra_social || '',
+            ce: t.centro || '',
+            ca: t.categoria_turno || 'Otros Ambulatorios',
+            fv: t.fecha_visita || '',
+            fc: t.fecha_creacion || '',
+            as: t.asistencia || '',
+        };
+        if (t.tel1_last7) {
+            if (!turnosByLast7.has(t.tel1_last7)) turnosByLast7.set(t.tel1_last7, []);
+            turnosByLast7.get(t.tel1_last7).push(compact);
+        }
+        if (t.tel2_last7 && t.tel2_last7 !== t.tel1_last7) {
+            if (!turnosByLast7.has(t.tel2_last7)) turnosByLast7.set(t.tel2_last7, []);
+            turnosByLast7.get(t.tel2_last7).push(compact);
+        }
+    }
+
+    const phones = [];
+    for (const e of byPhone.values()) {
+        if (!e.incByDay.size) continue;
+        const inc = [...e.incByDay.values()].sort((a, b) => a - b);
+        const out = [...e.outByDay.values()].sort((a, b) => a - b);
+        const cands = e.l7 ? (turnosByLast7.get(e.l7) || []) : [];
+        // Deduplicar turnos por id_visita
+        const tUnique = cands.length > 0
+            ? [...new Map(cands.map(t => [t.id, t])).values()]
+            : [];
+        phones.push({
+            p: e.p,
+            n: e.n,
+            i: inc,
+            o: out,
+            t: tUnique,
+        });
+    }
+
+    return {
+        version: 1,
+        total_phones: phones.length,
+        total_messages: messages.length,
+        total_turnos: turnos.length,
+        phones,
+    };
+}
+
 export async function syncChequeoGobernanza() {
     const t0 = Date.now();
     console.log('🩺 [sync_chequeo_gobernanza] Iniciando pre-agregación de mayores de Chequeo Preventivo...');
@@ -275,11 +365,36 @@ export async function syncChequeoGobernanza() {
         encuestasList = tbData || [];
     }
 
+    // 5. Conversión WhatsApp (line_recepciones) → SALUS (salus_turnos_conversion) pre-cruzada por teléfono
+    console.log('   → Pre-cruzando WhatsApp (line_recepciones) con salus_turnos_conversion...');
+    const [waMessages, salusTurnos] = await Promise.all([
+        paginate((from, to) =>
+            supabase
+                .from('whatsapp_messages')
+                .select('phone, direction, created_at, sender_name, content')
+                .eq('line_id', 'line_recepciones')
+                .order('created_at', { ascending: true })
+                .range(from, to),
+            120
+        ),
+        paginate((from, to) =>
+            supabase
+                .from('salus_turnos_conversion')
+                .select('id_visita, paciente, dni, sexo, obra_social, centro, categoria_turno, fecha_visita, fecha_creacion, asistencia, tel1_last7, tel2_last7')
+                .order('fecha_visita', { ascending: true })
+                .range(from, to),
+            120
+        ),
+    ]);
+    const conversionPayload = buildConversionWaMayores(waMessages, salusTurnos);
+    console.log(`   → Conversión WA pre-cruzada: ${conversionPayload.total_phones.toLocaleString('es-AR')} teléfonos únicos (${waMessages.length.toLocaleString('es-AR')} msgs × ${salusTurnos.length.toLocaleString('es-AR')} turnos).`);
+
     const nowIso = new Date().toISOString();
     const resumenRows = [
         { clave: 'renovacion_anual', payload: renovacionPayload, synced_at: nowIso },
         { clave: 'encuestas_calidad', payload: { items: encuestasList }, synced_at: nowIso },
-        { clave: 'meta', payload: { total_chq_rows: chqRows.length, total_renov_rows: renovRows.length, total_encuestas: encuestasList.length, synced_at: nowIso }, synced_at: nowIso },
+        { clave: 'conversion_wa_mayores', payload: conversionPayload, synced_at: nowIso },
+        { clave: 'meta', payload: { total_chq_rows: chqRows.length, total_renov_rows: renovRows.length, total_encuestas: encuestasList.length, total_wa_phones: conversionPayload.total_phones, synced_at: nowIso }, synced_at: nowIso },
     ];
     const { error: errRes } = await supabase
         .from('gob_chequeo_resumen')
@@ -287,8 +402,8 @@ export async function syncChequeoGobernanza() {
     if (errRes) throw errRes;
 
     const secs = ((Date.now() - t0) / 1000).toFixed(1);
-    console.log(`✅ [sync_chequeo_gobernanza] Completado en ${secs}s (${mensualRows.length} mayores mensuales + 3 snapshots).`);
-    return { mensualCount: mensualRows.length, totalChqRows: chqRows.length, totalEncuestas: encuestasList.length };
+    console.log(`✅ [sync_chequeo_gobernanza] Completado en ${secs}s (${mensualRows.length} mayores mensuales + 4 snapshots).`);
+    return { mensualCount: mensualRows.length, totalChqRows: chqRows.length, totalEncuestas: encuestasList.length, totalWaPhones: conversionPayload.total_phones };
 }
 
 const isMain = process.argv[1] && process.argv[1].includes('sync_chequeo_gobernanza');

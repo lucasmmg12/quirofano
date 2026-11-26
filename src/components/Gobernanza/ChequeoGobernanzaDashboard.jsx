@@ -216,7 +216,7 @@ export default function ChequeoGobernanzaDashboard() {
 
     useEffect(() => { loadMayores(); }, [loadMayores]);
 
-    // Lazy load Pestaña 3: Conversión WA
+    // Lazy load Pestaña 3: lee el mayor pre-cruzado `conversion_wa_mayores` UNA sola vez (< 300ms)
     const convRange = useMemo(() => {
         const start = fechaDesde < '2026-01-01' ? `${todayIso.slice(0, 7)}-01` : fechaDesde;
         const end = fechaHasta > todayIso ? todayIso : fechaHasta;
@@ -225,21 +225,20 @@ export default function ChequeoGobernanzaDashboard() {
 
     useEffect(() => {
         if (activeTab !== 'conversion') return;
-        const key = `${convRange.startDate}_${convRange.endDate}`;
-        if (convLoadedKey === key && convRaw) return;
+        if (convLoadedKey === 'loaded' && convRaw) return;
         let active = true;
         setLoadingConv(true);
-        fetchConversionWhatsAppData(convRange)
+        fetchConversionWhatsAppData()
             .then(data => {
                 if (active) {
                     setConvRaw(data);
-                    setConvLoadedKey(key);
+                    setConvLoadedKey('loaded');
                 }
             })
             .catch(err => console.error('[ChequeoGobernanza] Error conversión WA:', err))
             .finally(() => { if (active) setLoadingConv(false); });
         return () => { active = false; };
-    }, [activeTab, convRange, convLoadedKey, convRaw]);
+    }, [activeTab, convLoadedKey, convRaw]);
 
     // Fallback Pestaña 4: solo si no vino en gob_chequeo_resumen
     useEffect(() => {
@@ -701,7 +700,7 @@ export default function ChequeoGobernanzaDashboard() {
                             />
                         ) : (
                             <div style={{ height: '310px', width: '100%' }}>
-                                <ResponsiveContainer>
+                                <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                                     <ComposedChart data={agg.months} margin={{ top: 8, right: 12, left: -12, bottom: 4 }}>
                                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
                                         <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#64748B', fontWeight: 600 }} tickLine={false} axisLine={false} />
@@ -814,7 +813,7 @@ export default function ChequeoGobernanzaDashboard() {
                             subtitle="Desglose mensual en Presentes, Ausentes y Pendientes futuros"
                         >
                             <div style={{ height: '270px', width: '100%' }}>
-                                <ResponsiveContainer>
+                                <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                                     <BarChart data={agg.months} margin={{ top: 6, right: 10, left: -12, bottom: 4 }}>
                                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
                                         <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#64748B', fontWeight: 600 }} tickLine={false} axisLine={false} />
@@ -834,7 +833,7 @@ export default function ChequeoGobernanzaDashboard() {
                             subtitle="Porcentaje de asistencia efectiva con meta institucional del 80%"
                         >
                             <div style={{ height: '270px', width: '100%' }}>
-                                <ResponsiveContainer>
+                                <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                                     <LineChart data={agg.months} margin={{ top: 10, right: 14, left: -14, bottom: 4 }}>
                                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
                                         <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#64748B', fontWeight: 600 }} tickLine={false} axisLine={false} />
@@ -879,7 +878,7 @@ export default function ChequeoGobernanzaDashboard() {
                             <DxiSuperficieTopografica3D data={agg.yoyData} series={yoy3DSeries} granularity="mes" height={390} />
                         ) : (
                             <div style={{ height: '290px', width: '100%' }}>
-                                <ResponsiveContainer>
+                                <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                                     <LineChart data={agg.yoyData} margin={{ top: 8, right: 16, left: -12, bottom: 4 }}>
                                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
                                         <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#64748B', fontWeight: 600 }} tickLine={false} axisLine={false} />
@@ -901,7 +900,7 @@ export default function ChequeoGobernanzaDashboard() {
                         subtitle={`Distribución demográfica por franja de edad (${agg.ageValidCount.toLocaleString('es-AR')} pacientes con edad registrada · promedio ${agg.avgAge} años)`}
                     >
                         <div style={{ height: '260px', width: '100%' }}>
-                            <ResponsiveContainer>
+                            <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                                 <BarChart data={agg.ageDistribution} barCategoryGap="12%" margin={{ top: 8, right: 12, left: -12, bottom: 4 }}>
                                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
                                     <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#475569', fontWeight: 700 }} tickLine={false} axisLine={false} />
@@ -977,7 +976,7 @@ export default function ChequeoGobernanzaDashboard() {
                                     subtitle="Consultas ingresadas vs. respondidas vs. turnos asignados y concretados"
                                 >
                                     <div style={{ height: '270px', width: '100%' }}>
-                                        <ResponsiveContainer>
+                                        <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                                             <LineChart data={convAnalytics.dailySeries} margin={{ top: 8, right: 14, left: -14, bottom: 4 }}>
                                                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
                                                 <XAxis dataKey="label" tick={{ fontSize: 10.5, fill: '#64748B' }} tickLine={false} axisLine={false} />
@@ -998,7 +997,7 @@ export default function ChequeoGobernanzaDashboard() {
                             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '16px' }}>
                                 <SectionCard title="Gráfico 10a · Estado de Asistencia (SALUS)" subtitle="Desglose real de turnos originados en WhatsApp">
                                     <div style={{ height: '240px', width: '100%' }}>
-                                        <ResponsiveContainer>
+                                        <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                                             <PieChart>
                                                 <Pie data={convAnalytics.asistenciaPie} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={52} outerRadius={84} paddingAngle={3}>
                                                     {convAnalytics.asistenciaPie.map((e, i) => <Cell key={i} fill={ASISTENCIA_PIE_COLORS[e.name] || SERIES_PALETTE[i % SERIES_PALETTE.length]} />)}
@@ -1012,7 +1011,7 @@ export default function ChequeoGobernanzaDashboard() {
 
                                 <SectionCard title="Gráfico 10b · Composición por Tipo de Turno" subtitle="Servicios agendados por pacientes que consultaron por WA">
                                     <div style={{ height: '240px', width: '100%' }}>
-                                        <ResponsiveContainer>
+                                        <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                                             <PieChart>
                                                 <Pie data={convAnalytics.tipoTurnoPie} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={52} outerRadius={84} paddingAngle={3}>
                                                     {convAnalytics.tipoTurnoPie.map((_, i) => <Cell key={i} fill={SERIES_PALETTE[i % SERIES_PALETTE.length]} />)}
@@ -1026,7 +1025,7 @@ export default function ChequeoGobernanzaDashboard() {
 
                                 <SectionCard title="Gráfico 11a · Efectividad por Sede" subtitle="Turnos asignados vs. concretados en Santa Fe y San Luis">
                                     <div style={{ height: '240px', width: '100%' }}>
-                                        <ResponsiveContainer>
+                                        <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                                             <BarChart data={convAnalytics.sedeBars} margin={{ top: 8, right: 12, left: -12, bottom: 4 }}>
                                                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
                                                 <XAxis dataKey="sede" tick={{ fontSize: 11, fill: '#475569', fontWeight: 600 }} tickLine={false} axisLine={false} />
@@ -1042,7 +1041,7 @@ export default function ChequeoGobernanzaDashboard() {
 
                                 <SectionCard title="Gráfico 11b · Top 8 Obras Sociales Convertidas" subtitle="Financiadores con mayor conversión desde WhatsApp">
                                     <div style={{ height: '240px', width: '100%' }}>
-                                        <ResponsiveContainer>
+                                        <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                                             <BarChart data={convAnalytics.obraSocialBars} layout="vertical" margin={{ top: 4, right: 16, left: 10, bottom: 4 }}>
                                                 <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#F1F5F9" />
                                                 <XAxis type="number" tick={{ fontSize: 10.5, fill: '#64748B' }} tickLine={false} axisLine={false} />
@@ -1255,7 +1254,7 @@ export default function ChequeoGobernanzaDashboard() {
                                 subtitle="Pacientes que cumplen 12 meses desde su último chequeo preventivo vs. aquellos contactables por teléfono"
                             >
                                 <div style={{ height: '300px', width: '100%' }}>
-                                    <ResponsiveContainer>
+                                    <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                                         <BarChart data={renovacionProjection.bars} margin={{ top: 8, right: 12, left: -12, bottom: 4 }}>
                                             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
                                             <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#64748B', fontWeight: 600 }} tickLine={false} axisLine={false} />
