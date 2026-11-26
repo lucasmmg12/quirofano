@@ -124,15 +124,31 @@ const VS_SRC = `
   attribute vec4 aCol;
   uniform mat4 uMVP;
   uniform float uScaleY;
+  uniform float uFlowX;
+  uniform float uFlowWidth;
+  uniform float uFlowActive;
   varying vec3 vPos;
   varying vec3 vNorm;
   varying vec4 vCol;
+  varying float vWaveGlow;
   void main() {
-    vec3 p = vec3(aPos.x, aPos.y * uScaleY, aPos.z);
-    vec3 n = normalize(vec3(aNorm.x, aNorm.y / max(0.08, uScaleY), aNorm.z));
+    float reveal = 1.0;
+    float glow = 0.0;
+    if (uFlowActive > 0.5) {
+      float edge = smoothstep(uFlowX - uFlowWidth, uFlowX, aPos.x);
+      reveal = 1.0 - edge;
+      // Suave pulso ascendente en el frente de onda donde fluyen y cargan los datos
+      float band = exp(-pow((aPos.x - (uFlowX - uFlowWidth * 0.45)) / max(0.6, uFlowWidth * 0.32), 2.0));
+      glow = band * step(0.02, aPos.y);
+      reveal = clamp(reveal + band * 0.10, 0.0, 1.08);
+    }
+    float effY = uScaleY * reveal;
+    vec3 p = vec3(aPos.x, aPos.y * effY, aPos.z);
+    vec3 n = normalize(vec3(aNorm.x, aNorm.y / max(0.08, effY), aNorm.z));
     vPos = p;
     vNorm = n;
     vCol = aCol;
+    vWaveGlow = glow;
     gl_Position = uMVP * vec4(p, 1.0);
   }
 `;
@@ -144,9 +160,10 @@ const FS_SRC = `
   varying vec3 vPos;
   varying vec3 vNorm;
   varying vec4 vCol;
+  varying float vWaveGlow;
   void main() {
     if (uWire > 0.5) {
-      gl_FragColor = vec4(vCol.rgb * 0.85, 0.92);
+      gl_FragColor = vec4(vCol.rgb * 0.85 + vec3(vWaveGlow * 0.35), 0.92);
       return;
     }
     vec3 N = normalize(vNorm);
@@ -163,9 +180,9 @@ const FS_SRC = `
     float spec = pow(max(dot(N, H1), 0.0), 42.0) * 0.34;
     float fresnel = pow(1.0 - max(dot(N, V), 0.0), 3.0) * 0.16;
 
-    // Conserva la pureza cromática de cada serie con sombreado clínico tridimensional
+    // Conserva la pureza cromática de cada serie con destello en el frente de onda de carga
     float lightFactor = 0.52 * hemi + 0.54 * d1 + d2;
-    vec3 col = vCol.rgb * lightFactor + vec3(spec + fresnel * 0.5);
+    vec3 col = vCol.rgb * lightFactor + vec3(spec + fresnel * 0.5) + mix(vCol.rgb, vec3(1.0), 0.65) * (vWaveGlow * 0.48);
     gl_FragColor = vec4(clamp(col, 0.0, 1.0), vCol.a);
   }
 `;
@@ -198,12 +215,63 @@ export default function DxiSuperficieTopografica3D({
     // Modos 3D: 'ribbons' (Crestas 3D independientes), 'bars' (Columnas 3D), 'surface' (Superficie por franjas puras)
     const [visualMode, setVisualMode] = useState('ribbons');
     const [scaleMode, setScaleMode] = useState('global'); // 'global' (Escala real) | 'normalized' (Comparativa % por serie)
-    const [focusedSeriesKey, setFocusedSeriesKey] = useState(null);
+    // Multi-selección de series: vacío = mostrar todas; 1 elemento = solo esa con animación cinematográfica; N elementos = esas N juntas
+    const [selectedKeys, setSelectedKeys] = useState([]);
+    const [flowTrigger, setFlowTrigger] = useState(0);
     const [showWire, setShowWire] = useState(false);
     const [autoRotate, setAutoRotate] = useState(false);
     const [activePreset, setActivePreset] = useState('iso');
     const [hoverState, setHoverState] = useState(null);
     const [webglError, setWebglError] = useState(false);
+
+    // Limpiar claves que ya no existan si el usuario cambió filtros externos
+    useEffect(() => {
+        const validKeys = new Set((series || []).map(s => s?.key).filter(Boolean));
+        setSelectedKeys(prev => {
+            const next = prev.filter(k => validKeys.has(k));
+            return next.length === prev.length ? prev : next;
+        });
+    }, [series]);
+
+    const handleToggleSeriesPill = (key) => {
+        setSelectedKeys(prev => {
+            let next;
+            if (prev.length === 0) {
+                // Primera selección: aísla SOLO esa serie y dispara la animación de flujo individual
+                next = [key];
+            } else if (prev.includes(key)) {
+                // Quitar de la selección (si queda vacío, vuelve a mostrar todas)
+                next = prev.filter(k => k !== key);
+            } else {
+                // Sumar a la selección múltiple (varias juntas)
+                next = [...prev, key];
+            }
+            // Encuadre dinámico: si queda 1 sola serie, acercar y centrar suavemente la cámara
+            const c = camRef.current;
+            if (next.length === 1) {
+                c.tYaw = -0.22;
+                c.tPitch = 0.34;
+                c.tRadius = 20.5;
+                setActivePreset('iso');
+            } else if (prev.length === 1 && next.length !== 1) {
+                c.tYaw = -0.34;
+                c.tPitch = 0.42;
+                c.tRadius = 23.5;
+            }
+            return next;
+        });
+        setFlowTrigger(t => t + 1);
+    };
+
+    const handleResetAllSeries = () => {
+        setSelectedKeys([]);
+        const c = camRef.current;
+        c.tYaw = -0.34;
+        c.tPitch = 0.42;
+        c.tRadius = 23.5;
+        setActivePreset('iso');
+        setFlowTrigger(t => t + 1);
+    };
 
     // Cámara inicial ajustada para ocupar TODO el ancho y alto del lienzo
     const camRef = useRef({
@@ -219,19 +287,16 @@ export default function DxiSuperficieTopografica3D({
     useEffect(() => { showWireRef.current = showWire; }, [showWire]);
     useEffect(() => { autoRotateRef.current = autoRotate; }, [autoRotate]);
 
-    // Series con colores de alto contraste garantizados y orden de atrás hacia adelante (mayor volumen atrás)
-    const preparedSeries = useMemo(() => {
+    // Todas las series disponibles (para la barra superior de píldoras)
+    const allPreparedSeries = useMemo(() => {
         const list = (series || []).filter(s => s && s.key);
-        const count = list.length;
-        return list.map((s, idx) => {
+        return list.map((s) => {
             const distinctColor = HIGH_CONTRAST_COLORS[s.key] || s.color || '#1D4ED8';
             const values = data.map(d => Number(d?.[s.key]) || 0);
             const sum = values.reduce((a, b) => a + b, 0);
             const maxVal = Math.max(1, ...values);
             let peakIdx = 0;
             values.forEach((v, i) => { if (v > values[peakIdx]) peakIdx = i; });
-            // zSlot: idx=0 (Total) al fondo (-Z), las demás hacia el frente (+Z)
-            const zSlot = count === 1 ? 0 : (idx - (count - 1) / 2);
             return {
                 ...s,
                 color: distinctColor,
@@ -240,22 +305,31 @@ export default function DxiSuperficieTopografica3D({
                 sum,
                 maxVal,
                 peakIdx,
-                peakVal: values[peakIdx] || 0,
-                zSlot
+                peakVal: values[peakIdx] || 0
             };
         });
     }, [data, series]);
 
+    // Series activas que se renderizan en la escena 3D (centradas dinámicamente en Z)
+    const preparedSeries = useMemo(() => {
+        const filtered = selectedKeys.length > 0
+            ? allPreparedSeries.filter(s => selectedKeys.includes(s.key))
+            : allPreparedSeries;
+        const list = filtered.length > 0 ? filtered : allPreparedSeries;
+        const count = list.length;
+        return list.map((s, idx) => ({
+            ...s,
+            zSlot: count === 1 ? 0 : (idx - (count - 1) / 2)
+        }));
+    }, [allPreparedSeries, selectedKeys]);
+
     const maxScaleVal = useMemo(() => {
         let maxV = 0;
-        const activeList = focusedSeriesKey
-            ? preparedSeries.filter(s => s.key === focusedSeriesKey)
-            : preparedSeries;
-        (activeList.length ? activeList : preparedSeries).forEach(s => {
+        preparedSeries.forEach(s => {
             s.values.forEach(v => { if (v > maxV) maxV = v; });
         });
         return niceCeil(maxV);
-    }, [preparedSeries, focusedSeriesKey]);
+    }, [preparedSeries]);
 
     const applyPreset = (preset) => {
         setAutoRotate(false);
@@ -303,6 +377,9 @@ export default function DxiSuperficieTopografica3D({
         const uCamPos = gl.getUniformLocation(prog, 'uCamPos');
         const uScaleY = gl.getUniformLocation(prog, 'uScaleY');
         const uWire = gl.getUniformLocation(prog, 'uWire');
+        const uFlowX = gl.getUniformLocation(prog, 'uFlowX');
+        const uFlowWidth = gl.getUniformLocation(prog, 'uFlowWidth');
+        const uFlowActive = gl.getUniformLocation(prog, 'uFlowActive');
 
         // DIMENSIONES PANORÁMICAS AMPLIAS PARA OCUPAR TODO EL ANCHO DEL CONTENEDOR
         const WORLD_W = 29.0;
@@ -360,14 +437,13 @@ export default function DxiSuperficieTopografica3D({
             const halfThick = Z_STEP * 0.28;
 
             preparedSeries.forEach((s) => {
-                const isDimmed = focusedSeriesKey && focusedSeriesKey !== s.key;
-                const alpha = isDimmed ? 0.16 : 0.96;
+                const alpha = 0.96;
                 const [r, g, b] = s.rgb;
 
                 // Colores puros de la serie: cima brillante, cuerpo saturado, base profunda
                 const crestCol = [Math.min(1, r * 1.18 + 0.12), Math.min(1, g * 1.18 + 0.12), Math.min(1, b * 1.18 + 0.12), alpha];
                 const topCol = [Math.min(1, r * 1.05 + 0.04), Math.min(1, g * 1.05 + 0.04), Math.min(1, b * 1.05 + 0.04), alpha];
-                const baseCol = [r * 0.58, g * 0.58, b * 0.58, isDimmed ? 0.10 : 0.88];
+                const baseCol = [r * 0.58, g * 0.58, b * 0.58, 0.88];
 
                 const zCenter = s.zSlot * Z_STEP;
                 const zB = zCenter - halfThick;
@@ -431,12 +507,11 @@ export default function DxiSuperficieTopografica3D({
             const halfD = Z_STEP * 0.28;
 
             preparedSeries.forEach((s) => {
-                const isDimmed = focusedSeriesKey && focusedSeriesKey !== s.key;
-                const alpha = isDimmed ? 0.16 : 0.96;
+                const alpha = 0.96;
                 const [r, g, b] = s.rgb;
                 const topCol = [Math.min(1, r * 1.18 + 0.10), Math.min(1, g * 1.18 + 0.10), Math.min(1, b * 1.18 + 0.10), alpha];
                 const sideCol = [r, g, b, alpha];
-                const baseCol = [r * 0.55, g * 0.55, b * 0.55, isDimmed ? 0.10 : 0.90];
+                const baseCol = [r * 0.55, g * 0.55, b * 0.55, 0.90];
                 const zC = s.zSlot * Z_STEP;
 
                 for (let i = 0; i < data.length; i++) {
@@ -480,7 +555,6 @@ export default function DxiSuperficieTopografica3D({
                         den += w;
                     }
                     const y = den > 0.001 ? num / Math.max(1, den) : 0;
-                    const isDimmed = focusedSeriesKey && focusedSeriesKey !== nearestSeries.key;
                     const [r, g, b] = nearestSeries.rgb;
                     const ridgeBoost = Math.exp(-(minDz * minDz) / (twoSigmaSq * 0.8));
                     const cr = Math.min(1, r * (0.75 + 0.32 * ridgeBoost));
@@ -488,7 +562,7 @@ export default function DxiSuperficieTopografica3D({
                     const cb = Math.min(1, b * (0.75 + 0.32 * ridgeBoost));
 
                     rowP.push([x, y, z]);
-                    rowC.push([cr, cg, cb, isDimmed ? 0.18 : 0.96]);
+                    rowC.push([cr, cg, cb, 0.96]);
                     rowN.push([0, 1, 0]);
                 }
                 gridP.push(rowP);
@@ -552,14 +626,13 @@ export default function DxiSuperficieTopografica3D({
             const zC = s.zSlot * Z_STEP;
             const laneHalf = Z_STEP * 0.36;
             const [r, g, b] = s.rgb;
-            const isDim = focusedSeriesKey && focusedSeriesKey !== s.key;
             addFloorQuad(
                 [-WORLD_W * 0.5, -0.01, zC - laneHalf],
                 [-WORLD_W * 0.5, -0.01, zC + laneHalf],
                 [WORLD_W * 0.5, -0.01, zC + laneHalf],
                 [WORLD_W * 0.5, -0.01, zC - laneHalf],
                 [0, 1, 0],
-                [r, g, b, isDim ? 0.04 : 0.15]
+                [r, g, b, 0.15]
             );
         });
 
@@ -615,7 +688,9 @@ export default function DxiSuperficieTopografica3D({
             gl.drawArrays(mode, 0, count);
         };
 
-        let animY = 0.12;
+        let flowStart = performance.now();
+        const FLOW_DURATION_MS = preparedSeries.length === 1 ? 1150 : 950;
+        const FLOW_WIDTH = 5.2;
         let rafId = 0;
         let lastHoverIdx = -1;
 
@@ -625,8 +700,13 @@ export default function DxiSuperficieTopografica3D({
             const h = wrap.clientHeight || height;
             const c = camRef.current;
 
-            if (animY < 1) animY = Math.min(1, animY + 0.06);
-            const easedY = 1 - Math.pow(1 - animY, 3);
+            const elapsed = performance.now() - flowStart;
+            const rawFlow = Math.min(1, elapsed / FLOW_DURATION_MS);
+            // Curva suave easeOutCubic para el frente de onda que carga los datos de izquierda a derecha
+            const flowT = 1 - Math.pow(1 - rawFlow, 3);
+            const isFlowing = rawFlow < 1;
+            const flowX = (-WORLD_W * 0.5) + flowT * (WORLD_W + FLOW_WIDTH);
+            const easedY = Math.min(1, 0.25 + flowT * 0.75);
 
             if (!c.dragging) {
                 if (autoRotateRef.current) {
@@ -660,13 +740,17 @@ export default function DxiSuperficieTopografica3D({
             gl.uniformMatrix4fv(uMVP, false, mvp);
             gl.uniform3f(uCamPos, eye[0], eye[1], eye[2]);
 
-            // 1. Plataforma base
+            // 1. Plataforma base (sin deformación de flujo)
             gl.uniform1f(uScaleY, 1.0);
             gl.uniform1f(uWire, 0.0);
+            gl.uniform1f(uFlowActive, 0.0);
             bindAndDraw(fPosBuf, fNormBuf, fColBuf, floorVerts, gl.TRIANGLES);
 
-            // 2. Geometría 3D principal
+            // 2. Geometría 3D principal con animación progresiva de flujo de datos
             gl.uniform1f(uScaleY, easedY);
+            gl.uniform1f(uFlowActive, isFlowing ? 1.0 : 0.0);
+            gl.uniform1f(uFlowX, flowX);
+            gl.uniform1f(uFlowWidth, FLOW_WIDTH);
             if (!showWireRef.current) {
                 gl.uniform1f(uWire, 0.0);
                 bindAndDraw(bufPos, bufNorm, bufCol, meshVerts, gl.TRIANGLES);
@@ -721,18 +805,21 @@ export default function DxiSuperficieTopografica3D({
                 }
             });
 
-            // Trazo vectorial luminoso en la cresta superior de cada carril + etiqueta directa del carril
+            // Trazo vectorial luminoso en la cresta superior de cada carril + pulso cometa de flujo + etiqueta directa
             const laneLabels = [];
+            const maxVisibleU = isFlowing ? Math.max(0.01, Math.min(1, (flowX + WORLD_W * 0.5) / WORLD_W)) : 1;
+
             preparedSeries.forEach((s) => {
-                const isDimmed = focusedSeriesKey && focusedSeriesKey !== s.key;
                 const zC = s.zSlot * Z_STEP;
 
-                // Cresta superior nítida en Canvas 2D para máxima definición de cada color
+                // Cresta superior nítida en Canvas 2D desplegándose progresivamente con el flujo
                 if (visualMode !== 'bars') {
                     hud.beginPath();
                     let started = false;
+                    let tipPt = null;
                     const steps = Math.max(70, data.length * 3);
-                    for (let k = 0; k <= steps; k++) {
+                    const maxK = Math.max(1, Math.floor(steps * maxVisibleU));
+                    for (let k = 0; k <= maxK; k++) {
                         const u = k / steps;
                         const x = -WORLD_W * 0.5 + u * WORLD_W;
                         const y = Math.max(0.05, getValY(evalSmooth(s.values, u), s)) * easedY;
@@ -740,13 +827,30 @@ export default function DxiSuperficieTopografica3D({
                         if (pt) {
                             if (!started) { hud.moveTo(pt.sx, pt.sy); started = true; }
                             else hud.lineTo(pt.sx, pt.sy);
+                            tipPt = pt;
                         }
                     }
                     hud.strokeStyle = s.color;
-                    hud.globalAlpha = isDimmed ? 0.20 : 0.95;
-                    hud.lineWidth = focusedSeriesKey === s.key ? 3.2 : 2.1;
+                    hud.globalAlpha = 0.96;
+                    hud.lineWidth = preparedSeries.length === 1 ? 3.2 : 2.2;
                     hud.stroke();
                     hud.globalAlpha = 1;
+
+                    // Pulso luminoso (cometa) en el punto de avance mientras se cargan los datos
+                    if (isFlowing && tipPt) {
+                        hud.beginPath();
+                        hud.arc(tipPt.sx, tipPt.sy, 8.5, 0, Math.PI * 2);
+                        hud.fillStyle = `${s.color}38`;
+                        hud.fill();
+
+                        hud.beginPath();
+                        hud.arc(tipPt.sx, tipPt.sy, 4.2, 0, Math.PI * 2);
+                        hud.fillStyle = '#FFFFFF';
+                        hud.strokeStyle = s.color;
+                        hud.lineWidth = 2.4;
+                        hud.fill();
+                        hud.stroke();
+                    }
                 }
 
                 // Etiqueta de carril en el borde derecho/izquierdo según ángulo de cámara
@@ -760,7 +864,7 @@ export default function DxiSuperficieTopografica3D({
                         s,
                         sx: lPt.sx,
                         sy: lPt.sy,
-                        isDimmed
+                        isDimmed: false
                     });
                 }
             });
@@ -888,12 +992,11 @@ export default function DxiSuperficieTopografica3D({
                 hud.fillText(item.label, item.sx, safeY + 3);
             });
 
-            // Callout del Pico Máximo de la serie enfocada o principal
-            const targetPeakSeries = focusedSeriesKey
-                ? preparedSeries.find(s => s.key === focusedSeriesKey) || preparedSeries[0]
-                : preparedSeries[0];
+            // Callout del Pico Máximo de la serie principal activa (aparece en cuanto el flujo llega al pico)
+            const targetPeakSeries = preparedSeries[0];
+            const peakReached = !isFlowing || (dayToX(targetPeakSeries?.peakIdx || 0) <= flowX - FLOW_WIDTH * 0.25);
 
-            if (targetPeakSeries && targetPeakSeries.peakVal > 0) {
+            if (targetPeakSeries && targetPeakSeries.peakVal > 0 && peakReached) {
                 const xPk = dayToX(targetPeakSeries.peakIdx);
                 const yPk = getValY(targetPeakSeries.peakVal, targetPeakSeries) * easedY;
                 const zPk = targetPeakSeries.zSlot * Z_STEP;
@@ -936,7 +1039,7 @@ export default function DxiSuperficieTopografica3D({
             gl.deleteShader(vs);
             gl.deleteShader(fs);
         };
-    }, [data, preparedSeries, maxScaleVal, height, visualMode, scaleMode, focusedSeriesKey]);
+    }, [data, preparedSeries, maxScaleVal, height, visualMode, scaleMode, flowTrigger]);
 
     const handlePointerDown = (e) => {
         setAutoRotate(false);
@@ -1060,17 +1163,28 @@ export default function DxiSuperficieTopografica3D({
                     maxWidth: '100%'
                 }}>
                     <span style={{ fontSize: '0.64rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase', marginRight: '2px' }}>
-                        Carriles 3D:
+                        {selectedKeys.length === 0
+                            ? 'Carriles 3D:'
+                            : selectedKeys.length === 1
+                                ? 'Solo 1 activa:'
+                                : `${selectedKeys.length} activas:`}
                     </span>
-                    {preparedSeries.map((s) => {
-                        const isFocused = focusedSeriesKey === s.key;
-                        const isDimmed = focusedSeriesKey && !isFocused;
+                    {allPreparedSeries.map((s) => {
+                        const hasCustomSelection = selectedKeys.length > 0;
+                        const isSelected = selectedKeys.includes(s.key);
+                        const isDimmed = hasCustomSelection && !isSelected;
                         return (
                             <button
                                 key={s.key}
                                 type="button"
-                                onClick={() => setFocusedSeriesKey(prev => prev === s.key ? null : s.key)}
-                                title={`Clic para aislar/restaurar "${s.label}" (${s.sum.toLocaleString('es-AR')} estudios)`}
+                                onClick={() => handleToggleSeriesPill(s.key)}
+                                title={
+                                    !hasCustomSelection
+                                        ? `Clic para aislar solo "${s.label}" con animación de flujo (${s.sum.toLocaleString('es-AR')} estudios)`
+                                        : isSelected
+                                            ? `Clic para quitar "${s.label}" de la vista 3D`
+                                            : `Clic para sumar "${s.label}" junto a las seleccionadas`
+                                }
                                 style={{
                                     display: 'flex',
                                     alignItems: 'center',
@@ -1078,25 +1192,26 @@ export default function DxiSuperficieTopografica3D({
                                     padding: '2px 8px',
                                     borderRadius: '999px',
                                     border: `1.5px solid ${s.color}`,
-                                    background: isFocused ? s.color : '#FFFFFF',
-                                    color: isFocused ? '#FFFFFF' : '#0F172A',
-                                    opacity: isDimmed ? 0.45 : 1,
+                                    background: isSelected ? s.color : '#FFFFFF',
+                                    color: isSelected ? '#FFFFFF' : '#0F172A',
+                                    opacity: isDimmed ? 0.42 : 1,
                                     fontSize: '0.69rem',
                                     fontWeight: 700,
                                     cursor: 'pointer',
-                                    transition: 'all 0.15s ease'
+                                    transition: 'all 0.16s ease',
+                                    boxShadow: isSelected ? `0 2px 6px ${s.color}45` : 'none'
                                 }}
                             >
                                 <span style={{
                                     width: '8px',
                                     height: '8px',
                                     borderRadius: '50%',
-                                    background: isFocused ? '#FFFFFF' : s.color,
+                                    background: isSelected ? '#FFFFFF' : s.color,
                                     flexShrink: 0
                                 }} />
                                 <span>{s.shortLabel || s.label}</span>
                                 <strong style={{
-                                    color: isFocused ? '#FFFFFF' : s.color,
+                                    color: isSelected ? '#FFFFFF' : s.color,
                                     fontVariantNumeric: 'tabular-nums',
                                     marginLeft: '1px'
                                 }}>
@@ -1105,12 +1220,12 @@ export default function DxiSuperficieTopografica3D({
                             </button>
                         );
                     })}
-                    {focusedSeriesKey && (
+                    {selectedKeys.length > 0 && (
                         <button
                             type="button"
-                            onClick={() => setFocusedSeriesKey(null)}
+                            onClick={handleResetAllSeries}
                             style={{
-                                border: 'none',
+                                border: '1px solid #BFDBFE',
                                 background: '#EFF6FF',
                                 color: '#1D4ED8',
                                 borderRadius: '999px',
@@ -1120,9 +1235,26 @@ export default function DxiSuperficieTopografica3D({
                                 cursor: 'pointer'
                             }}
                         >
-                            Ver todas
+                            ↺ Ver todas
                         </button>
                     )}
+                    <button
+                        type="button"
+                        onClick={() => setFlowTrigger(t => t + 1)}
+                        title="Reproducir animación de flujo de carga de datos"
+                        style={{
+                            border: '1px solid #CBD5E1',
+                            background: '#F8FAFC',
+                            color: '#003B73',
+                            borderRadius: '999px',
+                            padding: '2px 8px',
+                            fontSize: '0.67rem',
+                            fontWeight: 800,
+                            cursor: 'pointer'
+                        }}
+                    >
+                        ▶ Flujo
+                    </button>
                 </div>
 
                 {/* Selector de Geometría 3D + Escala + Cámara */}
