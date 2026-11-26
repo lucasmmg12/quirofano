@@ -1953,6 +1953,11 @@ export default function ContactCenterChatConsole({
     // Ref para rastrear por cuál chat ya se solicitó el historial (evita refetch en re-renders)
     const historyRequestedForChat = useRef(null);
 
+    const activeChatIdRef = useRef(null);
+    const activeChatPhoneRef = useRef(null);
+    activeChatIdRef.current = selectedChat?.id || null;
+    activeChatPhoneRef.current = selectedChat?.phone || null;
+
     // Sincronizar formulario CRM y Resumen IA cuando cambia el chat activo (Vinculación EXCLUSIVA por DNI)
     useEffect(() => {
         if (selectedChat?.id) {
@@ -1962,6 +1967,7 @@ export default function ContactCenterChatConsole({
             if (isNewChat) {
                 // Activar pantalla de carga y purgar inmediatamente los datos del paciente anterior
                 setIsSidebarLoading(true);
+                setIsGeneratingSummary(false);
                 setPatientHistory(null);
                 setAiSummaryData(null);
                 setAssociatedPatients([]);
@@ -2175,8 +2181,16 @@ export default function ContactCenterChatConsole({
 
     const failedSummaryPhonesRef = useRef(new Set());
 
+    // Mantener sincronizado aiSummaryData si llega actualización por Realtime del MISMO chat activo
+    useEffect(() => {
+        if (selectedChat?.id && selectedChat?.aiSummary && activeChatIdRef.current === selectedChat.id) {
+            setAiSummaryData(selectedChat.aiSummary);
+        }
+    }, [selectedChat?.id, selectedChat?.aiSummary]);
+
     const handleRunAiSummary = async (isAuto = false) => {
         if (!selectedChat?.phone || isGeneratingSummary) return;
+        const requestChatId = selectedChat.id;
         const phone = selectedChat.phone;
         if (isAuto && failedSummaryPhonesRef.current.has(phone)) return;
         if (!isAuto) failedSummaryPhonesRef.current.delete(phone);
@@ -2191,29 +2205,36 @@ export default function ContactCenterChatConsole({
                 timeoutPromise
             ]);
             if (summary) {
-                setAiSummaryData(summary);
-                selectedChat.aiSummary = summary;
-                // Autocompletar datos del paciente en el formulario si están vacíos
-                if (summary.datos_paciente) {
-                    setCrmForm(prev => ({
-                        ...prev,
-                        dni: prev.dni || summary.datos_paciente.dni || '',
-                        pacienteNombre: prev.pacienteNombre || summary.datos_paciente.nombre_completo || '',
-                        obraSocial: prev.obraSocial || summary.datos_paciente.obra_social || '',
-                        fechaNacimiento: prev.fechaNacimiento || summary.datos_paciente.fecha_nacimiento || '',
-                        departamento: prev.departamento || summary.datos_paciente.departamento || 'San Juan'
-                    }));
+                // Persistir siempre en el chat correspondiente dentro de la lista (nunca en otro chat)
+                setChats(prev => prev.map(c => (c.id === requestChatId || c.phone === phone) ? { ...c, aiSummary: summary } : c));
+
+                // BLINDAJE ANTI-RACE CONDITION: solo pintar en pantalla si el agente SIGUE viendo este mismo chat
+                if (activeChatIdRef.current === requestChatId && activeChatPhoneRef.current === phone) {
+                    setAiSummaryData(summary);
+                    // Autocompletar datos del paciente en el formulario si están vacíos
+                    if (summary.datos_paciente) {
+                        setCrmForm(prev => ({
+                            ...prev,
+                            dni: prev.dni || summary.datos_paciente.dni || '',
+                            pacienteNombre: prev.pacienteNombre || summary.datos_paciente.nombre_completo || '',
+                            obraSocial: prev.obraSocial || summary.datos_paciente.obra_social || '',
+                            fechaNacimiento: prev.fechaNacimiento || summary.datos_paciente.fecha_nacimiento || '',
+                            departamento: prev.departamento || summary.datos_paciente.departamento || 'San Juan'
+                        }));
+                    }
                 }
             }
         } catch (err) {
             if (isAuto) {
                 failedSummaryPhonesRef.current.add(phone);
                 console.warn('[auto-ai-summary] Resumen IA omitido temporalmente (se puede reintentar manualmente):', err?.message || err);
-            } else {
+            } else if (activeChatIdRef.current === requestChatId) {
                 alert('No se pudo generar el resumen IA: ' + (err.message || 'Error'));
             }
         } finally {
-            setIsGeneratingSummary(false);
+            if (activeChatIdRef.current === requestChatId) {
+                setIsGeneratingSummary(false);
+            }
         }
     };
 
