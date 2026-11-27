@@ -15,7 +15,7 @@ import {
 import { SkeletonCardGrid } from './SkeletonLoader';
 import { exportMetricasToExcel, generateMetricasPdf } from '../utils/metricsReport';
 import {
-    fetchColaActiva, fetchAtendidosHoy, fetchAtendidosPorRango, fetchMetricasPorRango,
+    fetchColaActiva, fetchAtendidosPaginados, fetchMetricasPorRango,
     llamarTurno, iniciarAtencion, finalizarAtencion,
     cancelarTurno, derivarTurno, cambiarTramiteTurno, subscribeToCola, fetchTurnoConfig,
     devolverAEspera
@@ -75,6 +75,11 @@ export default function TurnoAdminPanel({ addToast, currentUser }) {
     const [showMetricas, setShowMetricas] = useState(false);
     const [showAtendidos, setShowAtendidos] = useState(false);
     const [atendidosSearch, setAtendidosSearch] = useState('');
+    const [atendidosSearchDebounced, setAtendidosSearchDebounced] = useState('');
+    const [atendidosPage, setAtendidosPage] = useState(1);
+    const [atendidosPageSize, setAtendidosPageSize] = useState(10); // 10 o 30 por página
+    const [atendidosTotalCount, setAtendidosTotalCount] = useState(0);
+    const [atendidosLoading, setAtendidosLoading] = useState(false);
     const [showBoxManager, setShowBoxManager] = useState(false);
     const [activeTimers, setActiveTimers] = useState({}); // turnoId → elapsed seconds
     const timerInterval = useRef(null);
@@ -165,15 +170,13 @@ export default function TurnoAdminPanel({ addToast, currentUser }) {
             const startIso = start.toISOString();
             const endIso = end ? end.toISOString() : null;
 
-            const [cfgData, colaData, atendidosData, metricasData] = await Promise.all([
+            const [cfgData, colaData, metricasData] = await Promise.all([
                 fetchTurnoConfig(),
                 fetchColaActiva(),
-                fetchAtendidosPorRango(startIso, endIso),
                 fetchMetricasPorRango(startIso, endIso),
             ]);
             setConfig(cfgData);
             setCola(colaData);
-            setAtendidos(atendidosData);
             setMetricas(metricasData);
         } catch (err) {
             console.error('Error loading turno data:', err);
@@ -182,6 +185,77 @@ export default function TurnoAdminPanel({ addToast, currentUser }) {
             setLoading(false);
         }
     }, [addToast, metricasRango, customStart, customEnd]);
+
+    // Debounce de búsqueda para no saturar consultas ni RAM
+    useEffect(() => {
+        const t = setTimeout(() => {
+            setAtendidosSearchDebounced(atendidosSearch);
+            setAtendidosPage(1);
+        }, 280);
+        return () => clearTimeout(t);
+    }, [atendidosSearch]);
+
+    // Resetear página al cambiar rango, tamaño o filtro de trámite
+    useEffect(() => {
+        setAtendidosPage(1);
+    }, [metricasRango, customStart, customEnd, atendidosPageSize, tipoFilter]);
+
+    // Carga BAJO DEMANDA de Atendidos (solo 10 o 30 filas en RAM; busca en todo el universo en servidor)
+    useEffect(() => {
+        if (!showAtendidos) {
+            setAtendidos([]);
+            return;
+        }
+        let active = true;
+        const fetchPage = async () => {
+            setAtendidosLoading(true);
+            try {
+                let start = new Date();
+                let end = null;
+                if (metricasRango === 'hoy') {
+                    start.setHours(0, 0, 0, 0);
+                } else if (metricasRango === 'ayer') {
+                    start.setDate(start.getDate() - 1);
+                    start.setHours(0, 0, 0, 0);
+                    end = new Date(start);
+                    end.setHours(23, 59, 59, 999);
+                } else if (metricasRango === 'semana') {
+                    start.setDate(start.getDate() - 7);
+                    start.setHours(0, 0, 0, 0);
+                } else if (metricasRango === 'mes') {
+                    start.setDate(start.getDate() - 30);
+                    start.setHours(0, 0, 0, 0);
+                } else if (metricasRango === 'custom') {
+                    if (customStart) start = new Date(`${customStart}T00:00:00`);
+                    else { start.setDate(start.getDate() - 7); start.setHours(0, 0, 0, 0); }
+                    if (customEnd) end = new Date(`${customEnd}T23:59:59.999`);
+                }
+
+                let tiposTramite = null;
+                if (tipoFilter) {
+                    const enGrupo = config.filter(c => c.grupo === tipoFilter).map(c => c.tipo_tramite);
+                    tiposTramite = enGrupo.length > 0 ? enGrupo : [tipoFilter];
+                }
+
+                const { rows, totalCount } = await fetchAtendidosPaginados({
+                    inicioIso: start.toISOString(),
+                    finIso: end ? end.toISOString() : null,
+                    page: atendidosPage,
+                    pageSize: atendidosPageSize,
+                    search: atendidosSearchDebounced,
+                    tiposTramite,
+                });
+                if (active) {
+                    setAtendidos(rows);
+                    setAtendidosTotalCount(totalCount);
+                }
+            } finally {
+                if (active) setAtendidosLoading(false);
+            }
+        };
+        fetchPage();
+        return () => { active = false; };
+    }, [showAtendidos, metricasRango, customStart, customEnd, atendidosPage, atendidosPageSize, atendidosSearchDebounced, tipoFilter, config]);
 
     useEffect(() => {
         loadData();
@@ -838,35 +912,11 @@ export default function TurnoAdminPanel({ addToast, currentUser }) {
                 </div>
             </div>
 
-            {/* ═══ ATENDIDOS ═══ */}
+            {/* ═══ ATENDIDOS (PAGINACIÓN EN SERVIDOR 10 / 30 + BÚSQUEDA SIN LÍMITE) ═══ */}
             {showAtendidos && (() => {
-                const normalizeStr = (val) =>
-                    String(val || '')
-                        .toLowerCase()
-                        .normalize('NFD')
-                        .replace(/[\u0300-\u036f]/g, '');
-                const qNorm = normalizeStr(atendidosSearch.trim());
-                const filteredAtendidos = atendidos.filter(t => {
-                    if (tipoFilter) {
-                        const tab = filterTabs.find(ft => ft.id === tipoFilter);
-                        if (tab && tab.isGroup) {
-                            const tramitesEnGrupo = config.filter(c => c.grupo === tipoFilter).map(c => c.tipo_tramite);
-                            if (!tramitesEnGrupo.includes(t.tipo_tramite)) return false;
-                        } else if (t.tipo_tramite !== tipoFilter) {
-                            return false;
-                        }
-                    }
-                    if (!qNorm) return true;
-                    const cfg = getCfgForType(t.tipo_tramite);
-                    return (
-                        normalizeStr(t.nombre_paciente).includes(qNorm) ||
-                        normalizeStr(t.numero_turno).includes(qNorm) ||
-                        normalizeStr(t.dni).includes(qNorm) ||
-                        normalizeStr(t.atendido_por).includes(qNorm) ||
-                        normalizeStr(cfg.label).includes(qNorm)
-                    );
-                });
-                const visibleAtendidos = qNorm ? filteredAtendidos : filteredAtendidos.slice(0, 50);
+                const totalPages = Math.max(1, Math.ceil(atendidosTotalCount / atendidosPageSize));
+                const fromIdx = atendidosTotalCount === 0 ? 0 : (atendidosPage - 1) * atendidosPageSize + 1;
+                const toIdx = Math.min(atendidosTotalCount, atendidosPage * atendidosPageSize);
 
                 return (
                     <div style={s.atendidosPanel}>
@@ -881,109 +931,194 @@ export default function TurnoAdminPanel({ addToast, currentUser }) {
                             <h3 style={{ ...s.metricasTitle, margin: 0 }}>
                                 <CheckCircle size={16} style={{ color: '#16A34A' }} /> Atendidos ({rangoLabel})
                                 <span style={{ fontSize: '0.8rem', fontWeight: 500, color: '#64748B', marginLeft: '8px' }}>
-                                    {qNorm
-                                        ? `(${filteredAtendidos.length} de ${atendidos.length} registros)`
-                                        : `(${filteredAtendidos.length} registros)`}
+                                    ({atendidosTotalCount.toLocaleString('es-AR')} registros)
                                 </span>
                             </h3>
 
-                            {/* Buscador de pacientes / turno / DNI / agente */}
-                            <div style={{
-                                position: 'relative',
-                                display: 'flex',
-                                alignItems: 'center',
-                                minWidth: '280px',
-                                maxWidth: '380px',
-                                flex: '1 1 280px',
-                            }}>
-                                <Search size={15} style={{ position: 'absolute', left: '11px', color: '#64748B', pointerEvents: 'none' }} />
-                                <input
-                                    type="text"
-                                    value={atendidosSearch}
-                                    onChange={(e) => setAtendidosSearch(e.target.value)}
-                                    placeholder="Buscar paciente, turno (ej. A010), DNI o agente..."
-                                    style={{
-                                        width: '100%',
-                                        padding: '8px 34px 8px 34px',
-                                        borderRadius: '8px',
-                                        border: '1px solid #CBD5E1',
-                                        background: '#FFFFFF',
-                                        fontSize: '0.82rem',
-                                        color: '#0F172A',
-                                        outline: 'none',
-                                        boxShadow: '0 1px 2px rgba(15, 23, 42, 0.04)',
-                                    }}
-                                />
-                                {atendidosSearch && (
-                                    <button
-                                        type="button"
-                                        onClick={() => setAtendidosSearch('')}
-                                        title="Limpiar búsqueda"
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', flex: '1 1 320px', justifyContent: 'flex-end' }}>
+                                {/* Selector de tamaño de página: 10 o 30 */}
+                                <div style={{ display: 'inline-flex', background: '#F1F5F9', padding: '2px', borderRadius: '8px', border: '1px solid #CBD5E1', gap: '2px' }}>
+                                    {[10, 30].map(sz => (
+                                        <button
+                                            key={sz}
+                                            type="button"
+                                            onClick={() => setAtendidosPageSize(sz)}
+                                            style={{
+                                                border: 'none',
+                                                borderRadius: '6px',
+                                                padding: '5px 9px',
+                                                fontSize: '0.73rem',
+                                                fontWeight: 700,
+                                                cursor: 'pointer',
+                                                background: atendidosPageSize === sz ? '#003B73' : 'transparent',
+                                                color: atendidosPageSize === sz ? '#FFFFFF' : '#475569',
+                                            }}
+                                        >
+                                            {sz} / pág
+                                        </button>
+                                    ))}
+                                </div>
+
+                                {/* Buscador en servidor sobre TODOS los registros del período */}
+                                <div style={{
+                                    position: 'relative',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    minWidth: '260px',
+                                    maxWidth: '380px',
+                                    flex: '1 1 260px',
+                                }}>
+                                    <Search size={15} style={{ position: 'absolute', left: '11px', color: '#64748B', pointerEvents: 'none' }} />
+                                    <input
+                                        type="text"
+                                        value={atendidosSearch}
+                                        onChange={(e) => setAtendidosSearch(e.target.value)}
+                                        placeholder="Buscar en todo el período (paciente, turno, DNI, agente)..."
                                         style={{
-                                            position: 'absolute',
-                                            right: '8px',
-                                            background: '#F1F5F9',
-                                            border: 'none',
-                                            borderRadius: '50%',
-                                            width: '20px',
-                                            height: '20px',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            justifyContent: 'center',
-                                            cursor: 'pointer',
-                                            color: '#475569',
+                                            width: '100%',
+                                            padding: '8px 34px 8px 34px',
+                                            borderRadius: '8px',
+                                            border: '1px solid #CBD5E1',
+                                            background: '#FFFFFF',
+                                            fontSize: '0.8rem',
+                                            color: '#0F172A',
+                                            outline: 'none',
+                                            boxShadow: '0 1px 2px rgba(15, 23, 42, 0.04)',
                                         }}
-                                    >
-                                        <X size={12} />
-                                    </button>
-                                )}
+                                    />
+                                    {atendidosSearch && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setAtendidosSearch('')}
+                                            title="Limpiar búsqueda"
+                                            style={{
+                                                position: 'absolute',
+                                                right: '8px',
+                                                background: '#F1F5F9',
+                                                border: 'none',
+                                                borderRadius: '50%',
+                                                width: '20px',
+                                                height: '20px',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                cursor: 'pointer',
+                                                color: '#475569',
+                                            }}
+                                        >
+                                            <X size={12} />
+                                        </button>
+                                    )}
+                                </div>
                             </div>
                         </div>
 
-                        {atendidos.length === 0 ? (
-                            <p style={{ color: '#94A3B8', textAlign: 'center' }}>Sin atenciones registradas en el período ({rangoLabel})</p>
-                        ) : filteredAtendidos.length === 0 ? (
-                            <p style={{ color: '#64748B', textAlign: 'center', padding: '20px 0', fontSize: '0.86rem' }}>
-                                No se encontraron pacientes que coincidan con <strong>"{atendidosSearch}"</strong>.
+                        {atendidosLoading ? (
+                            <div style={{ textAlign: 'center', padding: '28px 0', color: '#64748B', fontSize: '0.84rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                                <RefreshCw size={16} className="animate-spin" color="#003B73" />
+                                Consultando página {atendidosPage}...
+                            </div>
+                        ) : atendidos.length === 0 ? (
+                            <p style={{ color: '#64748B', textAlign: 'center', padding: '20px 0', fontSize: '0.85rem' }}>
+                                {atendidosSearchDebounced
+                                    ? <>No se encontraron pacientes para <strong>"{atendidosSearchDebounced}"</strong> en {rangoLabel}.</>
+                                    : `Sin atenciones registradas en el período (${rangoLabel}).`}
                             </p>
                         ) : (
-                            <div style={s.atendidosTable}>
-                                <div style={s.atTableHead}>
-                                    <span style={{ flex: '0 0 70px' }}>Turno</span>
-                                    <span style={{ flex: 1 }}>Paciente</span>
-                                    <span style={{ flex: '0 0 110px' }}>Trámite</span>
-                                    <span style={{ flex: '0 0 110px' }}>Atendido por</span>
-                                    <span style={{ flex: '0 0 75px' }}>Espera</span>
-                                    <span style={{ flex: '0 0 75px' }}>Atención</span>
-                                    <span style={{ flex: '0 0 60px' }}>Hora</span>
+                            <>
+                                <div style={s.atendidosTable}>
+                                    <div style={s.atTableHead}>
+                                        <span style={{ flex: '0 0 70px' }}>Turno</span>
+                                        <span style={{ flex: 1 }}>Paciente</span>
+                                        <span style={{ flex: '0 0 110px' }}>Trámite</span>
+                                        <span style={{ flex: '0 0 110px' }}>Atendido por</span>
+                                        <span style={{ flex: '0 0 75px' }}>Espera</span>
+                                        <span style={{ flex: '0 0 75px' }}>Atención</span>
+                                        <span style={{ flex: '0 0 60px' }}>Hora</span>
+                                    </div>
+                                    {atendidos.map(t => {
+                                        const cfg = getCfgForType(t.tipo_tramite);
+                                        const esperaMins = t.llamado_at && t.created_at
+                                            ? Math.floor((new Date(t.llamado_at) - new Date(t.created_at)) / 60000)
+                                            : null;
+                                        const atencionMins = t.finalizado_at && t.llamado_at
+                                            ? Math.floor((new Date(t.finalizado_at) - new Date(t.llamado_at)) / 60000)
+                                            : null;
+                                        const esperaColor = esperaMins > 10 ? '#EF4444' : esperaMins > 5 ? '#F59E0B' : '#16A34A';
+                                        const atencionColor = atencionMins > 15 ? '#EF4444' : atencionMins > 8 ? '#F59E0B' : '#3B82F6';
+                                        return (
+                                            <div key={t.id} style={s.atTableRow}>
+                                                <span style={{ flex: '0 0 70px', fontWeight: 700, color: cfg.color }}>{t.numero_turno}</span>
+                                                <span style={{ flex: 1, color: '#0D3B66', fontWeight: t.nombre_paciente ? 600 : 400 }}>{t.nombre_paciente || '—'}</span>
+                                                <span style={{ flex: '0 0 110px', color: '#475569' }}>{cfg.label}</span>
+                                                <span style={{ flex: '0 0 110px', color: '#6366F1', fontWeight: 600, fontSize: '0.78rem' }}>{t.atendido_por || '—'}</span>
+                                                <span style={{ flex: '0 0 75px', fontWeight: 700, color: esperaColor, fontSize: '0.8rem' }}>
+                                                    {esperaMins != null ? `${esperaMins}m` : '—'}
+                                                </span>
+                                                <span style={{ flex: '0 0 75px', fontWeight: 700, color: atencionColor, fontSize: '0.8rem' }}>
+                                                    {atencionMins != null ? `${atencionMins}m` : '—'}
+                                                </span>
+                                                <span style={{ flex: '0 0 60px', color: '#94A3B8', fontSize: '0.75rem' }}>{formatTime(t.finalizado_at)}</span>
+                                            </div>
+                                        );
+                                    })}
                                 </div>
-                                {visibleAtendidos.map(t => {
-                                    const cfg = getCfgForType(t.tipo_tramite);
-                                    const esperaMins = t.llamado_at && t.created_at
-                                        ? Math.floor((new Date(t.llamado_at) - new Date(t.created_at)) / 60000)
-                                        : null;
-                                    const atencionMins = t.finalizado_at && t.llamado_at
-                                        ? Math.floor((new Date(t.finalizado_at) - new Date(t.llamado_at)) / 60000)
-                                        : null;
-                                    const esperaColor = esperaMins > 10 ? '#EF4444' : esperaMins > 5 ? '#F59E0B' : '#16A34A';
-                                    const atencionColor = atencionMins > 15 ? '#EF4444' : atencionMins > 8 ? '#F59E0B' : '#3B82F6';
-                                    return (
-                                        <div key={t.id} style={s.atTableRow}>
-                                            <span style={{ flex: '0 0 70px', fontWeight: 700, color: cfg.color }}>{t.numero_turno}</span>
-                                            <span style={{ flex: 1, color: '#0D3B66', fontWeight: t.nombre_paciente ? 600 : 400 }}>{t.nombre_paciente || '—'}</span>
-                                            <span style={{ flex: '0 0 110px', color: '#475569' }}>{cfg.label}</span>
-                                            <span style={{ flex: '0 0 110px', color: '#6366F1', fontWeight: 600, fontSize: '0.78rem' }}>{t.atendido_por || '—'}</span>
-                                            <span style={{ flex: '0 0 75px', fontWeight: 700, color: esperaColor, fontSize: '0.8rem' }}>
-                                                {esperaMins != null ? `${esperaMins}m` : '—'}
-                                            </span>
-                                            <span style={{ flex: '0 0 75px', fontWeight: 700, color: atencionColor, fontSize: '0.8rem' }}>
-                                                {atencionMins != null ? `${atencionMins}m` : '—'}
-                                            </span>
-                                            <span style={{ flex: '0 0 60px', color: '#94A3B8', fontSize: '0.75rem' }}>{formatTime(t.finalizado_at)}</span>
-                                        </div>
-                                    );
-                                })}
-                            </div>
+
+                                {/* Barra de paginación inferior */}
+                                <div style={{
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
+                                    alignItems: 'center',
+                                    flexWrap: 'wrap',
+                                    gap: '10px',
+                                    marginTop: '12px',
+                                    paddingTop: '10px',
+                                    borderTop: '1px solid #F1F5F9',
+                                    fontSize: '0.78rem',
+                                    color: '#475569',
+                                }}>
+                                    <span>
+                                        Mostrando <strong>{fromIdx}–{toIdx}</strong> de <strong>{atendidosTotalCount.toLocaleString('es-AR')}</strong> registros
+                                    </span>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <button
+                                            type="button"
+                                            disabled={atendidosPage <= 1}
+                                            onClick={() => setAtendidosPage(p => Math.max(1, p - 1))}
+                                            style={{
+                                                padding: '5px 11px',
+                                                borderRadius: '7px',
+                                                border: '1px solid #CBD5E1',
+                                                background: atendidosPage <= 1 ? '#F8FAFC' : '#FFFFFF',
+                                                color: atendidosPage <= 1 ? '#94A3B8' : '#003B73',
+                                                fontWeight: 700,
+                                                cursor: atendidosPage <= 1 ? 'not-allowed' : 'pointer',
+                                            }}
+                                        >
+                                            ← Anterior
+                                        </button>
+                                        <span style={{ fontWeight: 700, color: '#0F172A' }}>
+                                            Página {atendidosPage} de {totalPages}
+                                        </span>
+                                        <button
+                                            type="button"
+                                            disabled={atendidosPage >= totalPages}
+                                            onClick={() => setAtendidosPage(p => Math.min(totalPages, p + 1))}
+                                            style={{
+                                                padding: '5px 11px',
+                                                borderRadius: '7px',
+                                                border: '1px solid #CBD5E1',
+                                                background: atendidosPage >= totalPages ? '#F8FAFC' : '#FFFFFF',
+                                                color: atendidosPage >= totalPages ? '#94A3B8' : '#003B73',
+                                                fontWeight: 700,
+                                                cursor: atendidosPage >= totalPages ? 'not-allowed' : 'pointer',
+                                            }}
+                                        >
+                                            Siguiente →
+                                        </button>
+                                    </div>
+                                </div>
+                            </>
                         )}
                     </div>
                 );

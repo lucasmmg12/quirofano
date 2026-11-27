@@ -288,6 +288,49 @@ async function fetchAllRows(tableName, filterFn) {
     return all;
 }
 
+// ——— Atendidos Paginados en Servidor (bajo consumo de RAM + búsqueda sin límite 500) ———
+export async function fetchAtendidosPaginados({
+    inicioIso,
+    finIso = null,
+    page = 1,
+    pageSize = 10,
+    search = '',
+    tiposTramite = null,
+} = {}) {
+    const safePage = Math.max(1, Number(page) || 1);
+    const safeSize = [10, 30].includes(Number(pageSize)) ? Number(pageSize) : 10;
+    const from = (safePage - 1) * safeSize;
+    const to = from + safeSize - 1;
+
+    let query = supabase
+        .from('turnos_cola')
+        .select('id, numero_turno, nombre_paciente, dni, tipo_tramite, atendido_por, created_at, llamado_at, finalizado_at', { count: 'exact' })
+        .eq('estado', 'atendido')
+        .gte('created_at', inicioIso)
+        .order('finalizado_at', { ascending: false });
+
+    if (finIso) {
+        query = query.lte('created_at', finIso);
+    }
+    if (Array.isArray(tiposTramite) && tiposTramite.length > 0) {
+        query = query.in('tipo_tramite', tiposTramite);
+    }
+
+    const q = String(search || '').trim().replace(/[,%()]/g, ' ').trim();
+    if (q) {
+        query = query.or(
+            `nombre_paciente.ilike.%${q}%,numero_turno.ilike.%${q}%,dni.ilike.%${q}%,atendido_por.ilike.%${q}%`
+        );
+    }
+
+    const { data, error, count } = await query.range(from, to);
+    if (error) {
+        console.error('Error fetching atendidos paginados:', error);
+        return { rows: [], totalCount: 0 };
+    }
+    return { rows: data || [], totalCount: count || 0 };
+}
+
 // ——— Atendidos por Rango ———
 export async function fetchAtendidosPorRango(inicioIso, finIso = null) {
     let query = supabase
