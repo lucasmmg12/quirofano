@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 
 function useDragOrbit(canvasRef, initY = 0.5, initX = 0.42, autoSpeed = 0.006, minX = -1.15, maxX = 1.15) {
     const stateRef = useRef({ rotY: initY, rotX: initX, dragging: false, lx: 0, ly: 0, vy: autoSpeed });
@@ -80,7 +80,7 @@ function rgbCss(rgbIn) {
     return `rgb(${rgb[0]},${rgb[1]},${rgb[2]})`;
 }
 
-function CardShell3D({ title, subtitle, badgeRightLabel, badgeRightValue, badgeRightSub, children, legendItems, height = 270 }) {
+function CardShell3D({ title, subtitle, badgeRightLabel, badgeRightValue, badgeRightSub, children, legendItems, height = 270, selectedIdx = null, onSelectLegendItem = null }) {
     return (
         <div style={{
             background: '#FFFFFF',
@@ -97,7 +97,7 @@ function CardShell3D({ title, subtitle, badgeRightLabel, badgeRightValue, badgeR
                             fontSize: '10px', fontWeight: 700, padding: '2px 8px', borderRadius: '999px',
                             background: '#EFF6FF', color: '#003B73', border: '1px solid #BFDBFE'
                         }}>
-                            ↻ Arrastrá para girar 360°
+                            ↻ Arrastrá para girar 360°{onSelectLegendItem ? ' · Tocá una card para ver insights' : ''}
                         </span>
                     </div>
                     {subtitle && <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#64748B' }}>{subtitle}</p>}
@@ -134,23 +134,47 @@ function CardShell3D({ title, subtitle, badgeRightLabel, badgeRightValue, badgeR
                     gap: '8px',
                     marginTop: '10px',
                 }}>
-                    {legendItems.map((it, idx) => (
-                        <div key={idx} style={{
-                            padding: '8px 10px',
-                            borderRadius: '8px',
-                            background: '#F8FAFC',
-                            border: '1px solid #E2E8F0',
-                            borderLeft: `3px solid ${rgbCss(it.rgb)}`,
-                        }}>
-                            <div style={{ fontSize: '11px', fontWeight: 700, color: '#334155', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                {it.label}
+                    {legendItems.map((it, idx) => {
+                        const isInteractive = Boolean(onSelectLegendItem);
+                        const isSelected = selectedIdx === idx;
+                        const isDimmed = selectedIdx !== null && !isSelected;
+                        return (
+                            <div
+                                key={idx}
+                                role={isInteractive ? 'button' : undefined}
+                                tabIndex={isInteractive ? 0 : undefined}
+                                onClick={isInteractive ? () => onSelectLegendItem(idx) : undefined}
+                                onKeyDown={isInteractive ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelectLegendItem(idx); } } : undefined}
+                                style={{
+                                    padding: '8px 10px',
+                                    borderRadius: '8px',
+                                    background: isSelected ? '#EFF6FF' : '#F8FAFC',
+                                    border: isSelected ? '1.5px solid #003B73' : '1px solid #E2E8F0',
+                                    borderLeft: `${isSelected ? 4 : 3}px solid ${rgbCss(it.rgb)}`,
+                                    cursor: isInteractive ? 'pointer' : 'default',
+                                    opacity: isDimmed ? 0.65 : 1,
+                                    transform: isSelected ? 'translateY(-2px)' : 'translateY(0)',
+                                    boxShadow: isSelected ? '0 4px 12px rgba(0, 59, 115, 0.12)' : 'none',
+                                    transition: 'all 0.22s cubic-bezier(0.22, 1, 0.36, 1)',
+                                }}
+                            >
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '4px' }}>
+                                    <div style={{ fontSize: '11px', fontWeight: 700, color: isSelected ? '#003B73' : '#334155', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                        {it.label}
+                                    </div>
+                                    {isInteractive && (
+                                        <span style={{ fontSize: '10px', color: isSelected ? '#003B73' : '#94A3B8', fontWeight: 800 }}>
+                                            {isSelected ? '●' : '↗'}
+                                        </span>
+                                    )}
+                                </div>
+                                <div style={{ fontSize: '15px', fontWeight: 900, color: rgbCss(it.rgb), marginTop: '2px' }}>
+                                    {it.valueLabel}
+                                </div>
+                                {it.detail && <div style={{ fontSize: '10px', color: '#64748B' }}>{it.detail}</div>}
                             </div>
-                            <div style={{ fontSize: '15px', fontWeight: 900, color: rgbCss(it.rgb), marginTop: '2px' }}>
-                                {it.valueLabel}
-                            </div>
-                            {it.detail && <div style={{ fontSize: '10px', color: '#64748B' }}>{it.detail}</div>}
-                        </div>
-                    ))}
+                        );
+                    })}
                 </div>
             )}
         </div>
@@ -275,13 +299,53 @@ export function CilindrosOcupacion3D({ title, subtitle, badgeRightLabel, badgeRi
 }
 
 /**
- * 2. ANILLO TOROIDAL 3D (Quirófano / DxI)
+ * 2. ANILLO TOROIDAL 3D (Quirófano / DxI) — con foco interactivo, separación 3D y narrativa ejecutiva
  */
 export function AnilloToroidal3D({ title, subtitle, badgeRightLabel, badgeRightValue, badgeRightSub, segments = [], height = 270 }) {
     const canvasRef = useRef(null);
     const orbitRef = useDragOrbit(canvasRef, 0.55, 0.56, 0.007);
+    const [selectedIdx, setSelectedIdx] = useState(null);
+    const selectedIdxRef = useRef(null);
+    const animRef = useRef({ shiftT: 0, bgDimT: 0, segExplode: [] });
+    const [streamedWords, setStreamedWords] = useState(0);
+
     const total = Math.max(0.0001, segments.reduce((s, x) => s + Math.max(0, Number(x.value) || 0), 0));
     const keySig = JSON.stringify(segments.map(s => [s.label, s.value]));
+
+    useEffect(() => {
+        selectedIdxRef.current = selectedIdx;
+    }, [selectedIdx]);
+
+    // Si cambian los segmentos y el índice queda fuera de rango, limpiar selección
+    useEffect(() => {
+        if (selectedIdx !== null && selectedIdx >= segments.length) {
+            setSelectedIdx(null);
+        }
+    }, [segments.length, selectedIdx]);
+
+    const activeSegment = selectedIdx !== null ? segments[selectedIdx] : null;
+    const narrativeText = activeSegment
+        ? (activeSegment.narrative || `${activeSegment.label} representa el ${activeSegment.valueLabel || `${((Math.max(0, Number(activeSegment.value) || 0) * 100) / total).toFixed(1)}%`} del volumen total analizado (${activeSegment.detail || `${Number(activeSegment.value || 0).toLocaleString('es-AR')} registros`}).`)
+        : '';
+    const narrativeWords = narrativeText ? narrativeText.split(' ') : [];
+
+    // Efecto stream palabra por palabra (~26ms/palabra, fluido y sin cursor molesto)
+    useEffect(() => {
+        if (selectedIdx === null || !narrativeWords.length) {
+            setStreamedWords(0);
+            return;
+        }
+        setStreamedWords(0);
+        let count = 0;
+        const timer = setInterval(() => {
+            count += 1;
+            setStreamedWords(count);
+            if (count >= narrativeWords.length) {
+                clearInterval(timer);
+            }
+        }, 26);
+        return () => clearInterval(timer);
+    }, [selectedIdx, narrativeText]);
 
     useEffect(() => {
         const c = canvasRef.current;
@@ -289,19 +353,27 @@ export function AnilloToroidal3D({ title, subtitle, badgeRightLabel, badgeRightV
         const ctx = c.getContext('2d');
         let rafId = null;
 
-        // Pre-compute cumulative thresholds
+        // Pre-compute cumulative thresholds + midAngle de cada segmento
         let acc = 0;
-        const stops = segments.map(s => {
+        const stops = segments.map((s, idx) => {
+            const start = acc;
             acc += Math.max(0, Number(s.value) || 0) / total;
-            return { end: acc, rgb: normalizeRgb(s.rgb || s.color) };
+            const end = acc;
+            return {
+                idx,
+                start,
+                end,
+                midAngle: ((start + end) / 2) * Math.PI * 2,
+                rgb: normalizeRgb(s.rgb || s.color),
+            };
         });
 
-        const getCol = (u) => {
-            if (!stops.length) return [0, 59, 115];
+        const getStop = (u) => {
+            if (!stops.length) return { idx: 0, midAngle: 0, rgb: [0, 59, 115] };
             for (const st of stops) {
-                if (u <= st.end) return st.rgb;
+                if (u <= st.end) return st;
             }
-            return stops[stops.length - 1].rgb;
+            return stops[stops.length - 1];
         };
 
         const loop = () => {
@@ -311,43 +383,104 @@ export function AnilloToroidal3D({ title, subtitle, badgeRightLabel, badgeRightV
             ctx.clearRect(0, 0, w, h);
 
             const st = orbitRef.current;
-            if (!st.dragging) {
-                st.rotY += st.vy;
-                st.vy = st.vy * 0.96 + 0.007 * 0.04;
+            const sel = selectedIdxRef.current;
+            const anim = animRef.current;
+
+            // Interpolar desplazamiento lateral y atenuación de segundo plano
+            const targetShift = sel !== null ? 1 : 0;
+            anim.shiftT += (targetShift - anim.shiftT) * 0.095;
+            anim.bgDimT += (targetShift - anim.bgDimT) * 0.095;
+
+            if (anim.segExplode.length !== stops.length) {
+                anim.segExplode = stops.map((_, i) => (i === sel ? 1 : 0));
+            }
+            for (let i = 0; i < stops.length; i++) {
+                const targetEx = i === sel ? 1 : 0;
+                anim.segExplode[i] += (targetEx - anim.segExplode[i]) * 0.11;
             }
 
-            const sh = ctx.createRadialGradient(w * 0.5, h * 0.84, 10, w * 0.5, h * 0.84, 110);
+            // Rotación orbital: gira libre en reposo, o enfoca suavemente el segmento seleccionado hacia el frente-derecha
+            if (!st.dragging) {
+                if (sel !== null && stops[sel]) {
+                    const desiredRotY = Math.PI * 0.35 - stops[sel].midAngle;
+                    // Normalizar diferencia angular al camino más corto [-PI, PI]
+                    let diff = ((desiredRotY - st.rotY + Math.PI) % (Math.PI * 2)) - Math.PI;
+                    if (diff < -Math.PI) diff += Math.PI * 2;
+                    st.rotY += diff * 0.085;
+                    st.rotX += (0.48 - st.rotX) * 0.085;
+                    st.vy *= 0.85;
+                } else {
+                    st.rotY += st.vy;
+                    st.vy = st.vy * 0.96 + 0.007 * 0.04;
+                }
+            }
+
+            // Centro horizontal desplazado suavemente hacia la izquierda cuando hay foco
+            const shiftFactor = w < 640 ? 0 : 0.27;
+            const cx = w * (0.5 - shiftFactor * anim.shiftT);
+            const cy = h * 0.47;
+
+            // Sombra en el piso siguiendo suavemente el desplazamiento del anillo
+            const sh = ctx.createRadialGradient(cx, h * 0.84, 10, cx, h * 0.84, 108);
             sh.addColorStop(0, 'rgba(15,23,42,0.16)');
             sh.addColorStop(1, 'rgba(15,23,42,0)');
             ctx.fillStyle = sh;
             ctx.beginPath();
-            ctx.ellipse(w * 0.5, h * 0.84, 110, 20, 0, 0, Math.PI * 2);
+            ctx.ellipse(cx, h * 0.84, 108, 19, 0, 0, Math.PI * 2);
             ctx.fill();
 
-            const U = 64, V = 20, R = 76, rT = 24;
+            const U = 72, V = 20, R = 74, rTBase = 23;
             const quads = [];
             for (let i = 0; i < U; i++) {
                 const u0 = i / U, u1 = (i + 1) / U;
+                const um = (u0 + u1) / 2;
                 const a0 = u0 * Math.PI * 2, a1 = u1 * Math.PI * 2;
-                const col = getCol(u0);
+                const stop = getStop(um);
+                const ex = anim.segExplode[stop.idx] || 0;
+                const bgWeight = anim.bgDimT * (1 - ex);
+
+                // Separación radial + avance hacia adelante para el segmento seleccionado; retroceso para el resto
+                const radPop = 22 * ex;
+                const dxOff = Math.cos(stop.midAngle) * radPop;
+                const dzOff = Math.sin(stop.midAngle) * radPop;
+                const rT = rTBase * (1 + 0.13 * ex - 0.05 * bgWeight);
+                const zDepthShift = 28 * ex - 38 * bgWeight;
+
+                // Color atenuado hacia gris pizarra para el resto del círculo en segundo plano
+                const col = bgWeight > 0.01
+                    ? [
+                        Math.round(stop.rgb[0] * (1 - 0.52 * bgWeight) + 148 * 0.52 * bgWeight),
+                        Math.round(stop.rgb[1] * (1 - 0.52 * bgWeight) + 163 * 0.52 * bgWeight),
+                        Math.round(stop.rgb[2] * (1 - 0.52 * bgWeight) + 184 * 0.52 * bgWeight),
+                    ]
+                    : stop.rgb;
+                const alpha = Math.max(0.28, 1 - 0.65 * bgWeight);
+
                 for (let j = 0; j < V; j++) {
                     const b0 = (j / V) * Math.PI * 2, b1 = ((j + 1) / V) * Math.PI * 2;
                     const pts = [[a0, b0], [a1, b0], [a1, b1], [a0, b1]].map(([a, b]) => {
                         const rr = R + rT * Math.cos(b);
-                        return rotatePt(rr * Math.cos(a), rT * Math.sin(b), rr * Math.sin(a), st.rotY, st.rotX);
+                        const [rx, ry, rz] = rotatePt(
+                            rr * Math.cos(a) + dxOff,
+                            rT * Math.sin(b),
+                            rr * Math.sin(a) + dzOff,
+                            st.rotY,
+                            st.rotX
+                        );
+                        return [rx, ry, rz + zDepthShift];
                     });
                     const bm = (b0 + b1) / 2, am = (a0 + a1) / 2;
                     const norm = rotatePt(Math.cos(bm) * Math.cos(am), Math.sin(bm), Math.cos(bm) * Math.sin(am), st.rotY, st.rotX);
                     quads.push({
                         pts,
                         z: (pts[0][2] + pts[1][2] + pts[2][2] + pts[3][2]) / 4,
-                        fill: phongShade(col, norm[0], norm[1], norm[2])
+                        fill: phongShade(col, norm[0], norm[1], norm[2], alpha)
                     });
                 }
             }
 
             quads.sort((a, b) => a.z - b.z);
-            const fov = 420, cx = w * 0.5, cy = h * 0.47;
+            const fov = 420;
             for (const q of quads) {
                 ctx.beginPath();
                 for (let k = 0; k < 4; k++) {
@@ -374,9 +507,149 @@ export function AnilloToroidal3D({ title, subtitle, badgeRightLabel, badgeRightV
         detail: s.detail,
     }));
 
+    const handleSelectLegend = (idx) => {
+        setSelectedIdx(prev => (prev === idx ? null : idx));
+    };
+
+    const activeColorCss = activeSegment ? rgbCss(activeSegment.rgb || activeSegment.color) : '#003B73';
+
     return (
-        <CardShell3D title={title} subtitle={subtitle} badgeRightLabel={badgeRightLabel} badgeRightValue={badgeRightValue} badgeRightSub={badgeRightSub} legendItems={legendItems} height={height}>
+        <CardShell3D
+            title={title}
+            subtitle={subtitle}
+            badgeRightLabel={badgeRightLabel}
+            badgeRightValue={badgeRightValue}
+            badgeRightSub={badgeRightSub}
+            legendItems={legendItems}
+            height={height}
+            selectedIdx={selectedIdx}
+            onSelectLegendItem={handleSelectLegend}
+        >
             <canvas ref={canvasRef} style={{ width: '100%', height: '100%', display: 'block', cursor: 'grab' }} />
+
+            {/* Panel Narrativo Ejecutivo (Opción 2) — aparece suavemente a la derecha al tocar una KPI card */}
+            <div
+                style={{
+                    position: 'absolute',
+                    top: '50%',
+                    left: '44%',
+                    right: '24px',
+                    transform: activeSegment ? 'translateY(-50%) translateX(0)' : 'translateY(-50%) translateX(26px)',
+                    opacity: activeSegment ? 1 : 0,
+                    pointerEvents: activeSegment ? 'auto' : 'none',
+                    transition: 'opacity 0.36s cubic-bezier(0.22, 1, 0.36, 1), transform 0.44s cubic-bezier(0.22, 1, 0.36, 1)',
+                    background: 'rgba(255, 255, 255, 0.94)',
+                    backdropFilter: 'blur(8px)',
+                    border: '1px solid #E2E8F0',
+                    borderLeft: `4px solid ${activeColorCss}`,
+                    borderRadius: '12px',
+                    padding: '16px 20px',
+                    boxShadow: '0 10px 30px rgba(15, 23, 42, 0.08)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '10px',
+                    userSelect: 'text',
+                }}
+            >
+                {activeSegment && (
+                    <>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
+                            <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px', flexWrap: 'wrap' }}>
+                                <span style={{
+                                    display: 'inline-block', width: '9px', height: '9px', borderRadius: '50%',
+                                    background: activeColorCss, flexShrink: 0
+                                }} />
+                                <span style={{ fontSize: '1rem', fontWeight: 800, color: '#0F172A' }}>
+                                    {activeSegment.label}
+                                </span>
+                                <span style={{ fontSize: '1.15rem', fontWeight: 900, color: activeColorCss }}>
+                                    {activeSegment.valueLabel || `${((Math.max(0, Number(activeSegment.value) || 0) * 100) / total).toFixed(1)}%`}
+                                </span>
+                                {activeSegment.detail && (
+                                    <span style={{ fontSize: '0.74rem', fontWeight: 600, color: '#64748B' }}>
+                                        · {activeSegment.detail}
+                                    </span>
+                                )}
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setSelectedIdx(null)}
+                                title="Volver a vista centrada"
+                                style={{
+                                    width: '26px', height: '26px', borderRadius: '6px',
+                                    border: '1px solid #E2E8F0', background: '#F8FAFC',
+                                    color: '#64748B', fontSize: '0.85rem', fontWeight: 700,
+                                    cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                                    flexShrink: 0
+                                }}
+                            >
+                                ×
+                            </button>
+                        </div>
+
+                        {/* Frase narrativa con efecto stream palabra por palabra */}
+                        <p style={{
+                            margin: 0,
+                            fontSize: '0.84rem',
+                            lineHeight: 1.55,
+                            color: '#1E293B',
+                            fontWeight: 500,
+                            minHeight: '42px',
+                        }}>
+                            {narrativeWords.slice(0, streamedWords).join(' ')}
+                        </p>
+
+                        {/* Chips de métricas rápidas */}
+                        {Array.isArray(activeSegment.chips) && activeSegment.chips.length > 0 && (
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                                {activeSegment.chips.map((chip, cIdx) => (
+                                    <span key={cIdx} style={{
+                                        fontSize: '0.72rem', fontWeight: 600, color: '#334155',
+                                        background: '#F8FAFC', border: '1px solid #E2E8F0',
+                                        borderRadius: '6px', padding: '3px 8px'
+                                    }}>
+                                        <strong style={{ color: '#003B73' }}>{chip.label}:</strong> {chip.value}
+                                    </span>
+                                ))}
+                            </div>
+                        )}
+
+                        {/* 2 píldoras de acción rápida */}
+                        {(activeSegment.onViewCases || activeSegment.onFilterBoard) && (
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', paddingTop: '4px', borderTop: '1px solid #F1F5F9' }}>
+                                {activeSegment.onViewCases && (
+                                    <button
+                                        type="button"
+                                        onClick={activeSegment.onViewCases}
+                                        style={{
+                                            padding: '6px 12px', borderRadius: '8px', border: 'none',
+                                            background: '#003B73', color: '#FFFFFF',
+                                            fontSize: '0.74rem', fontWeight: 700, cursor: 'pointer',
+                                            display: 'inline-flex', alignItems: 'center', gap: '5px'
+                                        }}
+                                    >
+                                        Ver casos nominales de {activeSegment.label} →
+                                    </button>
+                                )}
+                                {activeSegment.onFilterBoard && (
+                                    <button
+                                        type="button"
+                                        onClick={activeSegment.onFilterBoard}
+                                        style={{
+                                            padding: '6px 12px', borderRadius: '8px',
+                                            border: '1px solid #BFDBFE', background: '#EFF6FF', color: '#003B73',
+                                            fontSize: '0.74rem', fontWeight: 700, cursor: 'pointer',
+                                            display: 'inline-flex', alignItems: 'center', gap: '5px'
+                                        }}
+                                    >
+                                        Filtrar tablero a {activeSegment.label}
+                                    </button>
+                                )}
+                            </div>
+                        )}
+                    </>
+                )}
+            </div>
         </CardShell3D>
     );
 }

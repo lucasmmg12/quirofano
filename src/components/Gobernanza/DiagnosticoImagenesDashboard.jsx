@@ -2598,6 +2598,27 @@ export default function DiagnosticoImagenesDashboard({
                 if (!segs.length) return null;
                 const totMod = segs.reduce((s, x) => s + x.value, 0);
                 const topMod = segs[0];
+
+                // Pre-agregar métricas reales por modalidad en 0ms desde scopedData.agendas
+                const modStats = {};
+                (scopedData?.agendas || []).forEach(r => {
+                    if (!r.EstadoAsistencia || !ESTADOS_EFECTIVOS.has(r.EstadoAsistencia)) return;
+                    if (filterFinanciador !== 'TODOS' && r.TipoFinanciador && r.TipoFinanciador !== filterFinanciador) return;
+                    const mk = r.Modalidad;
+                    if (!mk) return;
+                    if (!modStats[mk]) {
+                        modStats[mk] = { total: 0, os: 0, part: 0, inf: 0, centros: {}, agendas: {} };
+                    }
+                    const st = modStats[mk];
+                    const cant = Number(r.Cantidad || 0);
+                    st.total += cant;
+                    if (r.TipoFinanciador === 'PARTICULAR') st.part += cant;
+                    else st.os += cant;
+                    st.inf += Number(r.Informados || r.CantidadInformados || 0);
+                    if (r.Centro) st.centros[r.Centro] = (st.centros[r.Centro] || 0) + cant;
+                    if (r.Agenda) st.agendas[r.Agenda] = (st.agendas[r.Agenda] || 0) + cant;
+                });
+
                 return (
                     <AnilloToroidal3D
                         title="Anillo 3D — Mix de Modalidades de Diagnóstico por Imágenes"
@@ -2605,13 +2626,44 @@ export default function DiagnosticoImagenesDashboard({
                         badgeRightLabel="Modalidad Líder"
                         badgeRightValue={topMod.label}
                         badgeRightSub={`${((topMod.value * 100) / totMod).toFixed(1)}% (${topMod.value.toLocaleString('es-AR')} est.)`}
-                        segments={segs.map(s => ({
-                            label: s.label,
-                            value: s.value,
-                            valueLabel: `${((s.value * 100) / totMod).toFixed(1)}%`,
-                            rgb: s.rgb,
-                            detail: `${s.value.toLocaleString('es-AR')} estudios`,
-                        }))}
+                        segments={segs.map((s, idx) => {
+                            const pctStr = `${((s.value * 100) / totMod).toFixed(1)}%`;
+                            const st = modStats[s.key] || { total: s.value, os: s.value, part: 0, inf: 0, centros: {}, agendas: {} };
+                            const topCentroEntry = Object.entries(st.centros).sort((a, b) => b[1] - a[1])[0];
+                            const topAgendaEntry = Object.entries(st.agendas).sort((a, b) => b[1] - a[1])[0];
+                            const osPct = st.total > 0 ? Math.round((st.os * 100) / st.total) : 0;
+                            const partPct = 100 - osPct;
+                            const infPct = st.total > 0 && st.inf > 0 ? ((st.inf * 100) / st.total).toFixed(1) : null;
+
+                            const rankTxt = idx === 0
+                                ? `lidera el servicio concentrando el ${pctStr} de la producción del período`
+                                : `ocupa el puesto #${idx + 1} del mix con el ${pctStr} del volumen total`;
+                            const sedeTxt = topCentroEntry
+                                ? ` Su mayor demanda se registra en ${topCentroEntry[0]} (${Math.round((topCentroEntry[1] * 100) / Math.max(1, st.total))}%).`
+                                : '';
+                            const cobTxt = ` El ${osPct}% corresponde a Obra Social y el ${partPct}% a Particulares.`;
+                            const agendaTxt = topAgendaEntry
+                                ? ` Práctica principal: ${topAgendaEntry[0]}.`
+                                : '';
+
+                            const chips = [
+                                ...(topCentroEntry ? [{ label: 'Sede líder', value: `${topCentroEntry[0]} (${topCentroEntry[1].toLocaleString('es-AR')})` }] : []),
+                                { label: 'Cobertura', value: `${osPct}% OS · ${partPct}% Part.` },
+                                ...(infPct ? [{ label: 'Informados', value: `${infPct}%` }] : []),
+                            ];
+
+                            return {
+                                label: s.label,
+                                value: s.value,
+                                valueLabel: pctStr,
+                                rgb: s.rgb,
+                                detail: `${s.value.toLocaleString('es-AR')} estudios`,
+                                narrative: `${s.label} ${rankTxt} (${s.value.toLocaleString('es-AR')} estudios efectivos).${sedeTxt}${cobTxt}${agendaTxt}`,
+                                chips,
+                                onViewCases: () => openCasosNominalesModal({ modalidad: s.key }),
+                                onFilterBoard: () => setSelectedModalidad(s.key),
+                            };
+                        })}
                     />
                 );
             })()}
