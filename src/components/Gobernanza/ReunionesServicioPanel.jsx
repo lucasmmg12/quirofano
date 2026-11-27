@@ -1095,53 +1095,63 @@ export default function ReunionesServicioPanel({ sectorId = 'DXI', addToast }) {
                     {/* SECCIÓN 3: OPORTUNIDADES DE MEJORA (OM-*) + SECCIÓN 5: DECISIONES DE DIRECCIÓN */}
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(460px, 1fr))', gap: '16px' }}>
                         <CardBlock
-                            title="3. Oportunidades de Mejora (OM)"
-                            subtitle="Resumen ejecutivo para RDIR 04 · Conectado en solo lectura al Sistema de Calidad Dora"
+                            title="3. Oportunidades de Mejora (OM) · Dora"
+                            subtitle="Estadísticas en vivo desde el Sistema de Calidad Dora (solo lectura)"
                             rightNode={
-                                <>
-                                    <button
-                                        type="button"
-                                        onClick={() => setActivePilar('dora_om')}
-                                        style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '4px 10px', borderRadius: '7px', border: '1px solid #BFDBFE', background: '#EFF6FF', color: COLOR_NAVY, fontSize: '0.72rem', fontWeight: 800, cursor: 'pointer' }}
-                                    >
-                                        <Lock size={12} /> Dora en vivo: {doraData.metrics.total} ({doraData.metrics.pctResolucion}% res.) →
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => updateInformeField('oportunidades_mejora', [
-                                            ...(draftInforme.oportunidades_mejora || []),
-                                            { codigo: `OM-${String((draftInforme.oportunidades_mejora || []).length + 1).padStart(2, '0')}`, oportunidad: '', origen: '', accion_propuesta: '', responsable: sectorMeta.nombre, estado: 'En curso' }
-                                        ])}
-                                        style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '4px 9px', borderRadius: '7px', border: '1px solid #CBD5E1', background: '#FFFFFF', fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer' }}
-                                    >
-                                        <Plus size={13} /> + OM
-                                    </button>
-                                </>
+                                <button
+                                    type="button"
+                                    onClick={() => setActivePilar('dora_om')}
+                                    style={{
+                                        display: 'inline-flex', alignItems: 'center', gap: '6px',
+                                        padding: '6px 12px', borderRadius: '8px', border: 'none',
+                                        background: COLOR_NAVY, color: '#FFFFFF',
+                                        fontSize: '0.74rem', fontWeight: 700, cursor: 'pointer'
+                                    }}
+                                >
+                                    <Lock size={12} /> Ver todas ({doraData.metrics.total}) →
+                                </button>
                             }
                         >
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                                {(draftInforme.oportunidades_mejora || []).map((om, idx) => (
-                                    <div key={idx} style={{ border: '1px solid #E2E8F0', borderRadius: '8px', padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                        <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                                            <input style={{ ...inputStyle, width: '78px', fontWeight: 800, color: COLOR_BLUE }} value={om.codigo || ''} onChange={e => {
-                                                const next = [...draftInforme.oportunidades_mejora]; next[idx] = { ...next[idx], codigo: e.target.value }; updateInformeField('oportunidades_mejora', next);
-                                            }} />
-                                            <input style={{ ...inputStyle, fontWeight: 700 }} value={om.oportunidad || ''} onChange={e => {
-                                                const next = [...draftInforme.oportunidades_mejora]; next[idx] = { ...next[idx], oportunidad: e.target.value }; updateInformeField('oportunidades_mejora', next);
-                                            }} placeholder="Oportunidad de mejora..." />
-                                            <button type="button" onClick={() => updateInformeField('oportunidades_mejora', draftInforme.oportunidades_mejora.filter((_, i) => i !== idx))} style={{ border: 'none', background: 'transparent', color: '#EF4444', cursor: 'pointer' }}>
-                                                <Trash2 size={14} />
-                                            </button>
-                                        </div>
-                                        <input style={inputStyle} value={om.origen || ''} onChange={e => {
-                                            const next = [...draftInforme.oportunidades_mejora]; next[idx] = { ...next[idx], origen: e.target.value }; updateInformeField('oportunidades_mejora', next);
-                                        }} placeholder="Origen / dato cuantitativo del desvío..." />
-                                        <textarea rows={2} style={inputStyle} value={om.accion_propuesta || ''} onChange={e => {
-                                            const next = [...draftInforme.oportunidades_mejora]; next[idx] = { ...next[idx], accion_propuesta: e.target.value }; updateInformeField('oportunidades_mejora', next);
-                                        }} placeholder="Acción adoptada o propuesta..." />
+                            {loadingDora ? (
+                                <div style={{ padding: '24px', textAlign: 'center', color: '#64748B', fontSize: '0.8rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                                    <RefreshCw size={15} className="animate-spin" /> Consultando estadísticas de Dora...
+                                </div>
+                            ) : (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '8px' }}>
+                                        {[
+                                            { label: 'Total OM', value: doraData.metrics.total, color: COLOR_NAVY, bg: '#EFF6FF', border: '#BFDBFE' },
+                                            { label: 'Resueltas', value: `${doraData.metrics.resueltos} (${doraData.metrics.pctResolucion}%)`, color: '#047857', bg: '#ECFDF5', border: '#A7F3D0' },
+                                            { label: 'Pendientes', value: doraData.metrics.pendientes, color: '#B45309', bg: '#FFFBEB', border: '#FDE68A' },
+                                            { label: 'Validación Calidad', value: doraData.metrics.validacion, color: '#1D4ED8', bg: '#F0F9FF', border: '#BAE6FD' },
+                                            { label: 'Críticos / EA', value: doraData.metrics.criticos, color: '#B91C1C', bg: '#FEF2F2', border: '#FECACA' },
+                                            { label: 'Prom. cierre', value: doraData.metrics.avgDiasCierre !== null ? `${doraData.metrics.avgDiasCierre} d` : '—', color: '#334155', bg: '#F8FAFC', border: '#E2E8F0' },
+                                        ].map((stat, i) => (
+                                            <div key={i} style={{ padding: '10px 12px', borderRadius: '8px', background: stat.bg, border: `1px solid ${stat.border}` }}>
+                                                <div style={{ fontSize: '0.67rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.02em' }}>
+                                                    {stat.label}
+                                                </div>
+                                                <div style={{ fontSize: '1.08rem', fontWeight: 800, color: stat.color, marginTop: '2px' }}>
+                                                    {stat.value}
+                                                </div>
+                                            </div>
+                                        ))}
                                     </div>
-                                ))}
-                            </div>
+
+                                    {(doraData.doraSectors || []).length > 0 && (
+                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', paddingTop: '4px', borderTop: '1px solid #F1F5F9' }}>
+                                            {doraData.doraSectors.map(sec => {
+                                                const count = (doraData.reports || []).filter(r => r.sector === sec).length;
+                                                return (
+                                                    <span key={sec} style={{ fontSize: '0.72rem', fontWeight: 600, color: '#334155', background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: '6px', padding: '3px 8px' }}>
+                                                        {formatDoraSectorLabel(sec)}: <strong>{count}</strong>
+                                                    </span>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                         </CardBlock>
 
                         <CardBlock
