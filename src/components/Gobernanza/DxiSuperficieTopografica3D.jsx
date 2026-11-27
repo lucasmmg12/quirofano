@@ -306,11 +306,12 @@ export default function DxiSuperficieTopografica3D({
         c.tRadius = isCrossFocused ? 31.5 : 22.0;
     }, [isCrossFocused]);
 
-    // Totales por modalidad (para mostrar cantidad en cada pill y en el panel de insights izquierdo)
+    // Totales por modalidad + top 3 días/períodos de mayor demanda (para el panel de insights izquierdo)
     const modalityBreakdown = useMemo(() => {
         const res = {};
         CROSS_MODALITIES.forEach(m => {
             let total = 0, os = 0, part = 0, peakVal = 0, peakLabel = '';
+            const dayList = [];
             data.forEach(d => {
                 const vAll = Number(d?.[m.key]) || 0;
                 const vOs = Number(d?.[`${m.key}_OS`]) || 0;
@@ -318,12 +319,16 @@ export default function DxiSuperficieTopografica3D({
                 total += vAll;
                 os += vOs;
                 part += vPart;
+                if (vAll > 0) dayList.push({ label: d?.label || '', val: vAll, os: vOs, part: vPart });
                 if (vAll > peakVal) {
                     peakVal = vAll;
                     peakLabel = d?.label || '';
                 }
             });
             const avg = data.length > 0 ? (total / data.length) : 0;
+            const activeAvg = dayList.length > 0 ? (total / dayList.length) : 0;
+            const topDays = [...dayList].sort((a, b) => b.val - a.val).slice(0, 3);
+            const minDay = dayList.length > 0 ? [...dayList].sort((a, b) => a.val - b.val)[0] : null;
             res[m.key] = {
                 ...m,
                 total,
@@ -334,6 +339,10 @@ export default function DxiSuperficieTopografica3D({
                 peakVal,
                 peakLabel,
                 avg: avg.toFixed(1),
+                activeAvg: activeAvg.toFixed(1),
+                activeDays: dayList.length,
+                topDays,
+                minDay,
             };
         });
         return res;
@@ -1456,6 +1465,57 @@ export default function DxiSuperficieTopografica3D({
                                             <div style={{ fontSize: '0.71rem', color: '#475569' }}>
                                                 Pico máximo: <strong style={{ color: '#003B73' }}>{info.peakVal.toLocaleString('es-AR')}</strong> estudios ({info.peakLabel})
                                             </div>
+                                        )}
+
+                                        {/* Cuando hay 1 solo estudio seleccionado, ocupar el espacio inferior con desglose visual rico */}
+                                        {selectedModalities.length === 1 && (
+                                            <>
+                                                {/* Barra proporcional OS vs Particulares */}
+                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', paddingTop: '6px', borderTop: '1px solid #E2E8F0' }}>
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.67rem', fontWeight: 700, color: '#475569' }}>
+                                                        <span>Composición por Cobertura</span>
+                                                        <span style={{ color: '#003B73' }}>{info.osPct}% OS · {info.partPct}% Part.</span>
+                                                    </div>
+                                                    <div style={{ width: '100%', height: '7px', borderRadius: '999px', background: '#E2E8F0', overflow: 'hidden', display: 'flex' }}>
+                                                        <div style={{ width: `${info.osPct}%`, background: '#003B73', transition: 'width 0.4s ease' }} />
+                                                        <div style={{ width: `${info.partPct}%`, background: '#EA580C', transition: 'width 0.4s ease' }} />
+                                                    </div>
+                                                </div>
+
+                                                {/* Top 3 Días / Períodos de Mayor Demanda */}
+                                                {info.topDays && info.topDays.length > 0 && (
+                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', paddingTop: '6px', borderTop: '1px solid #E2E8F0' }}>
+                                                        <div style={{ fontSize: '0.67rem', fontWeight: 800, color: '#003B73', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+                                                            Top {info.topDays.length} {granularity === 'dia' ? 'Días' : 'Meses'} de Mayor Demanda
+                                                        </div>
+                                                        {info.topDays.map((td, tIdx) => {
+                                                            const pctBar = info.peakVal > 0 ? Math.max(12, Math.round((td.val * 100) / info.peakVal)) : 0;
+                                                            return (
+                                                                <div key={tIdx} style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                                                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.71rem', color: '#1E293B' }}>
+                                                                        <span style={{ fontWeight: 700 }}>{tIdx + 1}. {td.label}</span>
+                                                                        <span style={{ fontWeight: 800, color: '#003B73' }}>
+                                                                            {td.val.toLocaleString('es-AR')} <span style={{ fontWeight: 500, color: '#64748B' }}>({td.os} OS · {td.part} Part.)</span>
+                                                                        </span>
+                                                                    </div>
+                                                                    <div style={{ width: '100%', height: '5px', borderRadius: '999px', background: '#E2E8F0', overflow: 'hidden' }}>
+                                                                        <div style={{ width: `${pctBar}%`, height: '100%', background: tIdx === 0 ? '#003B73' : '#3B82F6', borderRadius: '999px', transition: 'width 0.4s ease' }} />
+                                                                    </div>
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                )}
+
+                                                {/* Síntesis ejecutiva */}
+                                                <div style={{
+                                                    background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: '8px',
+                                                    padding: '8px 10px', fontSize: '0.72rem', color: '#1E293B', lineHeight: 1.45, marginTop: '2px'
+                                                }}>
+                                                    <strong style={{ color: '#003B73' }}>Lectura rápida:</strong> {info.activeDays} {granularity === 'dia' ? 'días con actividad' : 'meses activos'} (prom. efectivo <strong>{info.activeAvg}</strong>/{granularity === 'dia' ? 'día' : 'mes'}).
+                                                    {info.minDay ? ` Mínimo activo: ${info.minDay.val} (${info.minDay.label}).` : ''}
+                                                </div>
+                                            </>
                                         )}
                                     </div>
                                 );
