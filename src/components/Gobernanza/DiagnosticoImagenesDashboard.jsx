@@ -1982,27 +1982,6 @@ export default function DiagnosticoImagenesDashboard({
                         <Users size={15} />
                         Ver Tabla de Casos Nominales
                     </button>
-                    <button
-                        onClick={() => loadDxIData(true)}
-                        disabled={refreshing}
-                        title="Actualizar el resumen fijo consultando SALUS en vivo"
-                        style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '6px',
-                            background: '#F8FAFC',
-                            color: '#334155',
-                            border: '1px solid #CBD5E1',
-                            borderRadius: '10px',
-                            padding: '9px 12px',
-                            fontSize: '0.78rem',
-                            fontWeight: 600,
-                            cursor: refreshing ? 'wait' : 'pointer'
-                        }}
-                    >
-                        <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />
-                        {refreshing ? 'Sincronizando...' : 'Actualizar Resumen'}
-                    </button>
                 </div>
             </div>
 
