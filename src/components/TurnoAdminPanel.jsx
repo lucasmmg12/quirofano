@@ -10,7 +10,7 @@ import {
     Clock, CheckCircle, XCircle, BarChart3, RefreshCw,
     User, FileText, Receipt, Microscope, HelpCircle,
     Building2, Baby, ShieldCheck, Monitor, Edit2, Timer, AlertTriangle,
-    Download, FileSpreadsheet, RotateCcw
+    Download, FileSpreadsheet, RotateCcw, Search, X
 } from 'lucide-react';
 import { SkeletonCardGrid } from './SkeletonLoader';
 import { exportMetricasToExcel, generateMetricasPdf } from '../utils/metricsReport';
@@ -74,6 +74,7 @@ export default function TurnoAdminPanel({ addToast, currentUser }) {
     const [tipoFilter, setTipoFilter] = useState(null);
     const [showMetricas, setShowMetricas] = useState(false);
     const [showAtendidos, setShowAtendidos] = useState(false);
+    const [atendidosSearch, setAtendidosSearch] = useState('');
     const [showBoxManager, setShowBoxManager] = useState(false);
     const [activeTimers, setActiveTimers] = useState({}); // turnoId → elapsed seconds
     const timerInterval = useRef(null);
@@ -838,65 +839,155 @@ export default function TurnoAdminPanel({ addToast, currentUser }) {
             </div>
 
             {/* ═══ ATENDIDOS ═══ */}
-            {showAtendidos && (
-                <div style={s.atendidosPanel}>
-                    <h3 style={s.metricasTitle}>
-                        <CheckCircle size={16} style={{ color: '#16A34A' }} /> Atendidos ({rangoLabel})
-                        <span style={{ fontSize: '0.8rem', fontWeight: 500, color: '#64748B', marginLeft: '8px' }}>
-                            ({atendidos.length} registros)
-                        </span>
-                    </h3>
-                    {atendidos.length === 0 ? (
-                        <p style={{ color: '#94A3B8', textAlign: 'center' }}>Sin atenciones registradas en el período ({rangoLabel})</p>
-                    ) : (
-                        <div style={s.atendidosTable}>
-                            <div style={s.atTableHead}>
-                                <span style={{ flex: '0 0 70px' }}>Turno</span>
-                                <span style={{ flex: 1 }}>Paciente</span>
-                                <span style={{ flex: '0 0 110px' }}>Trámite</span>
-                                <span style={{ flex: '0 0 110px' }}>Atendido por</span>
-                                <span style={{ flex: '0 0 75px' }}>Espera</span>
-                                <span style={{ flex: '0 0 75px' }}>Atención</span>
-                                <span style={{ flex: '0 0 60px' }}>Hora</span>
+            {showAtendidos && (() => {
+                const normalizeStr = (val) =>
+                    String(val || '')
+                        .toLowerCase()
+                        .normalize('NFD')
+                        .replace(/[\u0300-\u036f]/g, '');
+                const qNorm = normalizeStr(atendidosSearch.trim());
+                const filteredAtendidos = atendidos.filter(t => {
+                    if (tipoFilter) {
+                        const tab = filterTabs.find(ft => ft.id === tipoFilter);
+                        if (tab && tab.isGroup) {
+                            const tramitesEnGrupo = config.filter(c => c.grupo === tipoFilter).map(c => c.tipo_tramite);
+                            if (!tramitesEnGrupo.includes(t.tipo_tramite)) return false;
+                        } else if (t.tipo_tramite !== tipoFilter) {
+                            return false;
+                        }
+                    }
+                    if (!qNorm) return true;
+                    const cfg = getCfgForType(t.tipo_tramite);
+                    return (
+                        normalizeStr(t.nombre_paciente).includes(qNorm) ||
+                        normalizeStr(t.numero_turno).includes(qNorm) ||
+                        normalizeStr(t.dni).includes(qNorm) ||
+                        normalizeStr(t.atendido_por).includes(qNorm) ||
+                        normalizeStr(cfg.label).includes(qNorm)
+                    );
+                });
+                const visibleAtendidos = qNorm ? filteredAtendidos : filteredAtendidos.slice(0, 50);
+
+                return (
+                    <div style={s.atendidosPanel}>
+                        <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            flexWrap: 'wrap',
+                            gap: '12px',
+                            marginBottom: '14px',
+                        }}>
+                            <h3 style={{ ...s.metricasTitle, margin: 0 }}>
+                                <CheckCircle size={16} style={{ color: '#16A34A' }} /> Atendidos ({rangoLabel})
+                                <span style={{ fontSize: '0.8rem', fontWeight: 500, color: '#64748B', marginLeft: '8px' }}>
+                                    {qNorm
+                                        ? `(${filteredAtendidos.length} de ${atendidos.length} registros)`
+                                        : `(${filteredAtendidos.length} registros)`}
+                                </span>
+                            </h3>
+
+                            {/* Buscador de pacientes / turno / DNI / agente */}
+                            <div style={{
+                                position: 'relative',
+                                display: 'flex',
+                                alignItems: 'center',
+                                minWidth: '280px',
+                                maxWidth: '380px',
+                                flex: '1 1 280px',
+                            }}>
+                                <Search size={15} style={{ position: 'absolute', left: '11px', color: '#64748B', pointerEvents: 'none' }} />
+                                <input
+                                    type="text"
+                                    value={atendidosSearch}
+                                    onChange={(e) => setAtendidosSearch(e.target.value)}
+                                    placeholder="Buscar paciente, turno (ej. A010), DNI o agente..."
+                                    style={{
+                                        width: '100%',
+                                        padding: '8px 34px 8px 34px',
+                                        borderRadius: '8px',
+                                        border: '1px solid #CBD5E1',
+                                        background: '#FFFFFF',
+                                        fontSize: '0.82rem',
+                                        color: '#0F172A',
+                                        outline: 'none',
+                                        boxShadow: '0 1px 2px rgba(15, 23, 42, 0.04)',
+                                    }}
+                                />
+                                {atendidosSearch && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setAtendidosSearch('')}
+                                        title="Limpiar búsqueda"
+                                        style={{
+                                            position: 'absolute',
+                                            right: '8px',
+                                            background: '#F1F5F9',
+                                            border: 'none',
+                                            borderRadius: '50%',
+                                            width: '20px',
+                                            height: '20px',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            cursor: 'pointer',
+                                            color: '#475569',
+                                        }}
+                                    >
+                                        <X size={12} />
+                                    </button>
+                                )}
                             </div>
-                            {atendidos.filter(t => {
-                                if (!tipoFilter) return true;
-                                const tab = filterTabs.find(ft => ft.id === tipoFilter);
-                                if (tab && tab.isGroup) {
-                                    const tramitesEnGrupo = config.filter(c => c.grupo === tipoFilter).map(c => c.tipo_tramite);
-                                    return tramitesEnGrupo.includes(t.tipo_tramite);
-                                }
-                                return t.tipo_tramite === tipoFilter;
-                            }).slice(0, 30).map(t => {
-                                const cfg = getCfgForType(t.tipo_tramite);
-                                const esperaMins = t.llamado_at && t.created_at
-                                    ? Math.floor((new Date(t.llamado_at) - new Date(t.created_at)) / 60000)
-                                    : null;
-                                const atencionMins = t.finalizado_at && t.llamado_at
-                                    ? Math.floor((new Date(t.finalizado_at) - new Date(t.llamado_at)) / 60000)
-                                    : null;
-                                const esperaColor = esperaMins > 10 ? '#EF4444' : esperaMins > 5 ? '#F59E0B' : '#16A34A';
-                                const atencionColor = atencionMins > 15 ? '#EF4444' : atencionMins > 8 ? '#F59E0B' : '#3B82F6';
-                                return (
-                                    <div key={t.id} style={s.atTableRow}>
-                                        <span style={{ flex: '0 0 70px', fontWeight: 700, color: cfg.color }}>{t.numero_turno}</span>
-                                        <span style={{ flex: 1, color: '#0D3B66', fontWeight: t.nombre_paciente ? 600 : 400 }}>{t.nombre_paciente || '—'}</span>
-                                        <span style={{ flex: '0 0 110px', color: '#475569' }}>{cfg.label}</span>
-                                        <span style={{ flex: '0 0 110px', color: '#6366F1', fontWeight: 600, fontSize: '0.78rem' }}>{t.atendido_por || '—'}</span>
-                                        <span style={{ flex: '0 0 75px', fontWeight: 700, color: esperaColor, fontSize: '0.8rem' }}>
-                                            {esperaMins != null ? `${esperaMins}m` : '—'}
-                                        </span>
-                                        <span style={{ flex: '0 0 75px', fontWeight: 700, color: atencionColor, fontSize: '0.8rem' }}>
-                                            {atencionMins != null ? `${atencionMins}m` : '—'}
-                                        </span>
-                                        <span style={{ flex: '0 0 60px', color: '#94A3B8', fontSize: '0.75rem' }}>{formatTime(t.finalizado_at)}</span>
-                                    </div>
-                                );
-                            })}
                         </div>
-                    )}
-                </div>
-            )}
+
+                        {atendidos.length === 0 ? (
+                            <p style={{ color: '#94A3B8', textAlign: 'center' }}>Sin atenciones registradas en el período ({rangoLabel})</p>
+                        ) : filteredAtendidos.length === 0 ? (
+                            <p style={{ color: '#64748B', textAlign: 'center', padding: '20px 0', fontSize: '0.86rem' }}>
+                                No se encontraron pacientes que coincidan con <strong>"{atendidosSearch}"</strong>.
+                            </p>
+                        ) : (
+                            <div style={s.atendidosTable}>
+                                <div style={s.atTableHead}>
+                                    <span style={{ flex: '0 0 70px' }}>Turno</span>
+                                    <span style={{ flex: 1 }}>Paciente</span>
+                                    <span style={{ flex: '0 0 110px' }}>Trámite</span>
+                                    <span style={{ flex: '0 0 110px' }}>Atendido por</span>
+                                    <span style={{ flex: '0 0 75px' }}>Espera</span>
+                                    <span style={{ flex: '0 0 75px' }}>Atención</span>
+                                    <span style={{ flex: '0 0 60px' }}>Hora</span>
+                                </div>
+                                {visibleAtendidos.map(t => {
+                                    const cfg = getCfgForType(t.tipo_tramite);
+                                    const esperaMins = t.llamado_at && t.created_at
+                                        ? Math.floor((new Date(t.llamado_at) - new Date(t.created_at)) / 60000)
+                                        : null;
+                                    const atencionMins = t.finalizado_at && t.llamado_at
+                                        ? Math.floor((new Date(t.finalizado_at) - new Date(t.llamado_at)) / 60000)
+                                        : null;
+                                    const esperaColor = esperaMins > 10 ? '#EF4444' : esperaMins > 5 ? '#F59E0B' : '#16A34A';
+                                    const atencionColor = atencionMins > 15 ? '#EF4444' : atencionMins > 8 ? '#F59E0B' : '#3B82F6';
+                                    return (
+                                        <div key={t.id} style={s.atTableRow}>
+                                            <span style={{ flex: '0 0 70px', fontWeight: 700, color: cfg.color }}>{t.numero_turno}</span>
+                                            <span style={{ flex: 1, color: '#0D3B66', fontWeight: t.nombre_paciente ? 600 : 400 }}>{t.nombre_paciente || '—'}</span>
+                                            <span style={{ flex: '0 0 110px', color: '#475569' }}>{cfg.label}</span>
+                                            <span style={{ flex: '0 0 110px', color: '#6366F1', fontWeight: 600, fontSize: '0.78rem' }}>{t.atendido_por || '—'}</span>
+                                            <span style={{ flex: '0 0 75px', fontWeight: 700, color: esperaColor, fontSize: '0.8rem' }}>
+                                                {esperaMins != null ? `${esperaMins}m` : '—'}
+                                            </span>
+                                            <span style={{ flex: '0 0 75px', fontWeight: 700, color: atencionColor, fontSize: '0.8rem' }}>
+                                                {atencionMins != null ? `${atencionMins}m` : '—'}
+                                            </span>
+                                            <span style={{ flex: '0 0 60px', color: '#94A3B8', fontSize: '0.75rem' }}>{formatTime(t.finalizado_at)}</span>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </div>
+                );
+            })()}
 
             {/* ═══ MODAL: DERIVAR A OTRO BOX ═══ */}
             {derivarModal && (
