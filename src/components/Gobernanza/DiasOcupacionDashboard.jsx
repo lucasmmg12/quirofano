@@ -3482,251 +3482,77 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                         {/* CONTENEDOR DE SERVICIOS (ACORDEÓN MODULAR) */}
                         <div style={{ padding: '12px', display: 'flex', flexDirection: 'column', gap: '10px', flex: 1 }}>
                             
-                            {/* 🏥 SERVICIO: UCI (EXPANDIBLE AL TOCARLO) */}
+                            {/* 🏥 SERVICIO: UCI */}
                             <div style={{
                                 borderRadius: '8px',
-                                border: `1.5px solid ${isUciOpen ? '#93C5FD' : '#E2E8F0'}`,
+                                border: `1.5px solid ${sectorId === 'UCI' ? '#93C5FD' : '#E2E8F0'}`,
                                 background: '#FFFFFF',
-                                boxShadow: isUciOpen ? '0 4px 12px -2px rgba(37, 99, 235, 0.08)' : '0 1px 2px rgba(0,0,0,0.03)',
+                                boxShadow: sectorId === 'UCI' ? '0 4px 12px -2px rgba(37, 99, 235, 0.08)' : '0 1px 2px rgba(0,0,0,0.03)',
                                 overflow: 'hidden',
                                 transition: 'all 0.2s ease'
                             }}>
-                                {/* Botón Cabecera UCI */}
                                 <button
                                     type="button"
-                                    onClick={() => {
-                                        handleToggleUci();
-                                        if (sectorId !== 'UCI') handleSelectSector('UCI');
-                                    }}
+                                    onClick={() => handleSelectSector('UCI')}
                                     style={{
                                         width: '100%',
                                         display: 'flex',
                                         alignItems: 'center',
                                         justifyContent: 'space-between',
                                         padding: '11px 12px',
-                                        background: isUciOpen ? '#EFF6FF' : '#F8FAFC',
+                                        background: sectorId === 'UCI' ? '#EFF6FF' : '#F8FAFC',
                                         border: 'none',
                                         cursor: 'pointer',
                                         textAlign: 'left',
                                         transition: 'background 0.15s ease'
                                     }}
-                                    onMouseEnter={e => { if (!isUciOpen) e.currentTarget.style.background = '#F1F5F9'; }}
-                                    onMouseLeave={e => { if (!isUciOpen) e.currentTarget.style.background = isUciOpen ? '#EFF6FF' : '#F8FAFC'; }}
+                                    onMouseEnter={e => { if (sectorId !== 'UCI') e.currentTarget.style.background = '#F1F5F9'; }}
+                                    onMouseLeave={e => { if (sectorId !== 'UCI') e.currentTarget.style.background = '#F8FAFC'; }}
                                 >
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                         <div style={{ width: 28, height: 28, borderRadius: 6, background: '#EFF6FF', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#1E40AF' }}><HeartPulse size={16} /></div>
                                         <div style={{ fontWeight: 800, fontSize: '0.88rem', color: '#1E40AF' }}>UCI</div>
                                     </div>
-                                    
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                        <span style={{ color: isUciOpen ? '#2563EB' : '#94A3B8', display: 'flex', alignItems: 'center' }}>
-                                            {isUciOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                                        </span>
-                                    </div>
                                 </button>
 
-                                {/* CONTENIDO DESPLEGABLE DE UCI ("TODO LO DE ABAJO") */}
-                                {isUciOpen && (
+                                {sectorId === 'UCI' && (
                                     <div style={{
                                         borderTop: '1px solid #DBEAFE',
-                                        background: '#FFFFFF',
-                                        animation: 'fadeIn 0.2s ease-out'
+                                        padding: '8px 10px',
+                                        background: '#F8FAFC',
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                        gap: '4px'
                                     }}>
-                                        {/* Sub-selector de UCI (Consolidado vs Intensiva vs Intermedia) */}
-                                        <div style={{
-                                            padding: '10px 12px',
-                                            background: '#F8FAFC',
-                                            borderBottom: '1px solid #F1F5F9',
-                                            display: 'flex',
-                                            flexDirection: 'column',
-                                            gap: '4px'
-                                        }}>
-                                            <span style={{ fontSize: '0.66rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>
-                                                Nivel Asistencial:
-                                            </span>
-                                            <div style={{ display: 'flex', gap: '3px' }}>
-                                                {[
-                                                    { id: 'CONSOLIDADO', label: 'Total 16', color: '#2563EB' },
-                                                    { id: 'INTENSIVA', label: 'Intensiva (8)', color: '#DC2626' },
-                                                    { id: 'INTERMEDIA', label: 'Intermedia (8)', color: '#D97706' }
-                                                ].map(sub => {
-                                                    const isSel = uciSubNivel === sub.id;
-                                                    return (
-                                                        <button
-                                                            key={sub.id}
-                                                            type="button"
-                                                            onClick={() => handleSelectUciSubNivel(sub.id)}
-                                                            style={{
-                                                                flex: 1,
-                                                                padding: '5px 2px',
-                                                                borderRadius: '6px',
-                                                                border: isSel ? `1px solid ${sub.color}` : '1px solid #CBD5E1',
-                                                                background: isSel ? '#FFFFFF' : '#F8FAFC',
-                                                                color: isSel ? sub.color : '#64748B',
-                                                                fontWeight: isSel ? 800 : 500,
-                                                                fontSize: '0.68rem',
-                                                                cursor: 'pointer',
-                                                                boxShadow: isSel ? '0 1px 2px rgba(0,0,0,0.06)' : 'none',
-                                                                transition: 'all 0.15s ease'
-                                                            }}
-                                                        >
-                                                            {sub.label}
-                                                        </button>
-                                                    );
-                                                })}
-                                            </div>
-                                        </div>
-
-                                        {/* Nivel 3: Lista de Indicadores con checklist */}
-                                        <div style={{ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                                <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
-                                                    Indicadores UCI ({activeIndicatorIds.length})
-                                                </span>
-                                                <div style={{ display: 'flex', gap: '6px' }}>
-                                                    <button
-                                                        type="button"
-                                                        onClick={handleSelectAllIndicators}
-                                                        style={{
-                                                            background: 'transparent',
-                                                            border: 'none',
-                                                            color: '#2563EB',
-                                                            fontSize: '0.68rem',
-                                                            fontWeight: 700,
-                                                            cursor: 'pointer',
-                                                            padding: '1px 4px'
-                                                        }}
-                                                    >
-                                                        Todos
-                                                    </button>
-                                                    <span style={{ color: '#CBD5E1' }}>|</span>
-                                                    <button
-                                                        type="button"
-                                                        onClick={handleResetDefaults}
-                                                        style={{
-                                                            background: 'transparent',
-                                                            border: 'none',
-                                                            color: '#64748B',
-                                                            fontSize: '0.68rem',
-                                                            fontWeight: 600,
-                                                            cursor: 'pointer',
-                                                            padding: '1px 4px'
-                                                        }}
-                                                    >
-                                                        Predeterminados
-                                                    </button>
-                                                </div>
-                                            </div>
-
-                                            {/* Grupos de Indicadores */}
-                                            {SIDEBAR_INDICATOR_GROUPS.map(group => {
-                                                const groupIndicators = INDICADORES_CATALOGO.filter(i => group.ids.includes(i.id));
-                                                if (groupIndicators.length === 0) return null;
-
-                                                const activeCountInGroup = groupIndicators.filter(i => activeIndicatorIds.includes(i.id)).length;
-
+                                        <span style={{ fontSize: '0.64rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>
+                                            Nivel Asistencial:
+                                        </span>
+                                        <div style={{ display: 'flex', gap: '3px' }}>
+                                            {[
+                                                { id: 'CONSOLIDADO', label: 'Total 16', color: '#2563EB' },
+                                                { id: 'INTENSIVA', label: 'Intensiva (8)', color: '#DC2626' },
+                                                { id: 'INTERMEDIA', label: 'Intermedia (8)', color: '#D97706' }
+                                            ].map(sub => {
+                                                const isSel = uciSubNivel === sub.id;
                                                 return (
-                                                    <div key={group.id} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                                        <div style={{
-                                                            display: 'flex',
-                                                            alignItems: 'center',
-                                                            justifyContent: 'space-between',
-                                                            padding: '2px 4px',
-                                                            borderBottom: '1px solid #F1F5F9',
-                                                            marginBottom: '2px'
-                                                        }}>
-                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                                                                <span>{group.icon}</span>
-                                                                <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#334155' }}>
-                                                                    {group.title}
-                                                                </span>
-                                                            </div>
-                                                            <span style={{ fontSize: '0.62rem', fontWeight: 700, color: '#64748B' }}>
-                                                                {activeCountInGroup}/{groupIndicators.length}
-                                                            </span>
-                                                        </div>
-
-                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                                                            {groupIndicators.map(ind => {
-                                                                const isChecked = activeIndicatorIds.includes(ind.id);
-                                                                return (
-                                                                    <div
-                                                                        key={ind.id}
-                                                                        onClick={() => handleToggleIndicator(ind.id)}
-                                                                        style={{
-                                                                            display: 'flex',
-                                                                            alignItems: 'center',
-                                                                            justifyContent: 'space-between',
-                                                                            padding: '6px 8px',
-                                                                            borderRadius: '6px',
-                                                                            cursor: 'pointer',
-                                                                            background: isChecked ? '#EFF6FF' : 'transparent',
-                                                                            border: isChecked ? '1px solid #BFDBFE' : '1px solid transparent',
-                                                                            transition: 'all 0.12s ease'
-                                                                        }}
-                                                                        onMouseEnter={(e) => {
-                                                                            if (!isChecked) e.currentTarget.style.background = '#F8FAFC';
-                                                                        }}
-                                                                        onMouseLeave={(e) => {
-                                                                            if (!isChecked) e.currentTarget.style.background = 'transparent';
-                                                                        }}
-                                                                    >
-                                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
-                                                                            <button
-                                                                                type="button"
-                                                                                onClick={(e) => {
-                                                                                    e.stopPropagation();
-                                                                                    handleToggleIndicator(ind.id);
-                                                                                }}
-                                                                                style={{
-                                                                                    background: 'transparent',
-                                                                                    border: 'none',
-                                                                                    padding: 0,
-                                                                                    cursor: 'pointer',
-                                                                                    display: 'flex',
-                                                                                    alignItems: 'center',
-                                                                                    justifyContent: 'center',
-                                                                                    color: isChecked ? '#1E40AF' : '#94A3B8'
-                                                                                }}
-                                                                                title={isChecked ? "Desactivar del dashboard" : "Enviar al dashboard"}
-                                                                            >
-                                                                                {isChecked ? (
-                                                                                    <CheckSquare size={16} color="#1E40AF" />
-                                                                                ) : (
-                                                                                    <Square size={16} color="#94A3B8" />
-                                                                                )}
-                                                                            </button>
-
-                                                                            <span style={{
-                                                                                fontSize: '0.74rem',
-                                                                                fontWeight: isChecked ? 700 : 500,
-                                                                                color: isChecked ? '#1E293B' : '#475569',
-                                                                                whiteSpace: 'nowrap',
-                                                                                overflow: 'hidden',
-                                                                                textOverflow: 'ellipsis'
-                                                                            }}
-                                                                            title={ind.descripcion}
-                                                                            >
-                                                                                {ind.label}
-                                                                            </span>
-                                                                        </div>
-
-                                                                        <span style={{
-                                                                            fontSize: '0.6rem',
-                                                                            fontWeight: 700,
-                                                                            padding: '1px 4px',
-                                                                            borderRadius: '4px',
-                                                                            background: ind.tipo === 'kpi' ? '#DBEAFE' : ind.tipo === 'table' ? '#D1FAE5' : '#F1F5F9',
-                                                                            color: ind.tipo === 'kpi' ? '#1E40AF' : ind.tipo === 'table' ? '#065F46' : '#475569',
-                                                                            flexShrink: 0
-                                                                        }}>
-                                                                            {ind.tipo === 'kpi' ? 'KPI' : ind.tipo === 'table' ? 'Tabla' : 'Gráfico'}
-                                                                        </span>
-                                                                    </div>
-                                                                );
-                                                            })}
-                                                        </div>
-                                                    </div>
+                                                    <button
+                                                        key={sub.id}
+                                                        type="button"
+                                                        onClick={() => handleSelectUciSubNivel(sub.id)}
+                                                        style={{
+                                                            flex: 1,
+                                                            padding: '5px 2px',
+                                                            borderRadius: '6px',
+                                                            border: isSel ? `1px solid ${sub.color}` : '1px solid #CBD5E1',
+                                                            background: isSel ? '#FFFFFF' : '#F8FAFC',
+                                                            color: isSel ? sub.color : '#64748B',
+                                                            fontWeight: isSel ? 800 : 500,
+                                                            fontSize: '0.68rem',
+                                                            cursor: 'pointer'
+                                                        }}
+                                                    >
+                                                        {sub.label}
+                                                    </button>
                                                 );
                                             })}
                                         </div>
@@ -3734,23 +3560,19 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                 )}
                             </div>
 
-                            {/* 🚑 SERVICIO: GUARDIA CLÍNICA (EXPANDIBLE AL TOCARLO) */}
+                            {/* 🚑 SERVICIO: GUARDIA CLÍNICA */}
                             {!isUciOnly && (
                                 <div style={{
                                     borderRadius: '8px',
-                                    border: `1.5px solid ${isGuardiaOpen || sectorId === 'GUARDIA' ? '#93C5FD' : '#E2E8F0'}`,
+                                    border: `1.5px solid ${sectorId === 'GUARDIA' ? '#93C5FD' : '#E2E8F0'}`,
                                     background: '#FFFFFF',
-                                    boxShadow: isGuardiaOpen || sectorId === 'GUARDIA' ? '0 4px 12px -2px rgba(37, 99, 235, 0.08)' : '0 1px 2px rgba(0,0,0,0.03)',
+                                    boxShadow: sectorId === 'GUARDIA' ? '0 4px 12px -2px rgba(37, 99, 235, 0.08)' : '0 1px 2px rgba(0,0,0,0.03)',
                                     overflow: 'hidden',
                                     transition: 'all 0.2s ease'
                                 }}>
-                                    {/* Botón Cabecera Guardia */}
                                     <button
                                         type="button"
-                                        onClick={() => {
-                                            handleToggleGuardia();
-                                            if (sectorId !== 'GUARDIA') handleSelectSector('GUARDIA');
-                                        }}
+                                        onClick={() => handleSelectSector('GUARDIA')}
                                         style={{
                                             width: '100%',
                                             display: 'flex',
@@ -3772,100 +3594,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                                 Guardia Clínica
                                             </div>
                                         </div>
-                                        
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                            <span style={{ color: sectorId === 'GUARDIA' ? '#2563EB' : '#94A3B8', display: 'flex', alignItems: 'center' }}>
-                                                {isGuardiaOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                                            </span>
-                                        </div>
                                     </button>
-
-                                    {/* CONTENIDO DESPLEGABLE DE GUARDIA */}
-                                    {isGuardiaOpen && (
-                                        <div style={{
-                                            borderTop: '1px solid #DBEAFE',
-                                            background: '#FFFFFF',
-                                            animation: 'fadeIn 0.2s ease-out'
-                                        }}>
-                                            <div style={{ padding: '10px 12px', background: '#F8FAFC', borderBottom: '1px solid #F1F5F9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                <span style={{ fontSize: '0.7rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase' }}>
-                                                    Indicadores Guardia ({activeGuardiaIds.length})
-                                                </span>
-                                                <button
-                                                    type="button"
-                                                    onClick={handleSelectAllGuardiaIndicators}
-                                                    style={{
-                                                        background: 'transparent',
-                                                        border: 'none',
-                                                        color: '#2563EB',
-                                                        fontSize: '0.68rem',
-                                                        fontWeight: 700,
-                                                        cursor: 'pointer',
-                                                        padding: '1px 4px'
-                                                    }}
-                                                >
-                                                    Todos
-                                                </button>
-                                            </div>
-
-                                            <div style={{ padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: '4px', maxHeight: '320px', overflowY: 'auto' }}>
-                                                {INDICADORES_GUARDIA_CATALOGO.map(ind => {
-                                                    const isChecked = activeGuardiaIds.includes(ind.id);
-                                                    return (
-                                                        <div
-                                                            key={ind.id}
-                                                            onClick={() => {
-                                                                if (sectorId !== 'GUARDIA') handleSelectSector('GUARDIA');
-                                                                handleToggleGuardiaIndicator(ind.id);
-                                                            }}
-                                                            style={{
-                                                                display: 'flex',
-                                                                alignItems: 'center',
-                                                                justifyContent: 'space-between',
-                                                                padding: '6px 8px',
-                                                                borderRadius: '6px',
-                                                                cursor: 'pointer',
-                                                                background: isChecked && sectorId === 'GUARDIA' ? '#EFF6FF' : 'transparent',
-                                                                border: isChecked && sectorId === 'GUARDIA' ? '1px solid #BFDBFE' : '1px solid transparent',
-                                                                transition: 'all 0.12s ease'
-                                                            }}
-                                                        >
-                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
-                                                                {isChecked ? (
-                                                                    <CheckSquare size={15} color="#1E40AF" />
-                                                                ) : (
-                                                                    <Square size={15} color="#94A3B8" />
-                                                                )}
-                                                                <span style={{
-                                                                    fontSize: '0.74rem',
-                                                                    fontWeight: isChecked ? 700 : 500,
-                                                                    color: isChecked ? '#1E293B' : '#475569',
-                                                                    whiteSpace: 'nowrap',
-                                                                    overflow: 'hidden',
-                                                                    textOverflow: 'ellipsis'
-                                                                }}
-                                                                title={ind.descripcion}
-                                                                >
-                                                                    {ind.label}
-                                                                </span>
-                                                            </div>
-                                                            <span style={{
-                                                                fontSize: '0.6rem',
-                                                                fontWeight: 700,
-                                                                padding: '1px 4px',
-                                                                borderRadius: '4px',
-                                                                background: ind.tipo === 'kpi' ? '#DBEAFE' : '#D1FAE5',
-                                                                color: ind.tipo === 'kpi' ? '#1E40AF' : '#065F46',
-                                                                flexShrink: 0
-                                                            }}>
-                                                                {ind.tipo === 'kpi' ? 'KPI' : 'Donut'}
-                                                            </span>
-                                                        </div>
-                                                    );
-                                                })}
-                                            </div>
-                                        </div>
-                                    )}
                                 </div>
                             )}
 
@@ -3873,19 +3602,15 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                             {!isUciOnly && (
                                 <div style={{
                                     borderRadius: '8px',
-                                    border: `1.5px solid ${isQuirofanoOpen || sectorId === 'QUIROFANO' ? '#93C5FD' : '#E2E8F0'}`,
+                                    border: `1.5px solid ${sectorId === 'QUIROFANO' ? '#93C5FD' : '#E2E8F0'}`,
                                     background: '#FFFFFF',
-                                    boxShadow: isQuirofanoOpen || sectorId === 'QUIROFANO' ? '0 4px 12px -2px rgba(37, 99, 235, 0.08)' : '0 1px 2px rgba(0,0,0,0.03)',
+                                    boxShadow: sectorId === 'QUIROFANO' ? '0 4px 12px -2px rgba(37, 99, 235, 0.08)' : '0 1px 2px rgba(0,0,0,0.03)',
                                     overflow: 'hidden',
                                     transition: 'all 0.2s ease'
                                 }}>
-                                    {/* Botón Cabecera Quirófano */}
                                     <button
                                         type="button"
-                                        onClick={() => {
-                                            handleToggleQuirofano();
-                                            if (sectorId !== 'QUIROFANO') handleSelectSector('QUIROFANO');
-                                        }}
+                                        onClick={() => handleSelectSector('QUIROFANO')}
                                         style={{
                                             width: '100%',
                                             display: 'flex',
@@ -3907,100 +3632,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                                 Quirófano & HdD
                                             </div>
                                         </div>
-                                        
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                            <span style={{ color: sectorId === 'QUIROFANO' ? '#2563EB' : '#94A3B8', display: 'flex', alignItems: 'center' }}>
-                                                {isQuirofanoOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                                            </span>
-                                        </div>
                                     </button>
-
-                                    {/* CONTENIDO DESPLEGABLE DE QUIRÓFANO */}
-                                    {isQuirofanoOpen && (
-                                        <div style={{
-                                            borderTop: '1px solid #DBEAFE',
-                                            background: '#FFFFFF',
-                                            animation: 'fadeIn 0.2s ease-out'
-                                        }}>
-                                            <div style={{ padding: '10px 12px', background: '#F8FAFC', borderBottom: '1px solid #F1F5F9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                <span style={{ fontSize: '0.7rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase' }}>
-                                                    Indicadores Quirófano ({activeQuirofanoIds.length})
-                                                </span>
-                                                <button
-                                                    type="button"
-                                                    onClick={handleSelectAllQuirofanoIndicators}
-                                                    style={{
-                                                        background: 'transparent',
-                                                        border: 'none',
-                                                        color: '#2563EB',
-                                                        fontSize: '0.68rem',
-                                                        fontWeight: 700,
-                                                        cursor: 'pointer',
-                                                        padding: '1px 4px'
-                                                    }}
-                                                >
-                                                    Todos
-                                                </button>
-                                            </div>
-
-                                            <div style={{ padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: '4px', maxHeight: '320px', overflowY: 'auto' }}>
-                                                {INDICADORES_QUIROFANO_CATALOGO.map(ind => {
-                                                    const isChecked = activeQuirofanoIds.includes(ind.id);
-                                                    return (
-                                                        <div
-                                                            key={ind.id}
-                                                            onClick={() => {
-                                                                if (sectorId !== 'QUIROFANO') handleSelectSector('QUIROFANO');
-                                                                handleToggleQuirofanoIndicator(ind.id);
-                                                            }}
-                                                            style={{
-                                                                display: 'flex',
-                                                                alignItems: 'center',
-                                                                justifyContent: 'space-between',
-                                                                padding: '6px 8px',
-                                                                borderRadius: '6px',
-                                                                cursor: 'pointer',
-                                                                background: isChecked && sectorId === 'QUIROFANO' ? '#EFF6FF' : 'transparent',
-                                                                border: isChecked && sectorId === 'QUIROFANO' ? '1px solid #BFDBFE' : '1px solid transparent',
-                                                                transition: 'all 0.12s ease'
-                                                            }}
-                                                        >
-                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
-                                                                {isChecked ? (
-                                                                    <CheckSquare size={15} color="#1E40AF" />
-                                                                ) : (
-                                                                    <Square size={15} color="#94A3B8" />
-                                                                )}
-                                                                <span style={{
-                                                                    fontSize: '0.74rem',
-                                                                    fontWeight: isChecked ? 700 : 500,
-                                                                    color: isChecked ? '#1E293B' : '#475569',
-                                                                    whiteSpace: 'nowrap',
-                                                                    overflow: 'hidden',
-                                                                    textOverflow: 'ellipsis'
-                                                                }}
-                                                                title={ind.descripcion}
-                                                                >
-                                                                    {ind.label}
-                                                                </span>
-                                                            </div>
-                                                            <span style={{
-                                                                fontSize: '0.6rem',
-                                                                fontWeight: 700,
-                                                                padding: '1px 4px',
-                                                                borderRadius: '4px',
-                                                                background: ind.tipo === 'kpi' ? '#DBEAFE' : ind.tipo === 'table' ? '#D1FAE5' : '#F1F5F9',
-                                                                color: ind.tipo === 'kpi' ? '#1E40AF' : ind.tipo === 'table' ? '#065F46' : '#475569',
-                                                                flexShrink: 0
-                                                            }}>
-                                                                {ind.tipo === 'kpi' ? 'KPI' : ind.tipo === 'table' ? 'Tabla' : 'Gráfico'}
-                                                            </span>
-                                                        </div>
-                                                    );
-                                                })}
-                                            </div>
-                                        </div>
-                                    )}
                                 </div>
                             )}
 
@@ -4008,20 +3640,15 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                             {!isUciOnly && (
                                 <div style={{
                                     borderRadius: '8px',
-                                    border: `1.5px solid ${isEpidemiologiaOpen || sectorId === 'EPIDEMIOLOGIA' ? '#93C5FD' : '#E2E8F0'}`,
+                                    border: `1.5px solid ${sectorId === 'EPIDEMIOLOGIA' ? '#93C5FD' : '#E2E8F0'}`,
                                     background: '#FFFFFF',
-                                    boxShadow: isEpidemiologiaOpen || sectorId === 'EPIDEMIOLOGIA' ? '0 4px 12px -2px rgba(2, 132, 199, 0.12)' : '0 1px 2px rgba(0,0,0,0.03)',
+                                    boxShadow: sectorId === 'EPIDEMIOLOGIA' ? '0 4px 12px -2px rgba(2, 132, 199, 0.12)' : '0 1px 2px rgba(0,0,0,0.03)',
                                     overflow: 'hidden',
-                                    transition: 'all 0.2s ease',
-                                    marginTop: '8px'
+                                    transition: 'all 0.2s ease'
                                 }}>
-                                    {/* Botón Cabecera Epidemiología */}
                                     <button
                                         type="button"
-                                        onClick={() => {
-                                            handleToggleEpidemiologia();
-                                            if (sectorId !== 'EPIDEMIOLOGIA') handleSelectSector('EPIDEMIOLOGIA');
-                                        }}
+                                        onClick={() => handleSelectSector('EPIDEMIOLOGIA')}
                                         style={{
                                             width: '100%',
                                             display: 'flex',
@@ -4048,100 +3675,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                                 </div>
                                             </div>
                                         </div>
-                                        
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                            <span style={{ color: sectorId === 'EPIDEMIOLOGIA' ? '#0284C7' : '#94A3B8', display: 'flex', alignItems: 'center' }}>
-                                                {isEpidemiologiaOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                                            </span>
-                                        </div>
                                     </button>
-
-                                    {/* CONTENIDO DESPLEGABLE DE EPIDEMIOLOGÍA */}
-                                    {isEpidemiologiaOpen && (
-                                        <div style={{
-                                            borderTop: '1px solid #BAE6FD',
-                                            background: '#FFFFFF',
-                                            animation: 'fadeIn 0.2s ease-out'
-                                        }}>
-                                            <div style={{ padding: '10px 12px', background: '#F0F9FF', borderBottom: '1px solid #E0F2FE', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                <span style={{ fontSize: '0.7rem', fontWeight: 800, color: '#0369A1', textTransform: 'uppercase' }}>
-                                                    Patologías Notificables ({activeEpidemiologiaIds.length})
-                                                </span>
-                                                <button
-                                                    type="button"
-                                                    onClick={handleSelectAllEpidemiologiaIndicators}
-                                                    style={{
-                                                        background: 'transparent',
-                                                        border: 'none',
-                                                        color: '#0284C7',
-                                                        fontSize: '0.68rem',
-                                                        fontWeight: 700,
-                                                        cursor: 'pointer',
-                                                        padding: '1px 4px'
-                                                    }}
-                                                >
-                                                    Todas
-                                                </button>
-                                            </div>
-
-                                            <div style={{ padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: '4px', maxHeight: '320px', overflowY: 'auto' }}>
-                                                {INDICADORES_EPIDEMIOLOGIA_CATALOGO.map(ind => {
-                                                    const isChecked = activeEpidemiologiaIds.includes(ind.id);
-                                                    return (
-                                                        <div
-                                                            key={ind.id}
-                                                            onClick={() => {
-                                                                if (sectorId !== 'EPIDEMIOLOGIA') handleSelectSector('EPIDEMIOLOGIA');
-                                                                handleToggleEpidemiologiaIndicator(ind.id);
-                                                            }}
-                                                            style={{
-                                                                display: 'flex',
-                                                                alignItems: 'center',
-                                                                justifyContent: 'space-between',
-                                                                padding: '6px 8px',
-                                                                borderRadius: '6px',
-                                                                cursor: 'pointer',
-                                                                background: isChecked && sectorId === 'EPIDEMIOLOGIA' ? '#E0F2FE' : 'transparent',
-                                                                border: isChecked && sectorId === 'EPIDEMIOLOGIA' ? '1px solid #7DD3FC' : '1px solid transparent',
-                                                                transition: 'all 0.12s ease'
-                                                            }}
-                                                        >
-                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
-                                                                {isChecked ? (
-                                                                    <CheckSquare size={15} color="#0369A1" />
-                                                                ) : (
-                                                                    <Square size={15} color="#94A3B8" />
-                                                                )}
-                                                                <span style={{
-                                                                    fontSize: '0.74rem',
-                                                                    fontWeight: isChecked ? 700 : 500,
-                                                                    color: isChecked ? '#0C4A6E' : '#475569',
-                                                                    whiteSpace: 'nowrap',
-                                                                    overflow: 'hidden',
-                                                                    textOverflow: 'ellipsis'
-                                                                }}
-                                                                title={ind.descripcion}
-                                                                >
-                                                                    {ind.label}
-                                                                </span>
-                                                            </div>
-                                                            <span style={{
-                                                                fontSize: '0.6rem',
-                                                                fontWeight: 700,
-                                                                padding: '1px 4px',
-                                                                borderRadius: '4px',
-                                                                background: '#E0F2FE',
-                                                                color: '#0369A1',
-                                                                flexShrink: 0
-                                                            }}>
-                                                                C2
-                                                            </span>
-                                                        </div>
-                                                    );
-                                                })}
-                                            </div>
-                                        </div>
-                                    )}
                                 </div>
                             )}
 
@@ -4149,18 +3683,15 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                             {!isUciOnly && (
                                 <div style={{
                                     borderRadius: '10px',
-                                    border: `1.5px solid ${isDxiOpen || sectorId === 'DXI' ? '#93C5FD' : '#E2E8F0'}`,
+                                    border: `1.5px solid ${sectorId === 'DXI' ? '#93C5FD' : '#E2E8F0'}`,
                                     background: '#FFFFFF',
                                     overflow: 'hidden',
-                                    boxShadow: isDxiOpen || sectorId === 'DXI' ? '0 4px 12px -2px rgba(37, 99, 235, 0.12)' : '0 1px 2px rgba(0,0,0,0.03)',
+                                    boxShadow: sectorId === 'DXI' ? '0 4px 12px -2px rgba(37, 99, 235, 0.12)' : '0 1px 2px rgba(0,0,0,0.03)',
                                     transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)'
                                 }}>
                                     <button
                                         type="button"
-                                        onClick={() => {
-                                            handleToggleDxi();
-                                            if (sectorId !== 'DXI') handleSelectSector('DXI');
-                                        }}
+                                        onClick={() => handleSelectSector('DXI')}
                                         style={{
                                             width: '100%',
                                             display: 'flex',
@@ -4169,7 +3700,6 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                             padding: '10px 12px',
                                             background: sectorId === 'DXI' ? '#EFF6FF' : '#F8FAFC',
                                             border: 'none',
-                                            borderBottom: isDxiOpen ? '1px solid #BFDBFE' : 'none',
                                             cursor: 'pointer',
                                             transition: 'background 0.15s ease'
                                         }}
@@ -4187,135 +3717,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                                 </div>
                                             </div>
                                         </div>
-                                        
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                            <span style={{ color: sectorId === 'DXI' ? '#2563EB' : '#94A3B8', display: 'flex', alignItems: 'center' }}>
-                                                {isDxiOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                                            </span>
-                                        </div>
                                     </button>
-
-                                    {/* CONTENIDO DESPLEGABLE DE DXI */}
-                                    {isDxiOpen && (
-                                        <div style={{
-                                            borderTop: '1px solid #BFDBFE',
-                                            background: '#FFFFFF',
-                                            animation: 'fadeIn 0.2s ease-out'
-                                        }}>
-                                            {/* Acceso directo al Submódulo Reuniones de Servicio de DxI */}
-                                            <div style={{ padding: '8px 10px', background: '#F8FAFC', borderBottom: '1px solid #DBEAFE', display: 'flex', gap: '4px' }}>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => {
-                                                        if (sectorId !== 'DXI') handleSelectSector('DXI');
-                                                        setSectorSubModulo('tablero');
-                                                    }}
-                                                    style={{
-                                                        flex: 1, padding: '6px 8px', borderRadius: '6px', cursor: 'pointer',
-                                                        border: sectorId === 'DXI' && sectorSubModulo === 'tablero' ? '1px solid #1E40AF' : '1px solid #CBD5E1',
-                                                        background: sectorId === 'DXI' && sectorSubModulo === 'tablero' ? '#003B73' : '#FFFFFF',
-                                                        color: sectorId === 'DXI' && sectorSubModulo === 'tablero' ? '#FFFFFF' : '#334155',
-                                                        fontSize: '0.68rem', fontWeight: 700
-                                                    }}
-                                                >
-                                                    📊 Indicadores
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => {
-                                                        if (sectorId !== 'DXI') handleSelectSector('DXI');
-                                                        setSectorSubModulo('reuniones');
-                                                    }}
-                                                    style={{
-                                                        flex: 1, padding: '6px 8px', borderRadius: '6px', cursor: 'pointer',
-                                                        border: sectorId === 'DXI' && sectorSubModulo === 'reuniones' ? '1px solid #1E40AF' : '1px solid #93C5FD',
-                                                        background: sectorId === 'DXI' && sectorSubModulo === 'reuniones' ? '#003B73' : '#EFF6FF',
-                                                        color: sectorId === 'DXI' && sectorSubModulo === 'reuniones' ? '#FFFFFF' : '#003B73',
-                                                        fontSize: '0.68rem', fontWeight: 800
-                                                    }}
-                                                >
-                                                    📋 Reuniones
-                                                </button>
-                                            </div>
-                                            <div style={{ padding: '10px 12px', background: '#EFF6FF', borderBottom: '1px solid #DBEAFE', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                <span style={{ fontSize: '0.7rem', fontWeight: 800, color: '#1D4ED8', textTransform: 'uppercase' }}>
-                                                    Indicadores DxI ({activeDxiIds.length})
-                                                </span>
-                                                <button
-                                                    type="button"
-                                                    onClick={handleSelectAllDxiIndicators}
-                                                    style={{
-                                                        background: 'transparent',
-                                                        border: 'none',
-                                                        color: '#2563EB',
-                                                        fontSize: '0.68rem',
-                                                        fontWeight: 700,
-                                                        cursor: 'pointer',
-                                                        padding: '1px 4px'
-                                                    }}
-                                                >
-                                                    Todos
-                                                </button>
-                                            </div>
-
-                                            <div style={{ padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: '4px', maxHeight: '320px', overflowY: 'auto' }}>
-                                                {INDICADORES_DXI_CATALOGO.map(ind => {
-                                                    const isChecked = activeDxiIds.includes(ind.id);
-                                                    return (
-                                                        <div
-                                                            key={ind.id}
-                                                            onClick={() => {
-                                                                if (sectorId !== 'DXI') handleSelectSector('DXI');
-                                                                handleToggleDxiIndicator(ind.id);
-                                                            }}
-                                                            style={{
-                                                                display: 'flex',
-                                                                alignItems: 'center',
-                                                                justifyContent: 'space-between',
-                                                                padding: '6px 8px',
-                                                                borderRadius: '6px',
-                                                                cursor: 'pointer',
-                                                                background: isChecked && sectorId === 'DXI' ? '#EFF6FF' : 'transparent',
-                                                                border: isChecked && sectorId === 'DXI' ? '1px solid #BFDBFE' : '1px solid transparent',
-                                                                transition: 'all 0.12s ease'
-                                                            }}
-                                                        >
-                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
-                                                                {isChecked ? (
-                                                                    <CheckSquare size={15} color="#2563EB" />
-                                                                ) : (
-                                                                    <Square size={15} color="#94A3B8" />
-                                                                )}
-                                                                <span style={{
-                                                                    fontSize: '0.74rem',
-                                                                    fontWeight: isChecked ? 700 : 500,
-                                                                    color: isChecked ? '#1E3A8A' : '#475569',
-                                                                    whiteSpace: 'nowrap',
-                                                                    overflow: 'hidden',
-                                                                    textOverflow: 'ellipsis'
-                                                                }}
-                                                                title={ind.descripcion}
-                                                                >
-                                                                    {ind.label}
-                                                                </span>
-                                                            </div>
-                                                            <span style={{
-                                                                fontSize: '0.6rem',
-                                                                fontWeight: 700,
-                                                                padding: '1px 4px',
-                                                                borderRadius: '4px',
-                                                                background: '#EFF6FF',
-                                                                color: '#2563EB',
-                                                                flexShrink: 0
-                                                            }}>
-                                                                DxI
-                                                            </span>
-                                                        </div>
-                                                    );
-                                                })}
-                                            </div>
-                                        </div>
-                                    )}
                                 </div>
                             )}
 
