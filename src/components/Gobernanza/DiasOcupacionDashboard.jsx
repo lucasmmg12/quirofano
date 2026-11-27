@@ -3680,13 +3680,8 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                     >
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                             <span style={{ fontSize: '1.25rem' }}>🦠</span>
-                                            <div>
-                                                <div style={{ fontWeight: 800, fontSize: '0.88rem', color: '#0369A1' }}>
-                                                    Epidemiología
-                                                </div>
-                                                <div style={{ fontSize: '0.68rem', color: '#64748B', fontWeight: 600 }}>
-                                                    Dr. Romano (Planilla C2)
-                                                </div>
+                                            <div style={{ fontWeight: 800, fontSize: '0.88rem', color: '#0369A1' }}>
+                                                Epidemiología
                                             </div>
                                         </div>
                                     </button>
@@ -3723,13 +3718,8 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                     >
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                             <span style={{ fontSize: '1.1rem' }}>🩻</span>
-                                            <div style={{ textAlign: 'left' }}>
-                                                <div style={{ fontSize: '0.8rem', fontWeight: 700, color: sectorId === 'DXI' ? '#1D4ED8' : '#334155' }}>
-                                                    Imágenes (DxI)
-                                                </div>
-                                                <div style={{ fontSize: '0.65rem', color: '#64748B' }}>
-                                                    ECO, RX, MAM, TC, DE (2022+)
-                                                </div>
+                                            <div style={{ fontSize: '0.86rem', fontWeight: 800, color: sectorId === 'DXI' ? '#1D4ED8' : '#334155' }}>
+                                                Imágenes (DxI)
                                             </div>
                                         </div>
                                     </button>
@@ -3766,25 +3756,10 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                     >
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                             <span style={{ fontSize: '1.1rem' }}>🤰</span>
-                                            <div style={{ textAlign: 'left' }}>
-                                                <div style={{ fontSize: '0.8rem', fontWeight: 700, color: sectorId === 'GUARDIA_GGO' ? '#9D174D' : '#334155' }}>
-                                                    Guardia GGO
-                                                </div>
-                                                <div style={{ fontSize: '0.65rem', color: '#64748B' }}>
-                                                    Gineco-Obstétrica · Cuello Qx & Eco
-                                                </div>
+                                            <div style={{ fontSize: '0.86rem', fontWeight: 800, color: sectorId === 'GUARDIA_GGO' ? '#9D174D' : '#334155' }}>
+                                                Guardia GGO
                                             </div>
                                         </div>
-                                        <span style={{
-                                            fontSize: '0.6rem',
-                                            fontWeight: 800,
-                                            padding: '2px 6px',
-                                            borderRadius: '999px',
-                                            background: sectorId === 'GUARDIA_GGO' ? '#DB2777' : '#FCE7F3',
-                                            color: sectorId === 'GUARDIA_GGO' ? '#FFFFFF' : '#9D174D',
-                                        }}>
-                                            Nuevo
-                                        </span>
                                     </button>
                                     {renderSectorSubmodulo('GUARDIA_GGO')}
                                 </div>
@@ -3819,25 +3794,10 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                     >
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                             <span style={{ fontSize: '1.1rem' }}>🛏️</span>
-                                            <div style={{ textAlign: 'left' }}>
-                                                <div style={{ fontSize: '0.8rem', fontWeight: 700, color: sectorId === 'INTERNACION' ? '#003B73' : '#334155' }}>
-                                                    Internación
-                                                </div>
-                                                <div style={{ fontSize: '0.65rem', color: '#64748B' }}>
-                                                    Neo, Ped, Adultos, UCI, HdD (2021+)
-                                                </div>
+                                            <div style={{ fontSize: '0.86rem', fontWeight: 800, color: sectorId === 'INTERNACION' ? '#003B73' : '#334155' }}>
+                                                Internación
                                             </div>
                                         </div>
-                                        <span style={{
-                                            fontSize: '0.6rem',
-                                            fontWeight: 800,
-                                            padding: '2px 6px',
-                                            borderRadius: '999px',
-                                            background: sectorId === 'INTERNACION' ? '#0284C7' : '#E0F2FE',
-                                            color: sectorId === 'INTERNACION' ? '#FFFFFF' : '#0369A1',
-                                        }}>
-                                            Nuevo
-                                        </span>
                                     </button>
                                     {renderSectorSubmodulo('INTERNACION')}
                                 </div>
@@ -3872,25 +3832,10 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                     >
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                             <span style={{ fontSize: '1.1rem' }}>📦</span>
-                                            <div style={{ textAlign: 'left' }}>
-                                                <div style={{ fontSize: '0.8rem', fontWeight: 700, color: sectorId === 'COMPRAS_STOCK' ? '#003B73' : '#334155' }}>
-                                                    Compras · Stock
-                                                </div>
-                                                <div style={{ fontSize: '0.65rem', color: '#64748B' }}>
-                                                    Compras, Consumo, Stock (2024+)
-                                                </div>
+                                            <div style={{ fontSize: '0.86rem', fontWeight: 800, color: sectorId === 'COMPRAS_STOCK' ? '#003B73' : '#334155' }}>
+                                                Compras · Stock
                                             </div>
                                         </div>
-                                        <span style={{
-                                            fontSize: '0.6rem',
-                                            fontWeight: 800,
-                                            padding: '2px 6px',
-                                            borderRadius: '999px',
-                                            background: sectorId === 'COMPRAS_STOCK' ? '#0284C7' : '#E0F2FE',
-                                            color: sectorId === 'COMPRAS_STOCK' ? '#FFFFFF' : '#0369A1',
-                                        }}>
-                                            Nuevo
-                                        </span>
                                     </button>
                                     {renderSectorSubmodulo('COMPRAS_STOCK')}
                                 </div>
@@ -3925,25 +3870,10 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                     >
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                             <span style={{ fontSize: '1.1rem' }}>🩺</span>
-                                            <div style={{ textAlign: 'left' }}>
-                                                <div style={{ fontSize: '0.8rem', fontWeight: 700, color: sectorId === 'CHEQUEO' ? '#065F46' : '#334155' }}>
-                                                    Chequeo Preventivo
-                                                </div>
-                                                <div style={{ fontSize: '0.65rem', color: '#64748B' }}>
-                                                    Informes, WA, NPS, Renov. (2024+)
-                                                </div>
+                                            <div style={{ fontSize: '0.86rem', fontWeight: 800, color: sectorId === 'CHEQUEO' ? '#065F46' : '#334155' }}>
+                                                Chequeo Preventivo
                                             </div>
                                         </div>
-                                        <span style={{
-                                            fontSize: '0.6rem',
-                                            fontWeight: 800,
-                                            padding: '2px 6px',
-                                            borderRadius: '999px',
-                                            background: sectorId === 'CHEQUEO' ? '#059669' : '#DCFCE7',
-                                            color: sectorId === 'CHEQUEO' ? '#FFFFFF' : '#047857',
-                                        }}>
-                                            Nuevo
-                                        </span>
                                     </button>
                                     {renderSectorSubmodulo('CHEQUEO')}
                                 </div>
