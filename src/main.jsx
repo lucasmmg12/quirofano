@@ -6,22 +6,85 @@ import TurnoKiosco from './components/TurnoKiosco.jsx'
 import './index.css'
 import './simon-redesign.css'
 
+// ─── Auto-recuperación ante nuevos deploys en Vercel (chunks obsoletos) ───
+const CHUNK_RELOAD_KEY = 'sa_chunk_reload_ts'
+function isStaleChunkError(err) {
+    const msg = String(err?.message || err || '').toLowerCase()
+    return (
+        msg.includes('failed to fetch dynamically imported module') ||
+        msg.includes('importing a module script failed') ||
+        msg.includes('error loading dynamically imported module') ||
+        msg.includes('chunkloaderror') ||
+        msg.includes('loading chunk')
+    )
+}
+function tryAutoReloadForNewDeploy() {
+    try {
+        const last = Number(sessionStorage.getItem(CHUNK_RELOAD_KEY) || 0)
+        if (Date.now() - last > 15000) {
+            sessionStorage.setItem(CHUNK_RELOAD_KEY, String(Date.now()))
+            if ('caches' in window) {
+                caches.keys().then(names => names.forEach(name => caches.delete(name))).catch(() => {})
+            }
+            window.location.replace(window.location.origin + window.location.pathname + window.location.search)
+            return true
+        }
+    } catch (_) {}
+    return false
+}
+window.addEventListener('vite:preloadError', (event) => {
+    event.preventDefault()
+    tryAutoReloadForNewDeploy()
+})
+
 // ─── Global Error Boundary ───────────────────────────────────────────
 // Prevents white screen of death by catching any React rendering error
 // and displaying a diagnostic fallback UI.
 class ErrorBoundary extends React.Component {
     constructor(props) {
         super(props)
-        this.state = { hasError: false, error: null, errorInfo: null }
+        this.state = { hasError: false, error: null, errorInfo: null, autoReloading: false }
     }
     static getDerivedStateFromError(error) {
-        return { hasError: true, error }
+        return { hasError: true, error, autoReloading: isStaleChunkError(error) }
     }
     componentDidCatch(error, errorInfo) {
         this.setState({ errorInfo })
+        if (isStaleChunkError(error)) {
+            const reloading = tryAutoReloadForNewDeploy()
+            if (reloading) {
+                this.setState({ autoReloading: true })
+                return
+            }
+            this.setState({ autoReloading: false })
+        }
         console.error('[ErrorBoundary] Uncaught error:', error, errorInfo)
     }
     render() {
+        if (this.state.hasError && this.state.autoReloading) {
+            return React.createElement('div', {
+                style: {
+                    position: 'fixed', inset: 0, zIndex: 99999,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    background: '#F8FAFC', fontFamily: "'Inter', system-ui, sans-serif",
+                }
+            },
+                React.createElement('div', {
+                    style: {
+                        background: '#FFFFFF', borderRadius: 12, padding: '28px 32px',
+                        border: '1px solid #E2E8F0', textAlign: 'center',
+                        boxShadow: '0 4px 20px rgba(0, 59, 115, 0.08)',
+                    }
+                },
+                    React.createElement('div', {
+                        style: { fontSize: '1.05rem', fontWeight: 800, color: '#003B73', marginBottom: 6 }
+                    }, 'Actualizando a la nueva versión...'),
+                    React.createElement('div', {
+                        style: { fontSize: '0.82rem', color: '#64748B' }
+                    }, 'Sincronizando módulos de Sanatorio Argentino.')
+                )
+            )
+        }
         if (this.state.hasError) {
             return React.createElement('div', {
                 style: {
