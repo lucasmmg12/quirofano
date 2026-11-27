@@ -104,6 +104,16 @@ export default function DeudasPanel({ addToast, currentUser }) {
     // ─── Chat ───
     const [chatOpen, setChatOpen] = useState(false);
 
+    // ─── Paginación de cartera (10 / 30 bajo demanda para bajo consumo de RAM) ───
+    const [deudorPage, setDeudorPage] = useState(1);
+    const [deudorPageSize, setDeudorPageSize] = useState(10);
+    useEffect(() => { setDeudorPage(1); }, [deudores.length, search, catFilter, telFilter, datePreset, sortBy, sortDir]);
+    const totalDeudorPages = Math.max(1, Math.ceil(deudores.length / deudorPageSize));
+    const paginatedDeudores = useMemo(() => {
+        const start = (deudorPage - 1) * deudorPageSize;
+        return deudores.slice(start, start + deudorPageSize);
+    }, [deudores, deudorPage, deudorPageSize]);
+
     const empleadoNombre = currentUser?.nombre || 'Administrador';
 
     // ─── Refs para acceder a estado fresco en callbacks de realtime ───
@@ -1726,12 +1736,12 @@ export default function DeudasPanel({ addToast, currentUser }) {
                         </span>
                     </div>
 
-                    {/* Contenedor scrolleable de cards */}
+                    {/* Contenedor scrolleable de cards (paginado 10 / 30) */}
                     <div style={{
                         flex: 1, overflowY: 'auto', padding: '10px',
                         display: 'flex', flexDirection: 'column', gap: '8px',
                     }}>
-                        {deudores.map(d => {
+                        {paginatedDeudores.map(d => {
                             const cat = CATEGORIAS_DEUDOR[d.categoria] || CATEGORIAS_DEUDOR.sin_gestionar;
                             const isSelected = selectedDeudor?.id === d.id;
                             const initials = (d.nombre || '?')
@@ -1891,6 +1901,64 @@ export default function DeudasPanel({ addToast, currentUser }) {
                             );
                         })}
                     </div>
+
+                    {/* Footer de paginación 10 / 30 */}
+                    {deudores.length > 0 && (
+                        <div style={{
+                            padding: '8px 12px', borderTop: '1px solid #E2E8F0', background: '#F8FAFC',
+                            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px',
+                            fontSize: '0.72rem', color: '#475569', flexShrink: 0,
+                        }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                {[10, 30].map(sz => (
+                                    <button
+                                        key={sz}
+                                        type="button"
+                                        onClick={() => { setDeudorPageSize(sz); setDeudorPage(1); }}
+                                        style={{
+                                            padding: '2px 7px', borderRadius: '6px', cursor: 'pointer',
+                                            fontSize: '0.7rem', fontWeight: 700,
+                                            border: deudorPageSize === sz ? '1px solid #003B73' : '1px solid #CBD5E1',
+                                            background: deudorPageSize === sz ? '#003B73' : '#FFFFFF',
+                                            color: deudorPageSize === sz ? '#FFFFFF' : '#475569',
+                                        }}
+                                    >
+                                        {sz}
+                                    </button>
+                                ))}
+                            </div>
+                            <span style={{ fontWeight: 600 }}>
+                                {(deudorPage - 1) * deudorPageSize + 1}–{Math.min(deudorPage * deudorPageSize, deudores.length)} de {deudores.length}
+                            </span>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                <button
+                                    type="button"
+                                    disabled={deudorPage <= 1}
+                                    onClick={() => setDeudorPage(p => Math.max(1, p - 1))}
+                                    style={{
+                                        padding: '2px 7px', borderRadius: '6px', border: '1px solid #CBD5E1',
+                                        background: '#FFFFFF', color: '#334155', fontWeight: 700, fontSize: '0.7rem',
+                                        cursor: deudorPage <= 1 ? 'not-allowed' : 'pointer', opacity: deudorPage <= 1 ? 0.45 : 1,
+                                    }}
+                                >
+                                    ‹
+                                </button>
+                                <span style={{ fontWeight: 700, color: '#0F172A' }}>{deudorPage}/{totalDeudorPages}</span>
+                                <button
+                                    type="button"
+                                    disabled={deudorPage >= totalDeudorPages}
+                                    onClick={() => setDeudorPage(p => Math.min(totalDeudorPages, p + 1))}
+                                    style={{
+                                        padding: '2px 7px', borderRadius: '6px', border: '1px solid #CBD5E1',
+                                        background: '#FFFFFF', color: '#334155', fontWeight: 700, fontSize: '0.7rem',
+                                        cursor: deudorPage >= totalDeudorPages ? 'not-allowed' : 'pointer', opacity: deudorPage >= totalDeudorPages ? 0.45 : 1,
+                                    }}
+                                >
+                                    ›
+                                </button>
+                            </div>
+                        </div>
+                    )}
                 </div>
 
                 {/* Panel Derecho: Ficha Detallada en Vivo o Placeholder */}

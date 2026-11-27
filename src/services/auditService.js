@@ -105,7 +105,8 @@ export async function getActionTypes() {
     const { data, error } = await supabase
         .from('audit_log')
         .select('accion')
-        .limit(1000);
+        .order('created_at', { ascending: false })
+        .limit(300);
 
     if (error) return [];
 

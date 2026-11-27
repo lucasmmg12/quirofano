@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback, lazy, Suspense } from 'react';
 import { supabase } from '../../lib/supabase';
 import { 
     BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, 
@@ -16,7 +16,6 @@ import TelarCatalogoDrawer from './TelarCatalogoDrawer';
 import TelarDataModal from './TelarDataModal';
 import UciMortalidadAuditModal from './UciMortalidadAuditModal';
 import SqlDocumentationModal from './SqlDocumentationModal';
-import UciGanttChart from './UciGanttChart';
 import DraggableChartCard from './DraggableChartCard';
 import { 
     SECTORES_CONFIG, 
@@ -32,16 +31,19 @@ import {
     DEFAULT_ACTIVE_DXI_IDS
 } from './telarConfig';
 import { useTelarStore } from '../../store/telarStore';
-import GuardiaClinicaDashboard from './GuardiaClinicaDashboard';
-import QuirofanoDashboard from './QuirofanoDashboard';
-import EpidemiologiaDashboard from './EpidemiologiaDashboard';
-import DiagnosticoImagenesDashboard from './DiagnosticoImagenesDashboard';
-import InternacionDashboard from './InternacionDashboard';
-import ComprasConsumoStockDashboard from './ComprasConsumoStockDashboard';
-import GuardiaGgoDashboard from './GuardiaGgoDashboard';
-import ChequeoGobernanzaDashboard from './ChequeoGobernanzaDashboard';
-import ReunionesServicioPanel from './ReunionesServicioPanel';
 import { useGobernanzaNavigation } from './useGobernanzaNavigation';
+
+// Lazy-loaded sector dashboards (solo se descarga y monta el sector activo)
+const UciGanttChart = lazy(() => import('./UciGanttChart'));
+const GuardiaClinicaDashboard = lazy(() => import('./GuardiaClinicaDashboard'));
+const QuirofanoDashboard = lazy(() => import('./QuirofanoDashboard'));
+const EpidemiologiaDashboard = lazy(() => import('./EpidemiologiaDashboard'));
+const DiagnosticoImagenesDashboard = lazy(() => import('./DiagnosticoImagenesDashboard'));
+const InternacionDashboard = lazy(() => import('./InternacionDashboard'));
+const ComprasConsumoStockDashboard = lazy(() => import('./ComprasConsumoStockDashboard'));
+const GuardiaGgoDashboard = lazy(() => import('./GuardiaGgoDashboard'));
+const ChequeoGobernanzaDashboard = lazy(() => import('./ChequeoGobernanzaDashboard'));
+const ReunionesServicioPanel = lazy(() => import('./ReunionesServicioPanel'));
 
 const SIDEBAR_INDICATOR_GROUPS = [
     {
@@ -3934,6 +3936,14 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
 
                 {/* LIENZO PRINCIPAL DEL TELAR (MODULAR) */}
                 <div style={{ flex: 1, overflowY: 'auto', padding: '24px' }}>
+                    <Suspense fallback={
+                        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '350px', flexDirection: 'column', gap: '12px' }}>
+                            <RefreshCw className="animate-spin" size={32} color="#003B73" />
+                            <span style={{ color: '#64748B', fontSize: '0.88rem', fontWeight: 600 }}>
+                                Cargando tablero de {activeSectorConfig.label}...
+                            </span>
+                        </div>
+                    }>
                     {sectorSubModulo === 'reuniones' ? (
                         <ReunionesServicioPanel
                             sectorId={sectorId}
@@ -4817,6 +4827,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
 
                         </div>
                     )}
+                    </Suspense>
                 </div>
 
             </div>

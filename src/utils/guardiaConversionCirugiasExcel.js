@@ -8,7 +8,7 @@
  * - Hoja 1: Resumen Ejecutivo (KPIs de oportunidad quirúrgica, top cirugías y especialidades)
  * - Hoja 2: Detalle Nominal Paciente por Paciente (con autofiltro, fila congelada, zebra styling y anchos automáticos)
  */
-import ExcelJS from 'exceljs';
+const loadExcelJS = async () => (await import('exceljs')).default;
 
 const PALETTE = {
     headerNavy: 'FF0D3B66',       // Azul institucional oscuro
@@ -136,6 +136,7 @@ export async function exportGuardiaConversionCirugiasExcel({
     periodoNombre = 'Octubre 2026',
     activeFilter = 'all'
 }) {
+    const ExcelJS = await loadExcelJS();
     const wb = new ExcelJS.Workbook();
     wb.creator = 'Sanatorio Argentino — Auditoría Quirúrgica';
     wb.lastModifiedBy = 'Sistema ADM-QUI Gobernanza';

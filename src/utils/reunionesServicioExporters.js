@@ -7,10 +7,11 @@
  *  4. exportObjetivos2027Excel(objetivos, metaInfo)       -> Excel (.xlsx) idéntico a Propuesta de Objetivos 2027 + Guía Oficial
  */
 
-import ExcelJS from 'exceljs';
-import PptxGenJS from 'pptxgenjs';
 import { SANATORIO_LOGO_BASE64 } from './sanatorioLogoBase64';
 import { formatPeriodoLabel, OBJETIVO_OFICIAL_RDIR04 } from '../services/reunionesServicioService';
+
+const loadExcelJS = async () => (await import('exceljs')).default;
+const loadPptxGenJS = async () => (await import('pptxgenjs')).default;
 
 const COLORS = {
     navy: 'FF003B73',
@@ -125,6 +126,7 @@ function applyStatusBadgeCell(cell, val) {
 // 1. EXPORTADOR EXCEL MULTI-HOJA IDÉNTICO A "RDIR 04"
 // ============================================================================
 export async function exportInformesRdir04Excel(informes = [], servicioNombre = 'Diagnóstico por Imágenes') {
+    const ExcelJS = await loadExcelJS();
     const wb = new ExcelJS.Workbook();
     wb.creator = 'Sanatorio Argentino · Gobernanza de Datos';
     wb.created = new Date();
@@ -573,6 +575,7 @@ function buildAutoInsightsForMonth(inf) {
 }
 
 export async function exportInformeMensualPptx(informe) {
+    const PptxGenJS = await loadPptxGenJS();
     const pptx = new PptxGenJS();
     pptx.layout = 'LAYOUT_WIDE'; // 13.33 x 7.5
     pptx.author = 'Sanatorio Argentino · Gobernanza de Datos';
@@ -868,6 +871,7 @@ export async function exportInformeMensualPptx(informe) {
 // ============================================================================
 export async function exportRevisionDireccionPptx(revision) {
     if (!revision) return;
+    const PptxGenJS = await loadPptxGenJS();
     const pptx = new PptxGenJS();
     pptx.layout = 'LAYOUT_WIDE';
     const servicio = revision.servicio_nombre || 'Servicio';
@@ -924,6 +928,7 @@ export async function exportRevisionDireccionPptx(revision) {
 // 4. EXPORTADOR EXCEL DE PROPUESTA DE OBJETIVOS 2027 (FORMATO OFICIAL)
 // ============================================================================
 export async function exportObjetivos2027Excel(objetivos = [], { servicioNombre = 'Diagnóstico por Imágenes', responsable = '', anio = 2027 } = {}) {
+    const ExcelJS = await loadExcelJS();
     const wb = new ExcelJS.Workbook();
     wb.creator = 'Sanatorio Argentino · Gobernanza de Datos';
 

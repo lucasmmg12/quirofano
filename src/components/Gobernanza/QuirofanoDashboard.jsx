@@ -3488,20 +3488,15 @@ export default function QuirofanoDashboard({
                 gap: '18px'
             }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '14px' }}>
-                    <div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px', flexWrap: 'wrap' }}>
-                            <span style={{ background: 'rgba(56, 189, 248, 0.25)', border: '1px solid #38BDF8', color: '#BAE6FD', padding: '3px 10px', borderRadius: '8px', fontSize: '0.74rem', fontWeight: 800 }}>
-                                🗓️ Período: {activePeriodLabel !== formattedPeriodo ? `${activePeriodLabel} (${formattedPeriodo})` : formattedPeriodo}
-                            </span>
-                            {loadingSurgeries && (
-                                <span style={{ fontSize: '0.72rem', color: '#93C5FD', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                    <RefreshCw size={12} className="animate-spin" /> Actualizando cirugías...
-                                </span>
-                            )}
-                        </div>
-                        <h1 style={{ margin: 0, fontSize: '1.75rem', fontWeight: 900, letterSpacing: '-0.5px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <h1 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 900, letterSpacing: '-0.5px' }}>
                             QUIROFANO
                         </h1>
+                        {loadingSurgeries && (
+                            <span style={{ fontSize: '0.72rem', color: '#93C5FD', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                <RefreshCw size={12} className="animate-spin" /> Actualizando...
+                            </span>
+                        )}
                     </div>
 
                     {/* SELECTOR PARA TOCAR Y DIFERENCIAR ENTRE HDD Y QX CENTRALES */}
@@ -5783,17 +5778,6 @@ export default function QuirofanoDashboard({
                                     Total período: <strong style={{ color: '#DC2626' }}>{dynamicMetrics ? dynamicMetrics.suspendidas : 250}</strong> suspensiones
                                 </span>
                             </div>
-                        </div>
-
-                        {/* Banner interactivo que indica que las barras se pueden tocar */}
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#F0F9FF', border: '1px solid #BAE6FD', borderRadius: '8px', padding: '8px 14px', marginBottom: '14px', fontSize: '0.75rem', color: '#0369A1' }}>
-                            <span style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600 }}>
-                                <Eye size={14} color="#0284C7" />
-                                <span><strong>Modo interactivo:</strong> Haz clic en cualquier barra o etiqueta de motivo para abrir el detalle nominal de pacientes y su exportación a Excel / PDF.</span>
-                            </span>
-                            <span style={{ fontSize: '0.70rem', background: '#FFFFFF', padding: '2px 8px', borderRadius: '4px', fontWeight: 700, border: '1px solid #BAE6FD', color: '#0284C7' }}>
-                                🖱️ Clic activo
-                            </span>
                         </div>
 
                         {/* Contenedor del gráfico con dimensiones ampliadas para visualización clínica sin solapamiento */}

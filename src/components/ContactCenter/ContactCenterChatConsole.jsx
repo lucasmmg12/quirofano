@@ -5792,7 +5792,7 @@ export default function ContactCenterChatConsole({
                                     }}
                                 >
                                     <Clock size={10} color="#D97706" />
-                                    Ventana 24h: Expirada (Requiere Plantilla Meta)
+                                    24h Expirada
                                 </span>
                             ) : windowRemaining ? (
                                 <span 
@@ -5806,7 +5806,7 @@ export default function ContactCenterChatConsole({
                                     }}
                                 >
                                     <CheckCircle2 size={10} color="#10B981" />
-                                    Ventana 24h activa ({windowRemaining.hours}h {windowRemaining.mins}m)
+                                    24h · {windowRemaining.hours}h {windowRemaining.mins}m
                                 </span>
                             ) : null}
                             {/* Badge de Ojito si otro agente está leyendo este chat */}
@@ -5853,8 +5853,8 @@ export default function ContactCenterChatConsole({
                                             fontSize: '0.64rem', fontWeight: 700, padding: '1px 6px', borderRadius: '4px',
                                             background: '#F0FDF4', color: '#15803D', border: '1px solid #BBF7D0',
                                             display: 'inline-flex', alignItems: 'center', gap: '3px', whiteSpace: 'nowrap'
-                                        }}>
-                                            <Check size={10} /> Respondido por agente
+                                        }} title="Respondido por agente">
+                                            <Check size={10} /> Respondido
                                         </span>
                                     )}
                                 </>
@@ -6174,27 +6174,30 @@ export default function ContactCenterChatConsole({
                             </div>
                         ) : null}
 
-                        {/* CASO 2: ASIGNADA A MÍ -> PUEDO LIBERAR O TRANSFERIR (Solo si NO está cerrado) */}
+                        {/* CASO 2: ASIGNADA A MÍ -> COMPACTO (Menos es Más) */}
                         {!isClosedOrArchived(selectedChat) && isAssignedToMe && (
                             <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                <span style={{
-                                    fontSize: '0.68rem', fontWeight: 800, padding: '2px 8px', borderRadius: '6px',
-                                    background: '#DCFCE7', color: '#15803D', border: '1px solid #86EFAC',
-                                    display: 'flex', alignItems: 'center', gap: '4px', height: '24px', whiteSpace: 'nowrap'
-                                }}>
-                                    <CheckCircle2 size={12} /> Asignada a ti ({activeAgent.name})
+                                <span
+                                    title={`Asignada a ti (${activeAgent.name})`}
+                                    style={{
+                                        fontSize: '0.68rem', fontWeight: 800, padding: '2px 7px', borderRadius: '6px',
+                                        background: '#DCFCE7', color: '#15803D', border: '1px solid #86EFAC',
+                                        display: 'flex', alignItems: 'center', gap: '4px', height: '24px', whiteSpace: 'nowrap'
+                                    }}
+                                >
+                                    <CheckCircle2 size={11} /> Tuya
                                 </span>
 
                                 <button
                                     onClick={handleUnassignWithAudit}
                                     title="Liberar chat a la cola general (registra nota de pase en auditoría)"
                                     style={{
-                                        padding: '2px 8px', borderRadius: '6px', border: '1px solid #CBD5E1',
+                                        padding: '2px 7px', borderRadius: '6px', border: '1px solid #CBD5E1',
                                         background: '#FFFFFF', color: '#475569', fontWeight: 600, fontSize: '0.68rem',
                                         cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px', height: '24px'
                                     }}
                                 >
-                                    <Unlock size={11} /> Liberar
+                                    <Unlock size={11} />
                                 </button>
 
 

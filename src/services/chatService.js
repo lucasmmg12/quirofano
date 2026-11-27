@@ -11,7 +11,7 @@ import { getCurrentUser } from './authService';
  * Obtiene lista de conversaciones agrupadas por teléfono.
  * Retorna: [{ phone, lastMessage, lastDate, unreadCount, senderName, direction }]
  */
-export async function fetchConversations() {
+export async function fetchConversations(limitRows = 2500) {
     // Get messages strictly for ADM-QUI lines (excluding line_recepciones and contact_center)
     const { data, error } = await supabase
         .from('whatsapp_messages')
@@ -20,7 +20,7 @@ export async function fetchConversations() {
         .neq('line_id', 'line_recepciones')
         .neq('line_id', 'line_b')
         .order('created_at', { ascending: false })
-        .limit(50000);
+        .limit(limitRows);
 
     if (error) {
         console.error('Error fetching conversations:', error);
@@ -329,9 +329,9 @@ export function subscribeToAllIncoming(callback) {
 export async function fetchCrmContacts() {
     const { data, error } = await supabase
         .from('crm_contacts')
-        .select('*')
+        .select('phone, nombre, id_paciente, dni, notas, assigned_line_id, updated_at')
         .order('updated_at', { ascending: false })
-        .limit(10000);
+        .limit(3000);
 
     if (error) {
         console.error('Error fetching CRM contacts:', error);

@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
+import { useState, useRef, useCallback, useEffect, useMemo, lazy, Suspense } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import Sidebar from './components/Sidebar.jsx';
 import PatientHeader from './components/PatientHeader.jsx';
@@ -19,63 +19,75 @@ import { logAction } from './services/auditService';
 import { subscribeToAllIncoming, fetchUnreadCounts } from './services/chatService';
 import { Clock, Printer, Send, CheckCircle, LogOut, KeyRound, ChevronDown, ChevronRight, RotateCcw, Moon, Sun, Menu, X, AlertCircle, Info, Home as HomeIcon, Laptop, Monitor, MapPin, MapPinOff, ShieldCheck, RefreshCw, Lock } from 'lucide-react';
 import SnowBackground from './components/SnowBackground';
-import SurgeryPanel from './components/SurgeryPanel.jsx';
-import ConfigPanel from './components/ConfigPanel.jsx';
-import HomePanel from './components/HomePanel.jsx';
-import NomencladorView from './components/NomencladorView.jsx';
-import TemplateManager from './components/TemplateManager.jsx';
-import MessagingPanel from './components/MessagingPanel.jsx';
-import PedidosMarcela from './components/PedidosMarcela.jsx';
-import MetricsPanel from './components/MetricsPanel.jsx';
-import TurnoAdminPanel from './components/TurnoAdminPanel.jsx';
-import PublicRecepcionView from './components/PublicRecepcionView.jsx';
-import PublicFichasAdmisionesView from './components/PublicFichasAdmisionesView.jsx';
-import FichasAdmisionesPanel from './components/FichasAdmisionesPanel.jsx';
-import DeudasPanel from './components/DeudasPanel.jsx';
-import AltasPanel from './components/AltasPanel.jsx';
-import FacturacionPanel from './components/FacturacionPanel.jsx';
-import TxtProvinciaPanel from './components/TxtProvinciaPanel.jsx';
-import AsignacionPanel from './components/AsignacionPanel.jsx';
-import ConsultasPanel from './components/ConsultasPanel.jsx';
-import AuditoriaHistoriasPanel from './components/AuditoriaHistoriasPanel.jsx';
-import AuditoriaPDFPanel from './components/AuditoriaPDFPanel.jsx';
-import BetoPanel from './components/BetoPanel.jsx';
-import PublicSimonChat from './components/simon/PublicSimonChat.jsx';
-import AsociacionesEntregaPanel from './components/AsociacionesEntregaPanel.jsx';
-import LaboratoriosPanel from './components/LaboratoriosPanel.jsx';
-import PublicLabView from './components/PublicLabView.jsx';
-import LabPortal from './components/LabPortal.jsx';
 import IdleHomerOverlay from './components/IdleHomerOverlay.jsx';
 import BetoWidget from './components/BetoWidget.jsx';
 import CommandPalette from './components/CommandPalette.jsx';
-import BetoAnalyticsPanel from './components/BetoAnalyticsPanel.jsx';
-import ManualProcedimientos from './components/ManualProcedimientos.jsx';
 import HelpButton from './components/HelpButton.jsx';
 import SystemOutageReporter from './components/SystemOutageReporter.jsx';
 import SystemAlertBanner from './components/SystemAlertBanner.jsx';
-import DocumentosPanel from './components/DocumentosPanel.jsx';
-import PacientesPanel from './components/PacientesPanel.jsx';
 import WelcomeOnboarding from './components/WelcomeOnboarding.jsx';
-import UserSecurityAdminPanel from './components/UserSecurityAdminPanel.jsx';
 import ModuleOnboarding from './components/ModuleOnboarding.jsx';
 import FrojoCelebration from './components/FrojoCelebration.jsx';
-import ActivosPanel from './components/ActivosPanel.jsx';
-import EquipoAuditoriaView from './components/EquipoAuditoriaView.jsx';
-import GobernanzaPanel from './components/GobernanzaPanel.jsx';
-import GobernanzaIndicadoresPanel from './components/Gobernanza/GobernanzaIndicadoresPanel.jsx';
 import BetoGuidePopup from './components/Gobernanza/BetoGuidePopup.jsx';
-import LiquidacionesPanel from './components/LiquidacionesPanel.jsx';
-import PublicRecordView from './components/PublicShare/PublicRecordView.jsx';
-import RecetarioElectronicoPanel from './components/RecetarioElectronicoPanel.jsx';
-import PublicRecetaPrestacionView from './components/Recetario/PublicRecetaPrestacionView.jsx';
-import ContactCenterPanel from './components/ContactCenter/ContactCenterPanel.jsx';
 import { canUserAccessContactCenter, isContactCenterExclusiveAgent, MASTER_ADMINS } from './services/contactCenterService';
 import { startSession, endSession, trackModuleChange, subscribeTelemetry, requestAndRecordGeolocation } from './lib/activityTracker';
 import { supabase } from './lib/supabase';
 import { Routes, Route, Navigate, useLocation, useNavigate, useParams } from 'react-router-dom';
-import RecepcionView from './components/RecepcionView.jsx';
-import TurnoKiosco from './components/TurnoKiosco.jsx';
 import './App.css';
+
+// Lazy-loaded modules (code-splitting bajo demanda para minimizar RAM y tiempo de arranque)
+const SurgeryPanel = lazy(() => import('./components/SurgeryPanel.jsx'));
+const ConfigPanel = lazy(() => import('./components/ConfigPanel.jsx'));
+const HomePanel = lazy(() => import('./components/HomePanel.jsx'));
+const NomencladorView = lazy(() => import('./components/NomencladorView.jsx'));
+const TemplateManager = lazy(() => import('./components/TemplateManager.jsx'));
+const MessagingPanel = lazy(() => import('./components/MessagingPanel.jsx'));
+const PedidosMarcela = lazy(() => import('./components/PedidosMarcela.jsx'));
+const MetricsPanel = lazy(() => import('./components/MetricsPanel.jsx'));
+const TurnoAdminPanel = lazy(() => import('./components/TurnoAdminPanel.jsx'));
+const PublicRecepcionView = lazy(() => import('./components/PublicRecepcionView.jsx'));
+const PublicFichasAdmisionesView = lazy(() => import('./components/PublicFichasAdmisionesView.jsx'));
+const FichasAdmisionesPanel = lazy(() => import('./components/FichasAdmisionesPanel.jsx'));
+const DeudasPanel = lazy(() => import('./components/DeudasPanel.jsx'));
+const AltasPanel = lazy(() => import('./components/AltasPanel.jsx'));
+const FacturacionPanel = lazy(() => import('./components/FacturacionPanel.jsx'));
+const TxtProvinciaPanel = lazy(() => import('./components/TxtProvinciaPanel.jsx'));
+const AsignacionPanel = lazy(() => import('./components/AsignacionPanel.jsx'));
+const ConsultasPanel = lazy(() => import('./components/ConsultasPanel.jsx'));
+const AuditoriaHistoriasPanel = lazy(() => import('./components/AuditoriaHistoriasPanel.jsx'));
+const AuditoriaPDFPanel = lazy(() => import('./components/AuditoriaPDFPanel.jsx'));
+const BetoPanel = lazy(() => import('./components/BetoPanel.jsx'));
+const PublicSimonChat = lazy(() => import('./components/simon/PublicSimonChat.jsx'));
+const AsociacionesEntregaPanel = lazy(() => import('./components/AsociacionesEntregaPanel.jsx'));
+const LaboratoriosPanel = lazy(() => import('./components/LaboratoriosPanel.jsx'));
+const LabPortal = lazy(() => import('./components/LabPortal.jsx'));
+const ManualProcedimientos = lazy(() => import('./components/ManualProcedimientos.jsx'));
+const DocumentosPanel = lazy(() => import('./components/DocumentosPanel.jsx'));
+const PacientesPanel = lazy(() => import('./components/PacientesPanel.jsx'));
+const UserSecurityAdminPanel = lazy(() => import('./components/UserSecurityAdminPanel.jsx'));
+const ActivosPanel = lazy(() => import('./components/ActivosPanel.jsx'));
+const EquipoAuditoriaView = lazy(() => import('./components/EquipoAuditoriaView.jsx'));
+const GobernanzaPanel = lazy(() => import('./components/GobernanzaPanel.jsx'));
+const GobernanzaIndicadoresPanel = lazy(() => import('./components/Gobernanza/GobernanzaIndicadoresPanel.jsx'));
+const LiquidacionesPanel = lazy(() => import('./components/LiquidacionesPanel.jsx'));
+const PublicRecordView = lazy(() => import('./components/PublicShare/PublicRecordView.jsx'));
+const RecetarioElectronicoPanel = lazy(() => import('./components/RecetarioElectronicoPanel.jsx'));
+const PublicRecetaPrestacionView = lazy(() => import('./components/Recetario/PublicRecetaPrestacionView.jsx'));
+const ContactCenterPanel = lazy(() => import('./components/ContactCenter/ContactCenterPanel.jsx'));
+const RecepcionView = lazy(() => import('./components/RecepcionView.jsx'));
+const TurnoKiosco = lazy(() => import('./components/TurnoKiosco.jsx'));
+
+function ModuleLoadingFallback() {
+    return (
+        <div style={{
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+            minHeight: '45vh', gap: '12px', color: '#64748B', fontFamily: "'Inter', -apple-system, sans-serif"
+        }}>
+            <RefreshCw size={28} className="animate-spin" style={{ color: '#003B73' }} />
+            <span style={{ fontSize: '0.84rem', fontWeight: 600 }}>Cargando módulo...</span>
+        </div>
+    );
+}
 
 // Wrappers for path params
 function EquipoAuditoriaViewWrapper() {
@@ -426,6 +438,7 @@ export default function AppRoot() {
                     </div>
                 </div>
             )}
+            <Suspense fallback={<ModuleLoadingFallback />}>
             <Routes>
             {/* Rutas públicas operativas acotadas (Tótem de Turnos, QR de Equipos, Validación de Recetas por Token y Laboratorios con su propio login) */}
             <Route path="/turno" element={<TurnoKiosco />} />
@@ -468,6 +481,7 @@ export default function AppRoot() {
                 )
             } />
         </Routes>
+            </Suspense>
         </>
     );
 }
@@ -1612,6 +1626,7 @@ function App({ currentUser, onLogout, onUserUpdated }) {
                 <SystemAlertBanner />
 
                 {/* Content */}
+                <Suspense fallback={<ModuleLoadingFallback />}>
                 {activeView === 'inicio' && (
                     <HomePanel
                         key={viewKey}
@@ -1970,6 +1985,7 @@ function App({ currentUser, onLogout, onUserUpdated }) {
                 {activeView === 'gobernanza_indicadores' && (
                     <GobernanzaIndicadoresPanel currentUser={currentUser} addToast={addToast} />
                 )}
+                </Suspense>
             </main>
 
             {/* Print Templates (hidden on screen, visible on print) */}

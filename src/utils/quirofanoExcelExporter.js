@@ -1,4 +1,4 @@
-import ExcelJS from 'exceljs';
+const loadExcelJS = async () => (await import('exceljs')).default;
 
 /**
  * Paleta de colores institucional para exportación de Excel (Sanatorio Argentino)
@@ -139,6 +139,7 @@ export async function exportQuirofanoExcelStyled({
     customFilename = null,
     getSalaEstimada = () => 'Quirófano General'
 }) {
+    const ExcelJS = await loadExcelJS();
     const wb = new ExcelJS.Workbook();
     wb.creator = 'Sanatorio Argentino — Auditoría Quirúrgica';
     wb.lastModifiedBy = 'Sistema ADM-QUI Gobernanza';

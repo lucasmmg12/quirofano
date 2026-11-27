@@ -1,4 +1,4 @@
-import ExcelJS from 'exceljs';
+const loadExcelJS = async () => (await import('exceljs')).default;
 
 /**
  * Paleta cromática corporativa Premium - Sanatorio Argentino
@@ -85,6 +85,7 @@ export async function generarExcelCobranzas({
     movimientosCaja = [],
     resumen = {}
 }) {
+    const ExcelJS = await loadExcelJS();
     const wb = new ExcelJS.Workbook();
     wb.creator = 'Innovación y Transformación Digital - Sanatorio Argentino';
     wb.lastModifiedBy = 'Sector Innovación y Transformación Digital';
@@ -606,6 +607,7 @@ export async function generarExcelDeudaActiva({
     pacientesActivos = [],
     resumen = {}
 }) {
+    const ExcelJS = await loadExcelJS();
     const wb = new ExcelJS.Workbook();
     wb.creator = 'Innovación y Transformación Digital - Sanatorio Argentino';
     wb.lastModifiedBy = 'Sector Innovación y Transformación Digital';

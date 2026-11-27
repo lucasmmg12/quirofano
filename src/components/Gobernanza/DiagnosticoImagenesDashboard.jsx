@@ -1,28 +1,28 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { AnilloToroidal3D } from './GobernanzaCharts3D';
 import DxiSuperficieTopografica3D from './DxiSuperficieTopografica3D';
-import { 
-    Activity, 
-    Calendar, 
-    Building2, 
-    Users, 
-    UserCheck, 
-    UserPlus, 
-    FileCheck2, 
-    CreditCard, 
-    MapPin, 
-    Search, 
-    RefreshCw, 
-    Download, 
-    Filter, 
-    ChevronRight, 
+import {
+    Activity,
+    Calendar,
+    Building2,
+    Users,
+    UserCheck,
+    UserPlus,
+    FileCheck2,
+    CreditCard,
+    MapPin,
+    Search,
+    RefreshCw,
+    Download,
+    Filter,
+    ChevronRight,
     ChevronLeft,
-    ArrowUpRight, 
-    AlertCircle, 
-    CheckCircle2, 
-    Layers, 
-    PieChart as PieIcon, 
-    BarChart3, 
+    ArrowUpRight,
+    AlertCircle,
+    CheckCircle2,
+    Layers,
+    PieChart as PieIcon,
+    BarChart3,
     SlidersHorizontal,
     FileSpreadsheet,
     HelpCircle,
@@ -400,7 +400,7 @@ export default function DiagnosticoImagenesDashboard({
                             break;
                         }
                     }
-                } catch (_) {}
+                } catch (_) { }
             }
 
             // 2. Fallback en la nube (Supabase): leer dxi_casos_nominales_cache + calidad_peticiones_pruebas
@@ -1907,7 +1907,7 @@ export default function DiagnosticoImagenesDashboard({
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', fontFamily: 'Inter, sans-serif' }}>
-            
+
             {/* ─── BANNER SUPERIOR DE INFORMACIÓN Y SINCRONIZACIÓN ─── */}
             <div style={{
                 background: '#FFFFFF',
@@ -1935,14 +1935,9 @@ export default function DiagnosticoImagenesDashboard({
                         <Activity size={24} />
                     </div>
                     <div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700, color: '#0F172A' }}>
-                                Diagnóstico por Imágenes (DxI)
-                            </h2>
-                        </div>
-                        <div style={{ fontSize: '0.85rem', color: '#64748B', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                            <span>Período Telar: <strong style={{ color: '#1E293B' }}>{effectiveDesde}</strong> al <strong style={{ color: '#1E293B' }}>{effectiveHasta}</strong></span>
-                        </div>
+                        <h2 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: '#0F172A' }}>
+                            Diagnóstico por Imágenes (DxI)
+                        </h2>
                     </div>
                 </div>
 
@@ -2681,7 +2676,7 @@ export default function DiagnosticoImagenesDashboard({
                             <p style={{ margin: '2px 0 0 0', fontSize: '0.78rem', color: '#64748B' }}>
                                 {selectedAgenda !== 'TODAS'
                                     ? `Curva de evolución para "${selectedAgenda}" diferenciando Obra Social (Cód. ≠ 042) vs. Particulares (042 / Nombre propio)`
-                                    : selectedModalidad === 'TODAS' 
+                                    : selectedModalidad === 'TODAS'
                                         ? 'Curva de estudios realizados por día/mes, desglose por modalidad y comparativa Obra Social vs. Particular'
                                         : `Curva evolutiva para modalidad ${selectedModalidad} desagregada por Obra Social, Particular y Ámbito`}
                             </p>
@@ -2820,104 +2815,155 @@ export default function DiagnosticoImagenesDashboard({
                     <>
                         {/* Selector / Leyenda interactiva de series (solo en modo 2D; en 3D se controla desde la barra superior del gráfico) */}
                         {progressionViewMode === '2d' && (
-                        <div style={{
-                            display: 'flex',
-                            flexWrap: 'wrap',
-                            alignItems: 'center',
-                            gap: '8px',
-                            paddingTop: '6px',
-                            borderTop: '1px solid #F1F5F9',
-                            fontSize: '0.75rem'
-                        }}>
-                            <span style={{ color: '#64748B', fontWeight: 600, marginRight: '4px' }}>Series visibles:</span>
-                            
-                            {/* Toggle Total */}
-                            <button
-                                onClick={() => setVisibleSeries(prev => ({ ...prev, total: !prev.total }))}
-                                style={{
-                                    borderRadius: '14px',
-                                    padding: '3px 10px',
-                                    fontSize: '0.72rem',
-                                    fontWeight: 600,
-                                    cursor: 'pointer',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '6px',
-                                    background: visibleSeries.total ? '#EFF6FF' : '#F1F5F9',
-                                    color: visibleSeries.total ? '#1D4ED8' : '#94A3B8',
-                                    border: visibleSeries.total ? '1px solid #BFDBFE' : '1px solid #E2E8F0'
-                                }}
-                            >
-                                <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#2563EB' }} />
-                                {selectedAgenda !== 'TODAS'
-                                    ? 'Total Estudio'
-                                    : selectedModalidad !== 'TODAS'
-                                        ? `Total ${MOD_SERIES_LABELS[selectedModalidad] || selectedModalidad}`
-                                        : isSubsetModalitiesVisible
-                                            ? (activeVisibleMods.length === 1
-                                                ? `Total ${MOD_SERIES_LABELS[activeVisibleMods[0]]}`
-                                                : `Total Seleccionadas (${activeVisibleMods.length})`)
-                                            : 'Total General'}
-                            </button>
+                            <div style={{
+                                display: 'flex',
+                                flexWrap: 'wrap',
+                                alignItems: 'center',
+                                gap: '8px',
+                                paddingTop: '6px',
+                                borderTop: '1px solid #F1F5F9',
+                                fontSize: '0.75rem'
+                            }}>
+                                <span style={{ color: '#64748B', fontWeight: 600, marginRight: '4px' }}>Series visibles:</span>
 
-                            {/* Toggles de Cobertura: Obra Social vs Particular (Disponibles en TODAS y en cada estudio singular) */}
-                            <button
-                                onClick={() => setVisibleSeries(prev => ({ ...prev, obraSocial: !prev.obraSocial }))}
-                                title="Mostrar/ocultar curva de estudios realizados con Obra Social (comienzan con número excepto 042)"
-                                style={{
-                                    borderRadius: '14px',
-                                    padding: '3px 10px',
-                                    fontSize: '0.72rem',
-                                    fontWeight: 700,
-                                    cursor: 'pointer',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '6px',
-                                    background: visibleSeries.obraSocial ? '#F0FDFA' : '#F8FAFC',
-                                    color: visibleSeries.obraSocial ? '#0F766E' : '#94A3B8',
-                                    border: visibleSeries.obraSocial ? '1.5px solid #0D9488' : '1px solid #E2E8F0',
-                                    opacity: visibleSeries.obraSocial ? 1 : 0.7
-                                }}
-                            >
-                                <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#0D9488' }} />
-                                🏥 Con Obra Social ({chartStats.obraSocial.toLocaleString('es-AR')})
-                            </button>
+                                {/* Toggle Total */}
+                                <button
+                                    onClick={() => setVisibleSeries(prev => ({ ...prev, total: !prev.total }))}
+                                    style={{
+                                        borderRadius: '14px',
+                                        padding: '3px 10px',
+                                        fontSize: '0.72rem',
+                                        fontWeight: 600,
+                                        cursor: 'pointer',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                        background: visibleSeries.total ? '#EFF6FF' : '#F1F5F9',
+                                        color: visibleSeries.total ? '#1D4ED8' : '#94A3B8',
+                                        border: visibleSeries.total ? '1px solid #BFDBFE' : '1px solid #E2E8F0'
+                                    }}
+                                >
+                                    <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#2563EB' }} />
+                                    {selectedAgenda !== 'TODAS'
+                                        ? 'Total Estudio'
+                                        : selectedModalidad !== 'TODAS'
+                                            ? `Total ${MOD_SERIES_LABELS[selectedModalidad] || selectedModalidad}`
+                                            : isSubsetModalitiesVisible
+                                                ? (activeVisibleMods.length === 1
+                                                    ? `Total ${MOD_SERIES_LABELS[activeVisibleMods[0]]}`
+                                                    : `Total Seleccionadas (${activeVisibleMods.length})`)
+                                                : 'Total General'}
+                                </button>
 
-                            <button
-                                onClick={() => setVisibleSeries(prev => ({ ...prev, particular: !prev.particular }))}
-                                title="Mostrar/ocultar curva de estudios Particulares (042 o comienzan con letras / nombre propio)"
-                                style={{
-                                    borderRadius: '14px',
-                                    padding: '3px 10px',
-                                    fontSize: '0.72rem',
-                                    fontWeight: 700,
-                                    cursor: 'pointer',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '6px',
-                                    background: visibleSeries.particular ? '#FFF7ED' : '#F8FAFC',
-                                    color: visibleSeries.particular ? '#C2410C' : '#94A3B8',
-                                    border: visibleSeries.particular ? '1.5px solid #EA580C' : '1px solid #E2E8F0',
-                                    opacity: visibleSeries.particular ? 1 : 0.7
-                                }}
-                            >
-                                <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#EA580C' }} />
-                                👤 Particulares 042 / Nombre ({chartStats.particular.toLocaleString('es-AR')})
-                            </button>
+                                {/* Toggles de Cobertura: Obra Social vs Particular (Disponibles en TODAS y en cada estudio singular) */}
+                                <button
+                                    onClick={() => setVisibleSeries(prev => ({ ...prev, obraSocial: !prev.obraSocial }))}
+                                    title="Mostrar/ocultar curva de estudios realizados con Obra Social (comienzan con número excepto 042)"
+                                    style={{
+                                        borderRadius: '14px',
+                                        padding: '3px 10px',
+                                        fontSize: '0.72rem',
+                                        fontWeight: 700,
+                                        cursor: 'pointer',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                        background: visibleSeries.obraSocial ? '#F0FDFA' : '#F8FAFC',
+                                        color: visibleSeries.obraSocial ? '#0F766E' : '#94A3B8',
+                                        border: visibleSeries.obraSocial ? '1.5px solid #0D9488' : '1px solid #E2E8F0',
+                                        opacity: visibleSeries.obraSocial ? 1 : 0.7
+                                    }}
+                                >
+                                    <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#0D9488' }} />
+                                    🏥 Con Obra Social ({chartStats.obraSocial.toLocaleString('es-AR')})
+                                </button>
 
-                            {selectedModalidad === 'TODAS' && selectedAgenda === 'TODAS' ? (
-                                <>
-                                    {[
-                                        { key: 'ECOGRAFIA', label: 'Ecografía (ECO)', color: '#06B6D4' },
-                                        { key: 'RADIOLOGIA', label: 'Radiología (RX)', color: '#6366F1' },
-                                        { key: 'MAMOGRAFIA', label: 'Mamografía', color: '#EC4899' },
-                                        { key: 'TOMOGRAFIA', label: 'Tomografía (TC)', color: '#F59E0B' },
-                                        { key: 'DENSITOMETRIA', label: 'Densitometría', color: '#10B981' },
-                                        { key: 'ECOCARDIO', label: 'Ecocardiograma', color: '#E11D48' }
-                                    ].map(s => (
+                                <button
+                                    onClick={() => setVisibleSeries(prev => ({ ...prev, particular: !prev.particular }))}
+                                    title="Mostrar/ocultar curva de estudios Particulares (042 o comienzan con letras / nombre propio)"
+                                    style={{
+                                        borderRadius: '14px',
+                                        padding: '3px 10px',
+                                        fontSize: '0.72rem',
+                                        fontWeight: 700,
+                                        cursor: 'pointer',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                        background: visibleSeries.particular ? '#FFF7ED' : '#F8FAFC',
+                                        color: visibleSeries.particular ? '#C2410C' : '#94A3B8',
+                                        border: visibleSeries.particular ? '1.5px solid #EA580C' : '1px solid #E2E8F0',
+                                        opacity: visibleSeries.particular ? 1 : 0.7
+                                    }}
+                                >
+                                    <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#EA580C' }} />
+                                    👤 Particulares 042 / Nombre ({chartStats.particular.toLocaleString('es-AR')})
+                                </button>
+
+                                {selectedModalidad === 'TODAS' && selectedAgenda === 'TODAS' ? (
+                                    <>
+                                        {[
+                                            { key: 'ECOGRAFIA', label: 'Ecografía (ECO)', color: '#06B6D4' },
+                                            { key: 'RADIOLOGIA', label: 'Radiología (RX)', color: '#6366F1' },
+                                            { key: 'MAMOGRAFIA', label: 'Mamografía', color: '#EC4899' },
+                                            { key: 'TOMOGRAFIA', label: 'Tomografía (TC)', color: '#F59E0B' },
+                                            { key: 'DENSITOMETRIA', label: 'Densitometría', color: '#10B981' },
+                                            { key: 'ECOCARDIO', label: 'Ecocardiograma', color: '#E11D48' }
+                                        ].map(s => (
+                                            <button
+                                                key={s.key}
+                                                onClick={() => setVisibleSeries(prev => ({ ...prev, [s.key]: !prev[s.key] }))}
+                                                style={{
+                                                    borderRadius: '14px',
+                                                    padding: '3px 10px',
+                                                    fontSize: '0.72rem',
+                                                    fontWeight: 600,
+                                                    cursor: 'pointer',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: '6px',
+                                                    background: visibleSeries[s.key] ? '#FFFFFF' : '#F8FAFC',
+                                                    color: visibleSeries[s.key] ? '#1E293B' : '#94A3B8',
+                                                    border: visibleSeries[s.key] ? `1px solid ${s.color}` : '1px solid #E2E8F0',
+                                                    opacity: visibleSeries[s.key] ? 1 : 0.6
+                                                }}
+                                            >
+                                                <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: s.color }} />
+                                                {s.label}
+                                            </button>
+                                        ))}
+                                        {isSubsetModalitiesVisible && (
+                                            <button
+                                                onClick={() => setVisibleSeries(prev => ({
+                                                    ...prev,
+                                                    total: true,
+                                                    ECOGRAFIA: true,
+                                                    RADIOLOGIA: true,
+                                                    MAMOGRAFIA: true,
+                                                    TOMOGRAFIA: true,
+                                                    DENSITOMETRIA: true,
+                                                    ECOCARDIO: true
+                                                }))}
+                                                title="Restablecer todas las modalidades en el gráfico"
+                                                style={{
+                                                    borderRadius: '14px',
+                                                    padding: '3px 10px',
+                                                    fontSize: '0.7rem',
+                                                    fontWeight: 700,
+                                                    cursor: 'pointer',
+                                                    background: '#EFF6FF',
+                                                    color: COLOR_PRIMARY,
+                                                    border: '1px solid #BFDBFE'
+                                                }}
+                                            >
+                                                ↺ Ver todas las modalidades
+                                            </button>
+                                        )}
+                                    </>
+                                ) : (
+                                    <>
                                         <button
-                                            key={s.key}
-                                            onClick={() => setVisibleSeries(prev => ({ ...prev, [s.key]: !prev[s.key] }))}
+                                            onClick={() => setVisibleSeries(prev => ({ ...prev, ambulatorio: !prev.ambulatorio }))}
                                             style={{
                                                 borderRadius: '14px',
                                                 padding: '3px 10px',
@@ -2927,88 +2973,37 @@ export default function DiagnosticoImagenesDashboard({
                                                 display: 'flex',
                                                 alignItems: 'center',
                                                 gap: '6px',
-                                                background: visibleSeries[s.key] ? '#FFFFFF' : '#F8FAFC',
-                                                color: visibleSeries[s.key] ? '#1E293B' : '#94A3B8',
-                                                border: visibleSeries[s.key] ? `1px solid ${s.color}` : '1px solid #E2E8F0',
-                                                opacity: visibleSeries[s.key] ? 1 : 0.6
+                                                background: visibleSeries.ambulatorio ? '#ECFDF5' : '#F8FAFC',
+                                                color: visibleSeries.ambulatorio ? '#047857' : '#94A3B8',
+                                                border: visibleSeries.ambulatorio ? '1px solid #A7F3D0' : '1px solid #E2E8F0'
                                             }}
                                         >
-                                            <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: s.color }} />
-                                            {s.label}
+                                            <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#10B981' }} />
+                                            Ambulatorio
                                         </button>
-                                    ))}
-                                    {isSubsetModalitiesVisible && (
+
                                         <button
-                                            onClick={() => setVisibleSeries(prev => ({
-                                                ...prev,
-                                                total: true,
-                                                ECOGRAFIA: true,
-                                                RADIOLOGIA: true,
-                                                MAMOGRAFIA: true,
-                                                TOMOGRAFIA: true,
-                                                DENSITOMETRIA: true,
-                                                ECOCARDIO: true
-                                            }))}
-                                            title="Restablecer todas las modalidades en el gráfico"
+                                            onClick={() => setVisibleSeries(prev => ({ ...prev, hospitalizacion: !prev.hospitalizacion }))}
                                             style={{
                                                 borderRadius: '14px',
                                                 padding: '3px 10px',
-                                                fontSize: '0.7rem',
-                                                fontWeight: 700,
+                                                fontSize: '0.72rem',
+                                                fontWeight: 600,
                                                 cursor: 'pointer',
-                                                background: '#EFF6FF',
-                                                color: COLOR_PRIMARY,
-                                                border: '1px solid #BFDBFE'
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '6px',
+                                                background: visibleSeries.hospitalizacion ? '#F5F3FF' : '#F8FAFC',
+                                                color: visibleSeries.hospitalizacion ? '#6D28D9' : '#94A3B8',
+                                                border: visibleSeries.hospitalizacion ? '1px solid #DDD6FE' : '1px solid #E2E8F0'
                                             }}
                                         >
-                                            ↺ Ver todas las modalidades
+                                            <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#8B5CF6' }} />
+                                            Hospitalización
                                         </button>
-                                    )}
-                                </>
-                            ) : (
-                                <>
-                                    <button
-                                        onClick={() => setVisibleSeries(prev => ({ ...prev, ambulatorio: !prev.ambulatorio }))}
-                                        style={{
-                                            borderRadius: '14px',
-                                            padding: '3px 10px',
-                                            fontSize: '0.72rem',
-                                            fontWeight: 600,
-                                            cursor: 'pointer',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            gap: '6px',
-                                            background: visibleSeries.ambulatorio ? '#ECFDF5' : '#F8FAFC',
-                                            color: visibleSeries.ambulatorio ? '#047857' : '#94A3B8',
-                                            border: visibleSeries.ambulatorio ? '1px solid #A7F3D0' : '1px solid #E2E8F0'
-                                        }}
-                                    >
-                                        <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#10B981' }} />
-                                        Ambulatorio
-                                    </button>
-
-                                    <button
-                                        onClick={() => setVisibleSeries(prev => ({ ...prev, hospitalizacion: !prev.hospitalizacion }))}
-                                        style={{
-                                            borderRadius: '14px',
-                                            padding: '3px 10px',
-                                            fontSize: '0.72rem',
-                                            fontWeight: 600,
-                                            cursor: 'pointer',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            gap: '6px',
-                                            background: visibleSeries.hospitalizacion ? '#F5F3FF' : '#F8FAFC',
-                                            color: visibleSeries.hospitalizacion ? '#6D28D9' : '#94A3B8',
-                                            border: visibleSeries.hospitalizacion ? '1px solid #DDD6FE' : '1px solid #E2E8F0'
-                                        }}
-                                    >
-                                        <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#8B5CF6' }} />
-                                        Hospitalización
-                                    </button>
-                                </>
-                            )}
-                        </div>
+                                    </>
+                                )}
+                            </div>
                         )}
 
                         {/* Contenedor del Gráfico (3D Topográfico WebGL o 2D Recharts) */}
@@ -3062,20 +3057,20 @@ export default function DiagnosticoImagenesDashboard({
                                 <ResponsiveContainer width="100%" height={290} minWidth={1} minHeight={240}>
                                     <LineChart data={progressionChartData} margin={{ top: 12, right: 18, left: -10, bottom: 4 }}>
                                         <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
-                                        <XAxis 
-                                            dataKey="label" 
-                                            stroke="#94A3B8" 
-                                            fontSize={11} 
-                                            tickLine={false} 
-                                            axisLine={{ stroke: '#E2E8F0' }} 
-                                            minTickGap={14} 
+                                        <XAxis
+                                            dataKey="label"
+                                            stroke="#94A3B8"
+                                            fontSize={11}
+                                            tickLine={false}
+                                            axisLine={{ stroke: '#E2E8F0' }}
+                                            minTickGap={14}
                                         />
-                                        <YAxis 
-                                            stroke="#94A3B8" 
-                                            fontSize={11} 
-                                            tickLine={false} 
-                                            axisLine={false} 
-                                            tickFormatter={v => v.toLocaleString('es-AR')} 
+                                        <YAxis
+                                            stroke="#94A3B8"
+                                            fontSize={11}
+                                            tickLine={false}
+                                            axisLine={false}
+                                            tickFormatter={v => v.toLocaleString('es-AR')}
                                         />
                                         <RechartsTooltip
                                             content={({ active, payload, label }) => {
@@ -3169,86 +3164,86 @@ export default function DiagnosticoImagenesDashboard({
                                         {selectedModalidad === 'TODAS' && selectedAgenda === 'TODAS' && (
                                             <>
                                                 {visibleSeries.total && (
-                                                    <Line 
-                                                        type="monotone" 
-                                                        dataKey="total" 
-                                                        name="Total General" 
-                                                        stroke="#2563EB" 
-                                                        strokeWidth={2.8} 
-                                                        dot={{ r: 2.5, fill: '#2563EB' }} 
-                                                        activeDot={{ r: 6 }} 
+                                                    <Line
+                                                        type="monotone"
+                                                        dataKey="total"
+                                                        name="Total General"
+                                                        stroke="#2563EB"
+                                                        strokeWidth={2.8}
+                                                        dot={{ r: 2.5, fill: '#2563EB' }}
+                                                        activeDot={{ r: 6 }}
                                                         isAnimationActive={false}
                                                     />
                                                 )}
                                                 {visibleSeries.ECOGRAFIA && (
-                                                    <Line 
-                                                        type="monotone" 
-                                                        dataKey="ECOGRAFIA" 
-                                                        name="Ecografía (ECO)" 
-                                                        stroke="#06B6D4" 
-                                                        strokeWidth={1.8} 
-                                                        dot={false} 
-                                                        activeDot={{ r: 5 }} 
+                                                    <Line
+                                                        type="monotone"
+                                                        dataKey="ECOGRAFIA"
+                                                        name="Ecografía (ECO)"
+                                                        stroke="#06B6D4"
+                                                        strokeWidth={1.8}
+                                                        dot={false}
+                                                        activeDot={{ r: 5 }}
                                                         isAnimationActive={false}
                                                     />
                                                 )}
                                                 {visibleSeries.RADIOLOGIA && (
-                                                    <Line 
-                                                        type="monotone" 
-                                                        dataKey="RADIOLOGIA" 
-                                                        name="Radiología (RX)" 
-                                                        stroke="#6366F1" 
-                                                        strokeWidth={1.8} 
-                                                        dot={false} 
-                                                        activeDot={{ r: 5 }} 
+                                                    <Line
+                                                        type="monotone"
+                                                        dataKey="RADIOLOGIA"
+                                                        name="Radiología (RX)"
+                                                        stroke="#6366F1"
+                                                        strokeWidth={1.8}
+                                                        dot={false}
+                                                        activeDot={{ r: 5 }}
                                                         isAnimationActive={false}
                                                     />
                                                 )}
                                                 {visibleSeries.MAMOGRAFIA && (
-                                                    <Line 
-                                                        type="monotone" 
-                                                        dataKey="MAMOGRAFIA" 
-                                                        name="Mamografía" 
-                                                        stroke="#EC4899" 
-                                                        strokeWidth={1.8} 
-                                                        dot={false} 
-                                                        activeDot={{ r: 5 }} 
+                                                    <Line
+                                                        type="monotone"
+                                                        dataKey="MAMOGRAFIA"
+                                                        name="Mamografía"
+                                                        stroke="#EC4899"
+                                                        strokeWidth={1.8}
+                                                        dot={false}
+                                                        activeDot={{ r: 5 }}
                                                         isAnimationActive={false}
                                                     />
                                                 )}
                                                 {visibleSeries.TOMOGRAFIA && (
-                                                    <Line 
-                                                        type="monotone" 
-                                                        dataKey="TOMOGRAFIA" 
-                                                        name="Tomografía (TC)" 
-                                                        stroke="#F59E0B" 
-                                                        strokeWidth={1.8} 
-                                                        dot={false} 
-                                                        activeDot={{ r: 5 }} 
+                                                    <Line
+                                                        type="monotone"
+                                                        dataKey="TOMOGRAFIA"
+                                                        name="Tomografía (TC)"
+                                                        stroke="#F59E0B"
+                                                        strokeWidth={1.8}
+                                                        dot={false}
+                                                        activeDot={{ r: 5 }}
                                                         isAnimationActive={false}
                                                     />
                                                 )}
                                                 {visibleSeries.DENSITOMETRIA && (
-                                                    <Line 
-                                                        type="monotone" 
-                                                        dataKey="DENSITOMETRIA" 
-                                                        name="Densitometría" 
-                                                        stroke="#10B981" 
-                                                        strokeWidth={1.8} 
-                                                        dot={false} 
-                                                        activeDot={{ r: 5 }} 
+                                                    <Line
+                                                        type="monotone"
+                                                        dataKey="DENSITOMETRIA"
+                                                        name="Densitometría"
+                                                        stroke="#10B981"
+                                                        strokeWidth={1.8}
+                                                        dot={false}
+                                                        activeDot={{ r: 5 }}
                                                         isAnimationActive={false}
                                                     />
                                                 )}
                                                 {visibleSeries.ECOCARDIO && (
-                                                    <Line 
-                                                        type="monotone" 
-                                                        dataKey="ECOCARDIO" 
-                                                        name="Ecocardiograma" 
-                                                        stroke="#E11D48" 
-                                                        strokeWidth={1.8} 
-                                                        dot={false} 
-                                                        activeDot={{ r: 5 }} 
+                                                    <Line
+                                                        type="monotone"
+                                                        dataKey="ECOCARDIO"
+                                                        name="Ecocardiograma"
+                                                        stroke="#E11D48"
+                                                        strokeWidth={1.8}
+                                                        dot={false}
+                                                        activeDot={{ r: 5 }}
                                                         isAnimationActive={false}
                                                     />
                                                 )}
@@ -3259,38 +3254,38 @@ export default function DiagnosticoImagenesDashboard({
                                         {(selectedModalidad !== 'TODAS' || selectedAgenda !== 'TODAS') && (
                                             <>
                                                 {visibleSeries.total && (
-                                                    <Line 
-                                                        type="monotone" 
-                                                        dataKey="total" 
-                                                        name={selectedAgenda !== 'TODAS' ? `Total ${selectedAgenda}` : `Total ${selectedModalidad}`} 
-                                                        stroke={MODALIDADES_TABS.find(t => t.id === selectedModalidad)?.badgeColor || '#2563EB'} 
-                                                        strokeWidth={2.8} 
-                                                        dot={{ r: 2.5, fill: MODALIDADES_TABS.find(t => t.id === selectedModalidad)?.badgeColor || '#2563EB' }} 
-                                                        activeDot={{ r: 6 }} 
+                                                    <Line
+                                                        type="monotone"
+                                                        dataKey="total"
+                                                        name={selectedAgenda !== 'TODAS' ? `Total ${selectedAgenda}` : `Total ${selectedModalidad}`}
+                                                        stroke={MODALIDADES_TABS.find(t => t.id === selectedModalidad)?.badgeColor || '#2563EB'}
+                                                        strokeWidth={2.8}
+                                                        dot={{ r: 2.5, fill: MODALIDADES_TABS.find(t => t.id === selectedModalidad)?.badgeColor || '#2563EB' }}
+                                                        activeDot={{ r: 6 }}
                                                         isAnimationActive={false}
                                                     />
                                                 )}
                                                 {visibleSeries.ambulatorio && (
-                                                    <Line 
-                                                        type="monotone" 
-                                                        dataKey="ambulatorio" 
-                                                        name="Ambulatorio" 
-                                                        stroke="#10B981" 
-                                                        strokeWidth={1.8} 
-                                                        dot={false} 
-                                                        activeDot={{ r: 5 }} 
+                                                    <Line
+                                                        type="monotone"
+                                                        dataKey="ambulatorio"
+                                                        name="Ambulatorio"
+                                                        stroke="#10B981"
+                                                        strokeWidth={1.8}
+                                                        dot={false}
+                                                        activeDot={{ r: 5 }}
                                                         isAnimationActive={false}
                                                     />
                                                 )}
                                                 {visibleSeries.hospitalizacion && (
-                                                    <Line 
-                                                        type="monotone" 
-                                                        dataKey="hospitalizacion" 
-                                                        name="Hospitalización" 
-                                                        stroke="#8B5CF6" 
-                                                        strokeWidth={1.8} 
-                                                        dot={false} 
-                                                        activeDot={{ r: 5 }} 
+                                                    <Line
+                                                        type="monotone"
+                                                        dataKey="hospitalizacion"
+                                                        name="Hospitalización"
+                                                        stroke="#8B5CF6"
+                                                        strokeWidth={1.8}
+                                                        dot={false}
+                                                        activeDot={{ r: 5 }}
                                                         isAnimationActive={false}
                                                     />
                                                 )}
@@ -3306,7 +3301,7 @@ export default function DiagnosticoImagenesDashboard({
 
             {/* ─── GRID PRINCIPAL: TABLA DE AGENDAS + PANEL DE PROFUNDIZACIÓN ─── */}
             <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '16px', alignItems: 'start' }}>
-                
+
                 {/* 1. LISTA Y RANKING DE AGENDAS */}
                 <div style={{
                     background: '#FFFFFF',

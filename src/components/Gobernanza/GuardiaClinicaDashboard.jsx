@@ -908,23 +908,23 @@ export default function GuardiaClinicaDashboard({
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '22px', paddingBottom: '40px' }}>
 
-            {/* ─── BANNER PRINCIPAL DE GOBERNANZA & SELECTOR DE PERÍODO ─── */}
+            {/* ─── ENCABEZADO COMPACTO DE GUARDIA CLÍNICA (Período unificado en barra maestra Telar) ─── */}
             <div style={{
                 background: '#FFFFFF',
                 borderRadius: '12px',
                 border: '1px solid #E2E8F0',
-                padding: '16px 20px',
+                padding: '12px 18px',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
                 flexWrap: 'wrap',
-                gap: '14px',
-                boxShadow: '0 2px 8px -2px rgba(0, 0, 0, 0.05)'
+                gap: '12px',
+                boxShadow: '0 1px 3px rgba(0, 0, 0, 0.03)'
             }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                     <div style={{
-                        width: '44px',
-                        height: '44px',
+                        width: '38px',
+                        height: '38px',
                         borderRadius: '10px',
                         background: '#EFF6FF',
                         border: '1px solid #BFDBFE',
@@ -933,41 +933,11 @@ export default function GuardiaClinicaDashboard({
                         justifyContent: 'center',
                         color: '#1E40AF'
                     }}>
-                        <Activity size={22} color="#1E40AF" />
+                        <Activity size={20} color="#1E40AF" />
                     </div>
-                    <div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <h2 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800, color: '#0F172A' }}>
-                                Tablero de Guardia y Urgencias Médicas
-                            </h2>
-                        </div>
-                        <span style={{ fontSize: '0.78rem', color: '#64748B' }}>
-                            Métricas normadas de Oportunidad, Calidad, Resolutividad e Intensidad Diagnóstica
-                        </span>
-                    </div>
-                </div>
-
-                {/* Badge institucional de Período Activo Filtrado y accesos directos */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-                    <div style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px',
-                        background: '#EFF6FF',
-                        border: '1px solid #BFDBFE',
-                        borderRadius: '10px',
-                        padding: '6px 14px'
-                    }}>
-                        <Calendar size={17} color="#1D4ED8" />
-                        <div>
-                            <div style={{ fontSize: '0.66rem', fontWeight: 800, color: '#1E40AF', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                                Período Activo
-                            </div>
-                            <div style={{ fontSize: '0.84rem', fontWeight: 800, color: '#0F172A' }}>
-                                {activePeriodLabel} {formattedDateRange ? `(${formattedDateRange})` : ''}
-                            </div>
-                        </div>
-                    </div>
+                    <h2 style={{ margin: 0, fontSize: '1.12rem', fontWeight: 800, color: '#0F172A' }}>
+                        Guardia y Urgencias Médicas
+                    </h2>
                 </div>
             </div>
 

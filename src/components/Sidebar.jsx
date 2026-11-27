@@ -106,17 +106,35 @@ export default function Sidebar({ collapsed, onToggle, activeView, onViewChange,
 
         return selectedModules.includes(id);
     };
-    const [pedidosOpen, setPedidosOpen] = useState(false);
-    const [mensajeriaOpen, setMensajeriaOpen] = useState(false);
-    const [altasOpen, setAltasOpen] = useState(false);
-    const [cirugiasOpen, setCirugiasOpen] = useState(false);
-    const [simonOpen, setSimonOpen] = useState(false);
-    const [gobernanzaOpen, setGobernanzaOpen] = useState(() =>
-        isGobernanzaOnly || ['gobernanza', 'gobernanza_indicadores'].includes(activeView)
-    );
-    const [contactCenterOpen, setContactCenterOpen] = useState(() => 
-        ['contact_center', 'contact_center_chats', 'contact_center_nueva', 'contact_center_cancelaciones', 'turnos_online', 'contact_center_metricas', 'contact_center_incentivos', 'contact_center_config'].includes(activeView) || isContactCenterOnly
-    );
+    // Acordeón exclusivo: solo un grupo abierto a la vez para mantener el Sidebar limpio y compacto
+    const [openGroup, setOpenGroup] = useState(() => {
+        if (isGobernanzaOnly || ['gobernanza', 'gobernanza_indicadores'].includes(activeView)) return 'gobernanza';
+        if (['contact_center', 'contact_center_chats', 'contact_center_nueva', 'contact_center_cancelaciones', 'turnos_online', 'contact_center_metricas', 'contact_center_incentivos', 'contact_center_config', 'contact_center_permisos'].includes(activeView) || isContactCenterOnly) return 'contact_center';
+        return null;
+    });
+
+    const makeGroupSetter = (groupId) => (valOrFn) => {
+        setOpenGroup(prev => {
+            const currentlyOpen = prev === groupId;
+            const nextOpen = typeof valOrFn === 'function' ? valOrFn(currentlyOpen) : valOrFn;
+            return nextOpen ? groupId : (currentlyOpen ? null : prev);
+        });
+    };
+
+    const pedidosOpen = openGroup === 'pedidos';
+    const setPedidosOpen = makeGroupSetter('pedidos');
+    const mensajeriaOpen = openGroup === 'mensajeria';
+    const setMensajeriaOpen = makeGroupSetter('mensajeria');
+    const altasOpen = openGroup === 'altas';
+    const setAltasOpen = makeGroupSetter('altas');
+    const cirugiasOpen = openGroup === 'cirugias';
+    const setCirugiasOpen = makeGroupSetter('cirugias');
+    const simonOpen = openGroup === 'simon';
+    const setSimonOpen = makeGroupSetter('simon');
+    const gobernanzaOpen = openGroup === 'gobernanza';
+    const setGobernanzaOpen = makeGroupSetter('gobernanza');
+    const contactCenterOpen = openGroup === 'contact_center';
+    const setContactCenterOpen = makeGroupSetter('contact_center');
 
     // Sub-items dentro de "Gobernanza"
     const gobernanzaSubItems = [

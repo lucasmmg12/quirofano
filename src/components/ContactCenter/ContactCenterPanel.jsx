@@ -1,18 +1,19 @@
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef, lazy, Suspense } from 'react';
 import { 
     MessageSquare, CalendarCheck, PlusCircle, ShieldCheck, 
     Headphones, RefreshCw, Layers, CheckCircle2, Lock, Sparkles,
     User, ChevronDown, AlertTriangle, BarChart3, Volume2, VolumeX, Radio, Settings, Award, CalendarX
 } from 'lucide-react';
-import ContactCenterChatConsole from './ContactCenterChatConsole';
-import ContactCenterNuevaConversacion from './ContactCenterNuevaConversacion';
-import ContactCenterPermisosTab from './ContactCenterPermisosTab';
-import ContactCenterCancelacionesTab from './ContactCenterCancelacionesTab';
-import ContactCenterTurnosOnlineTab from './ContactCenterTurnosOnlineTab';
-import ContactCenterMetricsTab from './ContactCenterMetricsTab';
-import ContactCenterConfigTab from './ContactCenterConfigTab';
-import ContactCenterIncentivosTab from './ContactCenterIncentivosTab';
 import ChatWindow from '../ChatWindow';
+
+const ContactCenterChatConsole = lazy(() => import('./ContactCenterChatConsole'));
+const ContactCenterNuevaConversacion = lazy(() => import('./ContactCenterNuevaConversacion'));
+const ContactCenterPermisosTab = lazy(() => import('./ContactCenterPermisosTab'));
+const ContactCenterCancelacionesTab = lazy(() => import('./ContactCenterCancelacionesTab'));
+const ContactCenterTurnosOnlineTab = lazy(() => import('./ContactCenterTurnosOnlineTab'));
+const ContactCenterMetricsTab = lazy(() => import('./ContactCenterMetricsTab'));
+const ContactCenterConfigTab = lazy(() => import('./ContactCenterConfigTab'));
+const ContactCenterIncentivosTab = lazy(() => import('./ContactCenterIncentivosTab'));
 import { 
     INITIAL_CHATS, fetchAllowedUsers, updateAllowedUsers, 
     canUserAccessContactCenter, MASTER_ADMINS,
@@ -1380,7 +1381,13 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                 boxSizing: 'border-box'
             }}
         >
-            {/* Vistas del Módulo */}
+            {/* Vistas del Módulo (carga bajo demanda) */}
+            <Suspense fallback={
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '40vh', gap: '10px', color: '#64748B', fontSize: '0.84rem', fontWeight: 600 }}>
+                    <RefreshCw size={20} className="animate-spin" color="#003B73" />
+                    Cargando vista de Contact Center...
+                </div>
+            }>
             {activeSubTab === 'cancelaciones' && (
                 <ContactCenterCancelacionesTab 
                     activeAgent={activeAgent}
@@ -1473,6 +1480,7 @@ export default function ContactCenterPanel({ currentUser, addToast, initialTab =
                     saving={savingPermisos}
                 />
             )}
+            </Suspense>
 
             {/* Ventana Flotante de Chat de Contact Center */}
             <ChatWindow

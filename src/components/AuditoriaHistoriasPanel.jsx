@@ -540,9 +540,9 @@ export default function AuditoriaHistoriasPanel({ addToast, currentUser }) {
     const [dragOver, setDragOver] = useState(false);
     const [loading, setLoading] = useState(false);
 
-    // Búsqueda y paginación
+    // Búsqueda y paginación (bajo consumo de RAM: 10 / 30 por defecto)
     const [searchTerm, setSearchTerm] = useState('');
-    const [pageSize, setPageSize] = useState(50);
+    const [pageSize, setPageSize] = useState(10);
     const [currentPage, setCurrentPage] = useState(1);
 
     // Búsqueda y paginación de pacientes (Timeline)
@@ -2736,10 +2736,10 @@ export default function AuditoriaHistoriasPanel({ addToast, currentUser }) {
                                                     fontWeight: 600, outline: 'none', cursor: 'pointer'
                                                 }}
                                             >
-                                                <option value={20}>20</option>
+                                                <option value={10}>10</option>
+                                                <option value={30}>30</option>
                                                 <option value={50}>50</option>
                                                 <option value={100}>100</option>
-                                                <option value={-1}>Todo</option>
                                             </select>
                                         </div>
                                         {pageSize !== -1 && totalPages > 1 && (
