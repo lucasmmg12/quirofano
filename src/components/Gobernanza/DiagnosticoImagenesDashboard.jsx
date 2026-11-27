@@ -3393,60 +3393,6 @@ export default function DiagnosticoImagenesDashboard({
                         </div>
                     )}
 
-                    {/* Desglose directo por Agenda SALUS (v.Agenda) */}
-                    {!loading && agendasSalusList.length > 0 && (
-                        <div style={{
-                            background: '#F8FAFC',
-                            border: '1px solid #E2E8F0',
-                            borderRadius: '10px',
-                            padding: '10px 12px',
-                            display: 'flex',
-                            flexDirection: 'column',
-                            gap: '6px'
-                        }}>
-                            <div style={{ fontSize: '0.72rem', fontWeight: 800, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
-                                Agendas en SALUS (Columna Agenda):
-                            </div>
-                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                                {agendasSalusList.map(ag => (
-                                    <div
-                                        key={ag.agendaSalus}
-                                        style={{
-                                            background: '#FFFFFF',
-                                            border: '1px solid #CBD5E1',
-                                            borderRadius: '8px',
-                                            padding: '5px 9px',
-                                            fontSize: '0.72rem',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            gap: '6px'
-                                        }}
-                                    >
-                                        <span style={{ fontWeight: 700, color: '#0F172A' }}>
-                                            {ag.agendaSalus}
-                                        </span>
-                                        <span style={{
-                                            fontWeight: 800,
-                                            color: '#047857',
-                                            background: '#ECFDF5',
-                                            padding: '1px 6px',
-                                            borderRadius: '999px',
-                                            fontSize: '0.7rem'
-                                        }}>
-                                            {ag.realizados.toLocaleString('es-AR')}
-                                        </span>
-                                        <span style={{ fontSize: '0.66rem', color: '#0F766E', fontWeight: 600 }}>
-                                            OS: {(ag.obraSocial || 0).toLocaleString('es-AR')}
-                                        </span>
-                                        <span style={{ fontSize: '0.66rem', color: '#C2410C', fontWeight: 600 }}>
-                                            Part: {(ag.particular || 0).toLocaleString('es-AR')}
-                                        </span>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-
                     {loading ? (
                         <div style={{ textAlign: 'center', padding: '40px', color: '#64748B' }}>
                             <RefreshCw className="animate-spin" size={24} style={{ margin: '0 auto 8px auto' }} />
@@ -3461,164 +3407,53 @@ export default function DiagnosticoImagenesDashboard({
                         <div style={{ maxHeight: '600px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '6px' }}>
                             {agendasSummaryList.map((item, idx) => {
                                 const isSelected = selectedAgenda === item.agenda;
-                                const pctRealizados = totals.realizados > 0 ? ((item.realizados / totals.realizados) * 100).toFixed(1) : 0;
+                                const pctRealizados = totals.realizados > 0 ? ((item.realizados / totals.realizados) * 100).toFixed(1) : '0.0';
                                 const pctInf = (item.realizados || item.total) > 0 ? ((item.informados / (item.realizados || item.total)) * 100).toFixed(0) : 0;
                                 const itemOS = item.obraSocial || 0;
-                                const itemPart = item.particular || 0;
-                                const pctItemOS = item.realizados > 0 ? ((itemOS / item.realizados) * 100).toFixed(0) : 0;
-                                const pctItemPart = item.realizados > 0 ? ((itemPart / item.realizados) * 100).toFixed(0) : 0;
+                                const pctItemOS = item.realizados > 0 ? Math.round((itemOS / item.realizados) * 100) : 0;
+                                const maxAgendaVol = agendasSummaryList[0]?.realizados || 1;
+                                const barWidth = Math.max(3, Math.round((item.realizados / maxAgendaVol) * 100));
 
                                 return (
                                     <div
                                         key={item.agenda}
                                         onClick={() => setSelectedAgenda(isSelected ? 'TODAS' : item.agenda)}
+                                        title="Clic para filtrar el panel por esta práctica"
                                         style={{
-                                            padding: '12px 14px',
-                                            borderRadius: '10px',
-                                            border: `1.5px solid ${isSelected ? COLOR_PRIMARY : '#E2E8F0'}`,
+                                            padding: '10px 12px',
+                                            borderRadius: '9px',
+                                            border: `1px solid ${isSelected ? COLOR_PRIMARY : '#E2E8F0'}`,
                                             background: isSelected ? '#EFF6FF' : '#FFFFFF',
                                             cursor: 'pointer',
                                             transition: 'all 0.15s ease',
                                             display: 'flex',
                                             flexDirection: 'column',
-                                            gap: '8px'
+                                            gap: '6px'
                                         }}
                                     >
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                <span style={{
-                                                    fontSize: '0.72rem',
-                                                    fontWeight: 700,
-                                                    color: '#64748B',
-                                                    width: '20px'
-                                                }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                                                <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#94A3B8', minWidth: '22px' }}>
                                                     #{idx + 1}
                                                 </span>
-                                                <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#0F172A' }}>
+                                                <span style={{
+                                                    fontSize: '0.82rem',
+                                                    fontWeight: 700,
+                                                    color: '#0F172A',
+                                                    overflow: 'hidden',
+                                                    textOverflow: 'ellipsis',
+                                                    whiteSpace: 'nowrap'
+                                                }}>
                                                     {item.agenda}
                                                 </span>
                                             </div>
-                                            <div style={{ textAlign: 'right' }}>
-                                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '6px' }}>
-                                                    <span style={{ fontSize: '1rem', fontWeight: 800, color: '#065F46' }}>
-                                                        {item.realizados.toLocaleString('es-AR')}
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+                                                <span style={{ fontSize: '0.88rem', fontWeight: 800, color: '#003B73', fontVariantNumeric: 'tabular-nums' }}>
+                                                    {item.realizados.toLocaleString('es-AR')}
+                                                    <span style={{ fontSize: '0.72rem', fontWeight: 500, color: '#64748B', marginLeft: '4px' }}>
+                                                        ({pctRealizados}%)
                                                     </span>
-                                                    <span style={{ fontSize: '0.66rem', fontWeight: 700, color: '#047857', background: '#ECFDF5', padding: '1px 5px', borderRadius: '4px' }}>
-                                                        Efectivos
-                                                    </span>
-                                                </div>
-                                                <div style={{ fontSize: '0.68rem', color: '#64748B', marginTop: '1px' }}>
-                                                    {pctRealizados}% del total | {item.total} turnos ({item.ausente} aus)
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        {/* Diferenciación en singular: Obra Social (Números ≠ 042) vs Particular (042 + Nombres propios) */}
-                                        <div style={{
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            justifyContent: 'space-between',
-                                            flexWrap: 'wrap',
-                                            gap: '6px',
-                                            background: '#F8FAFC',
-                                            border: '1px solid #E2E8F0',
-                                            borderRadius: '7px',
-                                            padding: '5px 8px'
-                                        }}>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                                                <span
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        setSelectedAgenda(item.agenda);
-                                                        setFilterFinanciador(filterFinanciador === 'Obra Social' && isSelected ? 'TODOS' : 'Obra Social');
-                                                    }}
-                                                    title="Clic para filtrar este estudio en singular solo con Obra Social (comienzan con número excepto 042)"
-                                                    style={{
-                                                        fontSize: '0.7rem',
-                                                        fontWeight: 700,
-                                                        color: '#0F766E',
-                                                        background: filterFinanciador === 'Obra Social' && isSelected ? '#99F6E4' : '#F0FDFA',
-                                                        border: '1px solid #99F6E4',
-                                                        padding: '2px 7px',
-                                                        borderRadius: '6px',
-                                                        cursor: 'pointer'
-                                                    }}
-                                                >
-                                                    🏥 Con Obra Social: <strong>{itemOS.toLocaleString('es-AR')}</strong> ({pctItemOS}%)
                                                 </span>
-                                                <span
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        setSelectedAgenda(item.agenda);
-                                                        setFilterFinanciador(filterFinanciador === 'Particular' && isSelected ? 'TODOS' : 'Particular');
-                                                    }}
-                                                    title="Clic para filtrar este estudio en singular solo Particulares (042 o comienzan con letras / nombre propio)"
-                                                    style={{
-                                                        fontSize: '0.7rem',
-                                                        fontWeight: 700,
-                                                        color: '#C2410C',
-                                                        background: filterFinanciador === 'Particular' && isSelected ? '#FED7AA' : '#FFF7ED',
-                                                        border: '1px solid #FED7AA',
-                                                        padding: '2px 7px',
-                                                        borderRadius: '6px',
-                                                        cursor: 'pointer'
-                                                    }}
-                                                >
-                                                    👤 Particular (042/Nombre): <strong>{itemPart.toLocaleString('es-AR')}</strong> ({pctItemPart}%)
-                                                </span>
-                                            </div>
-                                            <div style={{ width: '90px', height: '6px', background: '#FED7AA', borderRadius: '999px', overflow: 'hidden', display: 'flex' }} title={`Obra Social ${pctItemOS}% vs Particular ${pctItemPart}%`}>
-                                                <div style={{ width: `${pctItemOS}%`, height: '100%', background: '#0D9488' }} />
-                                            </div>
-                                        </div>
-
-                                        {/* Barra comparativa de Asistencia y Modalidad */}
-                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                <div style={{ flex: 1, height: '7px', background: '#F1F5F9', borderRadius: '999px', overflow: 'hidden', display: 'flex' }}>
-                                                    {item.presente > 0 && <div title={`Presentes: ${item.presente}`} style={{ width: `${(item.presente / item.total) * 100}%`, background: '#10B981' }} />}
-                                                    {item.internado > 0 && <div title={`Internados: ${item.internado}`} style={{ width: `${(item.internado / item.total) * 100}%`, background: '#8B5CF6' }} />}
-                                                    {item.urgencia > 0 && <div title={`Urgencias: ${item.urgencia}`} style={{ width: `${(item.urgencia / item.total) * 100}%`, background: '#F59E0B' }} />}
-                                                    {item.sobreturno > 0 && <div title={`Sobreturnos: ${item.sobreturno}`} style={{ width: `${(item.sobreturno / item.total) * 100}%`, background: '#0284C7' }} />}
-                                                    {item.ausente > 0 && <div title={`Ausentes: ${item.ausente}`} style={{ width: `${(item.ausente / item.total) * 100}%`, background: '#EF4444' }} />}
-                                                    {item.sinRegistrar > 0 && <div title={`Sin Registrar: ${item.sinRegistrar}`} style={{ width: `${(item.sinRegistrar / item.total) * 100}%`, background: '#94A3B8' }} />}
-                                                </div>
-                                                <span style={{ fontSize: '0.7rem', color: '#64748B', fontWeight: 600 }}>
-                                                    Inf: {pctInf}%
-                                                </span>
-                                            </div>
-                                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', fontSize: '0.68rem', fontWeight: 600 }}>
-                                                {item.presente > 0 && <span style={{ color: '#059669', background: '#ECFDF5', padding: '1px 5px', borderRadius: '4px' }}>✓ Pres: {item.presente}</span>}
-                                                {item.internado > 0 && <span style={{ color: '#7C3AED', background: '#F5F3FF', padding: '1px 5px', borderRadius: '4px' }}>🏥 Hosp: {item.internado}</span>}
-                                                {item.urgencia > 0 && <span style={{ color: '#D97706', background: '#FFFBEB', padding: '1px 5px', borderRadius: '4px' }}>⚡ Urg: {item.urgencia}</span>}
-                                                {item.sobreturno > 0 && <span style={{ color: '#0284C7', background: '#F0F9FF', padding: '1px 5px', borderRadius: '4px' }}>⏱ Sobret: {item.sobreturno}</span>}
-                                                {item.ausente > 0 && <span style={{ color: '#DC2626', background: '#FEF2F2', padding: '1px 5px', borderRadius: '4px' }}>✗ Aus: {item.ausente}</span>}
-                                                {item.sinRegistrar > 0 && <span style={{ color: '#64748B', background: '#F1F5F9', padding: '1px 5px', borderRadius: '4px' }}>• S/Reg: {item.sinRegistrar}</span>}
-                                            </div>
-                                        </div>
-
-                                        {/* Sedes involucradas, Grupo Agenda SALUS y Acceso a Casos Nominales */}
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.72rem', color: '#64748B', flexWrap: 'wrap', gap: '6px' }}>
-                                            <span style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                                                    <MapPin size={12} />
-                                                    {Array.from(item.centros).slice(0, 3).join(', ') || 'Centro general'}
-                                                </span>
-                                                {item.gruposAgenda && item.gruposAgenda.size > 0 && (
-                                                    <span style={{
-                                                        fontSize: '0.65rem',
-                                                        fontWeight: 700,
-                                                        color: '#475569',
-                                                        background: '#F1F5F9',
-                                                        border: '1px solid #CBD5E1',
-                                                        padding: '1px 6px',
-                                                        borderRadius: '4px'
-                                                    }}>
-                                                        Grupo SALUS: {Array.from(item.gruposAgenda).join(' + ')}
-                                                    </span>
-                                                )}
-                                            </span>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                                                 <button
                                                     type="button"
                                                     onClick={(e) => {
@@ -3626,23 +3461,28 @@ export default function DiagnosticoImagenesDashboard({
                                                         openCasosNominalesModal({ modalidad: item.modalidad, agenda: item.agenda });
                                                     }}
                                                     style={{
-                                                        border: '1px solid #BFDBFE',
-                                                        background: '#EFF6FF',
-                                                        color: '#1D4ED8',
+                                                        border: '1px solid #CBD5E1',
+                                                        background: '#F8FAFC',
+                                                        color: '#003B73',
                                                         borderRadius: '6px',
-                                                        padding: '2px 8px',
-                                                        fontSize: '0.7rem',
+                                                        padding: '2px 7px',
+                                                        fontSize: '0.68rem',
                                                         fontWeight: 700,
                                                         cursor: 'pointer'
                                                     }}
                                                 >
-                                                    📋 Ver casos ({item.realizados})
+                                                    Casos
                                                 </button>
-                                                <span style={{ color: COLOR_PRIMARY, fontWeight: 600, display: 'flex', alignItems: 'center', gap: '2px' }}>
-                                                    {isSelected ? 'Ocultar detalle' : 'Filtrar panel'}
-                                                    <ChevronRight size={13} />
-                                                </span>
                                             </div>
+                                        </div>
+
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                            <div style={{ flex: 1, height: '5px', background: '#F1F5F9', borderRadius: '999px', overflow: 'hidden' }}>
+                                                <div style={{ width: `${barWidth}%`, height: '100%', background: isSelected ? '#003B73' : '#2563EB', borderRadius: '999px' }} />
+                                            </div>
+                                            <span style={{ fontSize: '0.68rem', color: '#64748B', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                                                OS {pctItemOS}% · Inf {pctInf}%
+                                            </span>
                                         </div>
                                     </div>
                                 );
