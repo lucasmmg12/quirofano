@@ -303,7 +303,7 @@ export default function DxiSuperficieTopografica3D({
     useEffect(() => {
         isCrossFocusedRef.current = isCrossFocused;
         const c = camRef.current;
-        c.tRadius = isCrossFocused ? 28.5 : 22.0;
+        c.tRadius = isCrossFocused ? 31.5 : 22.0;
     }, [isCrossFocused]);
 
     // Totales por modalidad (para mostrar cantidad en cada pill y en el panel de insights izquierdo)
@@ -843,13 +843,12 @@ export default function DxiSuperficieTopografica3D({
             }
             c.radius += (c.tRadius - c.radius) * 0.14;
 
-            // Desplazamiento horizontal 3D fluido hacia la DERECHA cuando el panel izquierdo está abierto (0 resize WebGL = 60fps)
-            const targetShiftX = isCrossFocusedRef.current ? -6.4 : 0;
-            c.shiftX = (c.shiftX || 0) + (targetShiftX - (c.shiftX || 0)) * 0.11;
-
-            // AJUSTE DINÁMICO DE FOV Y DISTANCIA PARA LLENAR EL 92%+ DEL ANCHO Y ALTO DEL CONTENEDOR
+            // AJUSTE DINÁMICO DE FOV Y DISTANCIA + DESPLAZAMIENTO EXACTO AL CENTRO DEL 66% DERECHO (0% solapamiento)
             const aspect = w / Math.max(1, h);
             const effectiveRadius = c.radius * (aspect < 1.6 ? (1.6 / Math.max(0.9, aspect)) * 0.92 : 0.88);
+            const visW = 2 * effectiveRadius * Math.tan(16 * Math.PI / 180) * aspect;
+            const targetShiftX = isCrossFocusedRef.current ? -visW * 0.175 : 0;
+            c.shiftX = (c.shiftX || 0) + (targetShiftX - (c.shiftX || 0)) * 0.12;
             const target = [c.shiftX, WORLD_H * 0.36, 0];
             const eye = [
                 target[0] + effectiveRadius * Math.cos(c.pitch) * Math.sin(c.yaw),
@@ -1364,14 +1363,14 @@ export default function DxiSuperficieTopografica3D({
                 background: 'linear-gradient(180deg, #F8FAFC 0%, #EFF6FF 55%, #E2E8F0 100%)',
                 overflow: 'hidden',
             }}>
-                {/* Panel de Insights Precisos a la IZQUIERDA (aparece suavemente al seleccionar estudios/coberturas) */}
+                {/* Panel de Insights Precisos a la IZQUIERDA (34% compacto, sin tapar el gráfico) */}
                 <div style={{
                     position: 'absolute',
                     top: 0,
                     bottom: 0,
                     left: 0,
-                    width: '39%',
-                    padding: '16px 18px',
+                    width: '34%',
+                    padding: '14px 16px',
                     background: 'rgba(255, 255, 255, 0.96)',
                     borderRight: '1px solid #E2E8F0',
                     boxShadow: isCrossFocused ? '6px 0 24px rgba(15, 23, 42, 0.06)' : 'none',
