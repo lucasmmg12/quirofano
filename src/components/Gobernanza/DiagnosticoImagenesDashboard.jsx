@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { AnilloToroidal3D } from './GobernanzaCharts3D';
 import DxiSuperficieTopografica3D from './DxiSuperficieTopografica3D';
+import { DxiBarraPulsoAnimada, DxiFlujoAsistenciaAnimado } from './DxiPulsoFlujoHero';
 import {
     Activity,
     Calendar,
@@ -1986,448 +1987,114 @@ export default function DiagnosticoImagenesDashboard({
                 </div>
             </div>
 
-            {/* ─── PESTAÑAS SELECTORAS DE MODALIDAD (ECO, RX, MAM, TC, DE) ─── */}
-            <div style={{
-                display: 'flex',
-                background: '#FFFFFF',
-                borderRadius: '14px',
-                border: '1px solid #E2E8F0',
-                padding: '6px',
-                gap: '6px',
-                overflowX: 'auto',
-                boxShadow: '0 1px 2px rgba(0,0,0,0.02)'
-            }}>
-                {MODALIDADES_TABS.map(tab => {
-                    const isSelected = selectedModalidad === tab.id;
-                    const count = modalidadCounts[tab.id] || 0;
-                    const TabIcon = tab.icon;
+            {/* ─── 1. BARRA DE PULSO ANIMADA (Opción 1 · Menos es Más) ─── */}
+            <DxiBarraPulsoAnimada
+                totals={totals}
+                loading={loading}
+                selectedModalidad={selectedModalidad}
+                onResetModalidad={() => {
+                    setSelectedModalidad('TODAS');
+                    setSelectedAgenda('TODAS');
+                }}
+                filterFinanciador={filterFinanciador}
+                onToggleFinanciador={() => {
+                    const order = ['TODOS', 'Obra Social', 'Particular'];
+                    const next = order[(order.indexOf(filterFinanciador) + 1) % order.length];
+                    setFilterFinanciador(next);
+                }}
+                filterAsistencia={filterAsistencia}
+                onToggleAusente={() => setFilterAsistencia(filterAsistencia === 'Ausente' ? 'TODOS' : 'Ausente')}
+            />
 
-                    return (
-                        <button
-                            key={tab.id}
-                            onClick={() => {
-                                setSelectedModalidad(tab.id);
-                                setSelectedAgenda('TODAS'); // Resetear agenda al cambiar modalidad
-                            }}
-                            style={{
-                                flex: 1,
-                                minWidth: '150px',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'space-between',
-                                padding: '10px 14px',
-                                borderRadius: '10px',
-                                border: `1.5px solid ${isSelected ? tab.badgeColor : 'transparent'}`,
-                                background: isSelected ? '#F8FAFC' : 'transparent',
-                                cursor: 'pointer',
-                                transition: 'all 0.15s ease'
-                            }}
-                        >
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <div style={{
-                                    width: '28px',
-                                    height: '28px',
-                                    borderRadius: '8px',
-                                    background: isSelected ? `${tab.badgeColor}15` : '#F1F5F9',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    color: tab.badgeColor
-                                }}>
-                                    <TabIcon size={16} />
-                                </div>
-                                <div style={{ textAlign: 'left' }}>
-                                    <div style={{ fontSize: '0.82rem', fontWeight: isSelected ? 700 : 600, color: isSelected ? '#0F172A' : '#475569' }}>
-                                        {tab.label}
-                                    </div>
-                                    {tab.id === 'MAMOGRAFIA' && mamoDensitoBreakdown ? (
-                                        <div style={{ fontSize: '0.67rem', color: '#DB2777', fontWeight: 700 }}>
-                                            S.Fe: {mamoDensitoBreakdown.mamoGrupoMixto} + S.Luis: {mamoDensitoBreakdown.mamoGrupoMamografia}
-                                        </div>
-                                    ) : tab.id === 'ECOGRAFIA' && ecoSinInformarSummary.totalExcluidas > 0 ? (
-                                        <div style={{ fontSize: '0.67rem', color: '#0891B2', fontWeight: 700 }}>
-                                            Criterio SALUS (s/inf: {ecoSinInformarSummary.totalExcluidas})
-                                        </div>
-                                    ) : tab.note ? (
-                                        <div style={{ fontSize: '0.68rem', color: '#94A3B8' }}>{tab.note}</div>
-                                    ) : null}
-                                </div>
-                            </div>
-                            <span style={{
-                                fontSize: '0.8rem',
-                                fontWeight: 700,
-                                color: isSelected ? tab.badgeColor : '#64748B',
-                                background: isSelected ? `${tab.badgeColor}20` : '#F1F5F9',
-                                padding: '2px 8px',
-                                borderRadius: '999px'
-                            }}>
-                                {count.toLocaleString('es-AR')}
-                            </span>
-                        </button>
-                    );
-                })}
-            </div>
+            {/* ─── 2. HERO #1: ANILLO 3D INTERACTIVO CON SEPARACIÓN DE SEGMENTO Y NARRATIVA ─── */}
+            {modalidadCounts && Object.keys(modalidadCounts).length > 0 && (() => {
+                const modDefs = [
+                    { key: 'ECOGRAFIA', label: 'Ecografía', rgb: [0, 59, 115] },
+                    { key: 'RADIOLOGIA', label: 'Radiología (RX)', rgb: [2, 132, 199] },
+                    { key: 'TOMOGRAFIA', label: 'Tomografía (TC)', rgb: [124, 58, 237] },
+                    { key: 'MAMOGRAFIA', label: 'Mamografía', rgb: [219, 39, 119] },
+                    { key: 'DENSITOMETRIA', label: 'Densitometría', rgb: [5, 150, 105] },
+                    { key: 'ECOCARDIO', label: 'Ecocardiograma', rgb: [225, 29, 72] },
+                ];
+                const segs = modDefs
+                    .map(m => ({ ...m, value: Number(modalidadCounts[m.key] || 0) }))
+                    .filter(m => m.value > 0)
+                    .sort((a, b) => b.value - a.value);
+                if (!segs.length) return null;
+                const totMod = segs.reduce((s, x) => s + x.value, 0);
 
-            {/* ─── INDICADORES EJECUTIVOS (KPI CARDS) ─── */}
-            <div style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
-                gap: '14px'
-            }}>
-                {/* 1. Total Estudios Efectivamente Realizados */}
-                <div style={{
-                    background: '#FFFFFF',
-                    borderRadius: '14px',
-                    border: '1.5px solid #BBF7D0',
-                    padding: '16px',
-                    boxShadow: '0 2px 4px rgba(16, 185, 129, 0.05)',
-                    position: 'relative'
-                }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ fontSize: '0.76rem', fontWeight: 700, color: '#0F172A', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                            Estudios Realizados
-                        </span>
-                        <span style={{ fontSize: '0.7rem', fontWeight: 800, color: '#047857', background: '#ECFDF5', border: '1px solid #A7F3D0', padding: '2px 7px', borderRadius: '6px' }}>
-                            ✓ Efectivos
-                        </span>
-                    </div>
-                    <div style={{ fontSize: '2rem', fontWeight: 800, color: '#065F46', marginTop: '4px' }}>
-                        {loading ? '...' : totals.realizados.toLocaleString('es-AR')}
-                    </div>
-                    <div style={{ display: 'flex', gap: '6px', marginTop: '4px', flexWrap: 'wrap' }}>
-                        <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#0F766E', background: '#F0FDFA', border: '1px solid #99F6E4', padding: '1px 6px', borderRadius: '4px' }}>
-                            🏥 OS: {totals.obraSocial.toLocaleString('es-AR')} ({totals.pctObraSocial}%)
-                        </span>
-                        <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#C2410C', background: '#FFF7ED', border: '1px solid #FED7AA', padding: '1px 6px', borderRadius: '4px' }}>
-                            👤 Part: {totals.particular.toLocaleString('es-AR')} ({totals.pctParticular}%)
-                        </span>
-                    </div>
-                    <div style={{ fontSize: '0.7rem', color: '#64748B', marginTop: '4px' }}>
-                        De <strong>{totals.total.toLocaleString('es-AR')}</strong> turnos agendados ({totals.pctRealizados}%)
-                    </div>
-                </div>
+                const modStats = {};
+                (scopedData?.agendas || []).forEach(r => {
+                    if (!r.EstadoAsistencia || !ESTADOS_EFECTIVOS.has(r.EstadoAsistencia)) return;
+                    if (filterFinanciador !== 'TODOS' && r.TipoFinanciador && r.TipoFinanciador !== filterFinanciador) return;
+                    const mk = r.Modalidad;
+                    if (!mk) return;
+                    if (!modStats[mk]) {
+                        modStats[mk] = { total: 0, os: 0, part: 0, inf: 0, centros: {}, agendas: {} };
+                    }
+                    const st = modStats[mk];
+                    const cant = Number(r.Cantidad || 0);
+                    st.total += cant;
+                    if (r.TipoFinanciador === 'PARTICULAR') st.part += cant;
+                    else st.os += cant;
+                    st.inf += Number(r.Informados || r.CantidadInformados || 0);
+                    if (r.Centro) st.centros[r.Centro] = (st.centros[r.Centro] || 0) + cant;
+                    if (r.Agenda) st.agendas[r.Agenda] = (st.agendas[r.Agenda] || 0) + cant;
+                });
 
-                {/* 2. Ambulatorio (Presentes) */}
-                <div style={{ background: '#FFFFFF', borderRadius: '14px', border: '1px solid #E2E8F0', padding: '16px', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ fontSize: '0.76rem', fontWeight: 600, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                            Ambulatorio (Pres)
-                        </span>
-                        <span style={{ fontSize: '0.72rem', fontWeight: 700, color: COLOR_AMBULATORIO, background: '#ECFDF5', padding: '2px 6px', borderRadius: '6px' }}>
-                            {totals.pctPresente}% efec
-                        </span>
-                    </div>
-                    <div style={{ fontSize: '1.85rem', fontWeight: 800, color: COLOR_AMBULATORIO, marginTop: '4px' }}>
-                        {loading ? '...' : totals.presente.toLocaleString('es-AR')}
-                    </div>
-                    <div style={{ fontSize: '0.72rem', color: '#64748B', marginTop: '4px' }}>
-                        Asistencia confirmada en consultorio externo
-                    </div>
-                </div>
+                return (
+                    <AnilloToroidal3D
+                        segments={segs.map((s, idx) => {
+                            const pctStr = `${((s.value * 100) / totMod).toFixed(1)}%`;
+                            const st = modStats[s.key] || { total: s.value, os: s.value, part: 0, inf: 0, centros: {}, agendas: {} };
+                            const topCentroEntry = Object.entries(st.centros).sort((a, b) => b[1] - a[1])[0];
+                            const topAgendaEntry = Object.entries(st.agendas).sort((a, b) => b[1] - a[1])[0];
+                            const osPct = st.total > 0 ? Math.round((st.os * 100) / st.total) : 0;
+                            const partPct = 100 - osPct;
+                            const infPct = st.total > 0 && st.inf > 0 ? ((st.inf * 100) / st.total).toFixed(1) : null;
 
-                {/* 3. Hospitalización (Internados) */}
-                <div style={{ background: '#FFFFFF', borderRadius: '14px', border: '1px solid #E2E8F0', padding: '16px', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ fontSize: '0.76rem', fontWeight: 600, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                            Hospitalización
-                        </span>
-                        <span style={{ fontSize: '0.72rem', fontWeight: 700, color: COLOR_HOSPITALIZADO, background: '#F5F3FF', padding: '2px 6px', borderRadius: '6px' }}>
-                            {totals.pctInternado}% efec
-                        </span>
-                    </div>
-                    <div style={{ fontSize: '1.85rem', fontWeight: 800, color: COLOR_HOSPITALIZADO, marginTop: '4px' }}>
-                        {loading ? '...' : totals.internado.toLocaleString('es-AR')}
-                    </div>
-                    <div style={{ fontSize: '0.72rem', color: '#64748B', marginTop: '4px' }}>
-                        Pacientes en camas de piso, UCI y quirófano
-                    </div>
-                </div>
+                            const rankTxt = idx === 0
+                                ? `lidera el servicio concentrando el ${pctStr} de la producción del período`
+                                : `ocupa el puesto #${idx + 1} del mix con el ${pctStr} del volumen total`;
+                            const sedeTxt = topCentroEntry
+                                ? ` Su mayor demanda se registra en ${topCentroEntry[0]} (${Math.round((topCentroEntry[1] * 100) / Math.max(1, st.total))}%).`
+                                : '';
+                            const cobTxt = ` El ${osPct}% corresponde a Obra Social y el ${partPct}% a Particulares.`;
+                            const agendaTxt = topAgendaEntry
+                                ? ` Práctica principal: ${topAgendaEntry[0]}.`
+                                : '';
 
-                {/* 4. Urgencias / Guardia */}
-                <div style={{ background: '#FFFFFF', borderRadius: '14px', border: '1px solid #E2E8F0', padding: '16px', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ fontSize: '0.76rem', fontWeight: 600, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                            Urgencias / Guardia
-                        </span>
-                        <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#D97706', background: '#FFFBEB', padding: '2px 6px', borderRadius: '6px' }}>
-                            {totals.pctUrgencia}% efec
-                        </span>
-                    </div>
-                    <div style={{ fontSize: '1.85rem', fontWeight: 800, color: '#D97706', marginTop: '4px' }}>
-                        {loading ? '...' : totals.urgencia.toLocaleString('es-AR')}
-                    </div>
-                    <div style={{ fontSize: '0.72rem', color: '#64748B', marginTop: '4px' }}>
-                        Estudios cursados por Guardia Médica
-                    </div>
-                </div>
+                            const chips = [
+                                ...(topCentroEntry ? [{ label: 'Sede líder', value: `${topCentroEntry[0]} (${topCentroEntry[1].toLocaleString('es-AR')})` }] : []),
+                                { label: 'Cobertura', value: `${osPct}% OS · ${partPct}% Part.` },
+                                ...(infPct ? [{ label: 'Informados', value: `${infPct}%` }] : []),
+                            ];
 
-                {/* 5. Sobreturnos Efectivos */}
-                <div style={{ background: '#FFFFFF', borderRadius: '14px', border: '1px solid #E2E8F0', padding: '16px', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ fontSize: '0.76rem', fontWeight: 600, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                            Sobreturnos
-                        </span>
-                        <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#0284C7', background: '#F0F9FF', padding: '2px 6px', borderRadius: '6px' }}>
-                            {totals.pctSobreturno}% efec
-                        </span>
-                    </div>
-                    <div style={{ fontSize: '1.85rem', fontWeight: 800, color: '#0284C7', marginTop: '4px' }}>
-                        {loading ? '...' : totals.sobreturno.toLocaleString('es-AR')}
-                    </div>
-                    <div style={{ fontSize: '0.72rem', color: '#64748B', marginTop: '4px' }}>
-                        Atención sobreturnada concretada
-                    </div>
-                </div>
+                            return {
+                                label: s.label,
+                                value: s.value,
+                                valueLabel: pctStr,
+                                rgb: s.rgb,
+                                detail: `${s.value.toLocaleString('es-AR')} estudios`,
+                                narrative: `${s.label} ${rankTxt} (${s.value.toLocaleString('es-AR')} estudios efectivos).${sedeTxt}${cobTxt}${agendaTxt}`,
+                                chips,
+                                onViewCases: () => openCasosNominalesModal({ modalidad: s.key }),
+                                onFilterBoard: () => {
+                                    setSelectedModalidad(prev => (prev === s.key ? 'TODAS' : s.key));
+                                    setSelectedAgenda('TODAS');
+                                },
+                            };
+                        })}
+                    />
+                );
+            })()}
 
-                {/* 6. Tasa de Informes Firmados */}
-                <div style={{ background: '#FFFFFF', borderRadius: '14px', border: '1px solid #E2E8F0', padding: '16px', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ fontSize: '0.76rem', fontWeight: 600, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                            Tasa de Informes
-                        </span>
-                        <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#2563EB', background: '#EFF6FF', padding: '2px 6px', borderRadius: '6px' }}>
-                            {totals.pctInformados}% firmados
-                        </span>
-                    </div>
-                    <div style={{ fontSize: '1.85rem', fontWeight: 800, color: '#0F172A', marginTop: '4px' }}>
-                        {loading ? '...' : totals.informados.toLocaleString('es-AR')}
-                    </div>
-                    <div style={{ fontSize: '0.72rem', color: '#DC2626', marginTop: '4px' }}>
-                        Pendientes de firma: <strong>{totals.pendientes.toLocaleString('es-AR')}</strong>
-                    </div>
-                </div>
-
-                {/* 7. Auditoría: Ausentismo (No-Show) */}
-                <div style={{ background: '#FFFFFF', borderRadius: '14px', border: '1px solid #FEE2E2', padding: '16px', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ fontSize: '0.76rem', fontWeight: 600, color: '#991B1B', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                            Ausentismo (No-Show)
-                        </span>
-                        <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#DC2626', background: '#FEF2F2', padding: '2px 6px', borderRadius: '6px', border: '1px solid #FECACA' }}>
-                            {totals.pctAusente}% no-show
-                        </span>
-                    </div>
-                    <div style={{ fontSize: '1.85rem', fontWeight: 800, color: '#DC2626', marginTop: '4px' }}>
-                        {loading ? '...' : totals.ausente.toLocaleString('es-AR')}
-                    </div>
-                    <div style={{ fontSize: '0.72rem', color: '#64748B', marginTop: '4px' }}>
-                        No concretados | S/reg: <strong>{totals.sinRegistrar.toLocaleString('es-AR')}</strong>
-                    </div>
-                </div>
-
-                {/* 8. Agendas Activas */}
-                <div style={{ background: '#FFFFFF', borderRadius: '14px', border: '1px solid #E2E8F0', padding: '16px', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
-                    <div style={{ fontSize: '0.76rem', fontWeight: 600, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                        Agendas Activas
-                    </div>
-                    <div style={{ fontSize: '1.85rem', fontWeight: 800, color: '#0F172A', marginTop: '4px' }}>
-                        {loading ? '...' : totals.cantAgendas}
-                    </div>
-                    <div style={{ fontSize: '0.72rem', color: '#64748B', marginTop: '4px' }}>
-                        Tipos de Visita en modalidad <strong>{selectedModalidad}</strong>
-                    </div>
-                </div>
-            </div>
-
-            {/* ─── DISTRIBUCIÓN OPERATIVA DE ASISTENCIA (DIFERENCIACIÓN SALUS) ─── */}
-            <div style={{
-                background: '#FFFFFF',
-                borderRadius: '14px',
-                border: '1px solid #E2E8F0',
-                padding: '16px 20px',
-                boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '12px'
-            }}>
-                <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: '10px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <div style={{
-                            width: '32px',
-                            height: '32px',
-                            borderRadius: '8px',
-                            background: '#EFF6FF',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            color: COLOR_PRIMARY
-                        }}>
-                            <UserCheck size={18} />
-                        </div>
-                        <div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <h3 style={{ margin: 0, fontSize: '0.94rem', fontWeight: 700, color: '#0F172A' }}>
-                                    Diferenciación de Estados de Asistencia (SALUS)
-                                </h3>
-                                {filterAsistencia !== 'TODOS' && (
-                                    <span style={{
-                                        fontSize: '0.72rem',
-                                        fontWeight: 700,
-                                        color: ASISTENCIA_CONFIG[filterAsistencia]?.color || COLOR_PRIMARY,
-                                        background: ASISTENCIA_CONFIG[filterAsistencia]?.bg || '#EFF6FF',
-                                        border: `1px solid ${ASISTENCIA_CONFIG[filterAsistencia]?.border || '#BFDBFE'}`,
-                                        padding: '2px 8px',
-                                        borderRadius: '999px',
-                                        display: 'inline-flex',
-                                        alignItems: 'center',
-                                        gap: '4px'
-                                    }}>
-                                        Filtro activo: {filterAsistencia}
-                                        <button
-                                            onClick={() => setFilterAsistencia('TODOS')}
-                                            style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: 0, fontWeight: 800, color: 'inherit' }}
-                                        >
-                                            ✕
-                                        </button>
-                                    </span>
-                                )}
-                            </div>
-                            <p style={{ margin: '2px 0 0 0', fontSize: '0.76rem', color: '#64748B' }}>
-                                Haga clic en cualquier estado para filtrar de forma instantánea todo el tablero y los rankings
-                            </p>
-                        </div>
-                    </div>
-
-                    {filterAsistencia !== 'TODOS' && (
-                        <button
-                            onClick={() => setFilterAsistencia('TODOS')}
-                            style={{
-                                border: '1px solid #CBD5E1',
-                                background: '#F8FAFC',
-                                borderRadius: '6px',
-                                padding: '4px 10px',
-                                fontSize: '0.74rem',
-                                color: '#475569',
-                                fontWeight: 600,
-                                cursor: 'pointer'
-                            }}
-                        >
-                            Restablecer a Todos ({totals.total.toLocaleString('es-AR')})
-                        </button>
-                    )}
-                </div>
-
-                {/* Barra segmentada de distribución proporcional */}
-                <div style={{
-                    width: '100%',
-                    height: '10px',
-                    borderRadius: '999px',
-                    background: '#F1F5F9',
-                    overflow: 'hidden',
-                    display: 'flex',
-                    boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.05)'
-                }}>
-                    {totals.presente > 0 && (
-                        <div
-                            title={`Presente: ${totals.presente.toLocaleString('es-AR')} (${totals.pctPresente}%)`}
-                            style={{ width: `${totals.pctPresente}%`, background: '#10B981', transition: 'width 0.3s ease', cursor: 'pointer' }}
-                            onClick={() => setFilterAsistencia(filterAsistencia === 'Presente' ? 'TODOS' : 'Presente')}
-                        />
-                    )}
-                    {totals.internado > 0 && (
-                        <div
-                            title={`Internado / Hosp.: ${totals.internado.toLocaleString('es-AR')} (${totals.pctInternado}%)`}
-                            style={{ width: `${totals.pctInternado}%`, background: '#8B5CF6', transition: 'width 0.3s ease', cursor: 'pointer' }}
-                            onClick={() => setFilterAsistencia(filterAsistencia === 'Internado' ? 'TODOS' : 'Internado')}
-                        />
-                    )}
-                    {totals.urgencia > 0 && (
-                        <div
-                            title={`Urgencia: ${totals.urgencia.toLocaleString('es-AR')} (${totals.pctUrgencia}%)`}
-                            style={{ width: `${totals.pctUrgencia}%`, background: '#F59E0B', transition: 'width 0.3s ease', cursor: 'pointer' }}
-                            onClick={() => setFilterAsistencia(filterAsistencia === 'Urgencia' ? 'TODOS' : 'Urgencia')}
-                        />
-                    )}
-                    {totals.sobreturno > 0 && (
-                        <div
-                            title={`Sobreturno: ${totals.sobreturno.toLocaleString('es-AR')} (${totals.pctSobreturno}%)`}
-                            style={{ width: `${totals.pctSobreturno}%`, background: '#0284C7', transition: 'width 0.3s ease', cursor: 'pointer' }}
-                            onClick={() => setFilterAsistencia(filterAsistencia === 'Sobreturno' ? 'TODOS' : 'Sobreturno')}
-                        />
-                    )}
-                    {totals.ausente > 0 && (
-                        <div
-                            title={`Ausente / No-Show: ${totals.ausente.toLocaleString('es-AR')} (${totals.pctAusente}%)`}
-                            style={{ width: `${totals.pctAusente}%`, background: '#EF4444', transition: 'width 0.3s ease', cursor: 'pointer' }}
-                            onClick={() => setFilterAsistencia(filterAsistencia === 'Ausente' ? 'TODOS' : 'Ausente')}
-                        />
-                    )}
-                    {totals.sinRegistrar > 0 && (
-                        <div
-                            title={`Sin Registrar / Trámite: ${totals.sinRegistrar.toLocaleString('es-AR')} (${totals.pctSinRegistrar}%)`}
-                            style={{ width: `${totals.pctSinRegistrar}%`, background: '#94A3B8', transition: 'width 0.3s ease', cursor: 'pointer' }}
-                            onClick={() => setFilterAsistencia(filterAsistencia === 'Sin Registrar' ? 'TODOS' : 'Sin Registrar')}
-                        />
-                    )}
-                </div>
-
-                {/* Pastillas Interactivas de Estados de Asistencia */}
-                <div style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-                    gap: '10px'
-                }}>
-                    {[
-                        { key: 'Presente', count: totals.presente, pct: totals.pctPresente, isEfectivo: true },
-                        { key: 'Internado', count: totals.internado, pct: totals.pctInternado, isEfectivo: true },
-                        { key: 'Urgencia', count: totals.urgencia, pct: totals.pctUrgencia, isEfectivo: true },
-                        { key: 'Sobreturno', count: totals.sobreturno, pct: totals.pctSobreturno, isEfectivo: true },
-                        { key: 'Ausente', count: totals.ausente, pct: totals.pctAusente, isEfectivo: false },
-                        { key: 'Sin Registrar', count: totals.sinRegistrar, pct: totals.pctSinRegistrar, isEfectivo: false }
-                    ].map(st => {
-                        const cfg = ASISTENCIA_CONFIG[st.key];
-                        const isFiltered = filterAsistencia === st.key;
-                        return (
-                            <button
-                                key={st.key}
-                                onClick={() => setFilterAsistencia(isFiltered ? 'TODOS' : st.key)}
-                                style={{
-                                    border: `1.5px solid ${isFiltered ? cfg.color : '#E2E8F0'}`,
-                                    background: isFiltered ? cfg.bg : '#FFFFFF',
-                                    borderRadius: '10px',
-                                    padding: '10px 12px',
-                                    textAlign: 'left',
-                                    cursor: 'pointer',
-                                    display: 'flex',
-                                    flexDirection: 'column',
-                                    gap: '4px',
-                                    boxShadow: isFiltered ? `0 2px 6px ${cfg.color}25` : '0 1px 2px rgba(0,0,0,0.02)',
-                                    transition: 'all 0.15s ease'
-                                }}
-                            >
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                    <span style={{ fontSize: '0.74rem', fontWeight: 700, color: cfg.color, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                        <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: cfg.color }} />
-                                        {cfg.shortLabel}
-                                        {st.isEfectivo && (
-                                            <span style={{ fontSize: '0.6rem', fontWeight: 800, color: '#047857', background: '#ECFDF5', padding: '0 4px', borderRadius: '4px' }}>
-                                                Efectivo
-                                            </span>
-                                        )}
-                                    </span>
-                                    <span style={{
-                                        fontSize: '0.7rem',
-                                        fontWeight: 700,
-                                        color: cfg.text,
-                                        background: cfg.bg,
-                                        border: `1px solid ${cfg.border}`,
-                                        padding: '1px 6px',
-                                        borderRadius: '999px'
-                                    }}>
-                                        {st.pct}%
-                                    </span>
-                                </div>
-                                <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0F172A' }}>
-                                    {loading ? '...' : st.count.toLocaleString('es-AR')}
-                                </div>
-                                <div style={{ fontSize: '0.68rem', color: '#64748B' }}>
-                                    {cfg.desc}
-                                </div>
-                            </button>
-                        );
-                    })}
-                </div>
-            </div>
+            {/* ─── 3. FLUJO ANIMADO DE ASISTENCIA (Reemplaza tarjetas repetidas) ─── */}
+            <DxiFlujoAsistenciaAnimado
+                totals={totals}
+                filterAsistencia={filterAsistencia}
+                onSelectAsistencia={setFilterAsistencia}
+            />
 
             {/* ─── FILTROS DE TABLERO: ÁMBITO, ASISTENCIA, FINANCIADOR Y BÚSQUEDA ─── */}
             <div style={{
@@ -2581,88 +2248,7 @@ export default function DiagnosticoImagenesDashboard({
                 </div>
             </div>
 
-            {/* ─── ANILLO 3D: MIX DE MODALIDADES DE IMÁGENES ─── */}
-            {modalidadCounts && Object.keys(modalidadCounts).length > 0 && (() => {
-                const modDefs = [
-                    { key: 'ECOGRAFIA', label: 'Ecografía', rgb: [0, 59, 115] },
-                    { key: 'RADIOLOGIA', label: 'Radiología (RX)', rgb: [2, 132, 199] },
-                    { key: 'TOMOGRAFIA', label: 'Tomografía (TC)', rgb: [124, 58, 237] },
-                    { key: 'MAMOGRAFIA', label: 'Mamografía', rgb: [219, 39, 119] },
-                    { key: 'DENSITOMETRIA', label: 'Densitometría', rgb: [5, 150, 105] },
-                    { key: 'ECOCARDIO', label: 'Ecocardiograma', rgb: [225, 29, 72] },
-                ];
-                const segs = modDefs
-                    .map(m => ({ ...m, value: Number(modalidadCounts[m.key] || 0) }))
-                    .filter(m => m.value > 0)
-                    .sort((a, b) => b.value - a.value);
-                if (!segs.length) return null;
-                const totMod = segs.reduce((s, x) => s + x.value, 0);
-
-                // Pre-agregar métricas reales por modalidad en 0ms desde scopedData.agendas
-                const modStats = {};
-                (scopedData?.agendas || []).forEach(r => {
-                    if (!r.EstadoAsistencia || !ESTADOS_EFECTIVOS.has(r.EstadoAsistencia)) return;
-                    if (filterFinanciador !== 'TODOS' && r.TipoFinanciador && r.TipoFinanciador !== filterFinanciador) return;
-                    const mk = r.Modalidad;
-                    if (!mk) return;
-                    if (!modStats[mk]) {
-                        modStats[mk] = { total: 0, os: 0, part: 0, inf: 0, centros: {}, agendas: {} };
-                    }
-                    const st = modStats[mk];
-                    const cant = Number(r.Cantidad || 0);
-                    st.total += cant;
-                    if (r.TipoFinanciador === 'PARTICULAR') st.part += cant;
-                    else st.os += cant;
-                    st.inf += Number(r.Informados || r.CantidadInformados || 0);
-                    if (r.Centro) st.centros[r.Centro] = (st.centros[r.Centro] || 0) + cant;
-                    if (r.Agenda) st.agendas[r.Agenda] = (st.agendas[r.Agenda] || 0) + cant;
-                });
-
-                return (
-                    <AnilloToroidal3D
-                        segments={segs.map((s, idx) => {
-                            const pctStr = `${((s.value * 100) / totMod).toFixed(1)}%`;
-                            const st = modStats[s.key] || { total: s.value, os: s.value, part: 0, inf: 0, centros: {}, agendas: {} };
-                            const topCentroEntry = Object.entries(st.centros).sort((a, b) => b[1] - a[1])[0];
-                            const topAgendaEntry = Object.entries(st.agendas).sort((a, b) => b[1] - a[1])[0];
-                            const osPct = st.total > 0 ? Math.round((st.os * 100) / st.total) : 0;
-                            const partPct = 100 - osPct;
-                            const infPct = st.total > 0 && st.inf > 0 ? ((st.inf * 100) / st.total).toFixed(1) : null;
-
-                            const rankTxt = idx === 0
-                                ? `lidera el servicio concentrando el ${pctStr} de la producción del período`
-                                : `ocupa el puesto #${idx + 1} del mix con el ${pctStr} del volumen total`;
-                            const sedeTxt = topCentroEntry
-                                ? ` Su mayor demanda se registra en ${topCentroEntry[0]} (${Math.round((topCentroEntry[1] * 100) / Math.max(1, st.total))}%).`
-                                : '';
-                            const cobTxt = ` El ${osPct}% corresponde a Obra Social y el ${partPct}% a Particulares.`;
-                            const agendaTxt = topAgendaEntry
-                                ? ` Práctica principal: ${topAgendaEntry[0]}.`
-                                : '';
-
-                            const chips = [
-                                ...(topCentroEntry ? [{ label: 'Sede líder', value: `${topCentroEntry[0]} (${topCentroEntry[1].toLocaleString('es-AR')})` }] : []),
-                                { label: 'Cobertura', value: `${osPct}% OS · ${partPct}% Part.` },
-                                ...(infPct ? [{ label: 'Informados', value: `${infPct}%` }] : []),
-                            ];
-
-                            return {
-                                label: s.label,
-                                value: s.value,
-                                valueLabel: pctStr,
-                                rgb: s.rgb,
-                                detail: `${s.value.toLocaleString('es-AR')} estudios`,
-                                narrative: `${s.label} ${rankTxt} (${s.value.toLocaleString('es-AR')} estudios efectivos).${sedeTxt}${cobTxt}${agendaTxt}`,
-                                chips,
-                                onViewCases: () => openCasosNominalesModal({ modalidad: s.key }),
-                                onFilterBoard: () => setSelectedModalidad(s.key),
-                            };
-                        })}
-                    />
-                );
-            })()}
-
-            {/* ─── GRÁFICO DE LÍNEAS: PROGRESIÓN DEL PERÍODO ─── */}
+            {/* ─── GRÁFICO DE LÍNEAS / 3D TOPOGRÁFICO: PROGRESIÓN DEL PERÍODO ─── */}
             <div style={{
                 background: '#FFFFFF',
                 borderRadius: '14px',
