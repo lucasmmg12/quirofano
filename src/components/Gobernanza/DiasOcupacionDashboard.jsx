@@ -788,6 +788,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
     const handleSelectSector = (sId) => {
         if (isUciOnly && sId !== 'UCI') return;
         setSectorId(sId);
+        setSectorSubModulo('tablero');
         setSelectedEspecialidades(null);
         setBoxFiltro('TODOS');
         const cfg = SECTORES_CONFIG.find(s => s.id === sId);
@@ -807,6 +808,68 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
     const handleSelectUciTab = (tab) => {
         setUciActiveTab(tab);
         navigateToRoute('UCI', tab);
+    };
+
+    // Submódulo desplegable debajo del sector seleccionado en la barra lateral izquierda
+    const renderSectorSubmodulo = (sId) => {
+        if (sectorId !== sId) return null;
+        return (
+            <div style={{
+                borderTop: '1px solid #E2E8F0',
+                padding: '6px 8px',
+                background: '#FFFFFF',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '4px'
+            }}>
+                <button
+                    type="button"
+                    onClick={() => setSectorSubModulo('tablero')}
+                    style={{
+                        width: '100%',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '7px',
+                        padding: '6px 9px',
+                        borderRadius: '7px',
+                        border: 'none',
+                        background: sectorSubModulo === 'tablero' ? '#EFF6FF' : 'transparent',
+                        color: sectorSubModulo === 'tablero' ? '#003B73' : '#475569',
+                        fontSize: '0.74rem',
+                        fontWeight: sectorSubModulo === 'tablero' ? 800 : 600,
+                        cursor: 'pointer',
+                        textAlign: 'left',
+                        transition: 'all 0.15s ease'
+                    }}
+                >
+                    <BarChart3 size={13} />
+                    <span>Tablero de Indicadores</span>
+                </button>
+                <button
+                    type="button"
+                    onClick={() => setSectorSubModulo('reuniones')}
+                    style={{
+                        width: '100%',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '7px',
+                        padding: '6px 9px',
+                        borderRadius: '7px',
+                        border: 'none',
+                        background: sectorSubModulo === 'reuniones' ? '#003B73' : 'transparent',
+                        color: sectorSubModulo === 'reuniones' ? '#FFFFFF' : '#475569',
+                        fontSize: '0.74rem',
+                        fontWeight: sectorSubModulo === 'reuniones' ? 800 : 600,
+                        cursor: 'pointer',
+                        textAlign: 'left',
+                        transition: 'all 0.15s ease'
+                    }}
+                >
+                    <ClipboardCheck size={13} />
+                    <span>Reuniones de Servicio</span>
+                </button>
+            </div>
+        );
     };
 
     // Manejo de cambio de subnivel en UCI (Intensiva vs Intermedia vs Consolidado)
@@ -2823,60 +2886,6 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                             </div>
                         </div>
 
-                        {/* Selector Transversal de Submódulo por Sector: Tablero vs Reuniones de Servicio */}
-                        <div style={{
-                            display: 'inline-flex',
-                            background: '#F1F5F9',
-                            padding: '3px',
-                            borderRadius: '10px',
-                            border: '1px solid #CBD5E1',
-                            gap: '3px',
-                            marginLeft: '4px'
-                        }}>
-                            <button
-                                type="button"
-                                onClick={() => setSectorSubModulo('tablero')}
-                                style={{
-                                    background: sectorSubModulo === 'tablero' ? '#003B73' : 'transparent',
-                                    color: sectorSubModulo === 'tablero' ? '#FFFFFF' : '#475569',
-                                    border: 'none',
-                                    borderRadius: '7px',
-                                    padding: '5px 11px',
-                                    fontSize: '0.76rem',
-                                    fontWeight: 700,
-                                    cursor: 'pointer',
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    gap: '5px',
-                                    transition: 'all 0.15s ease'
-                                }}
-                            >
-                                <BarChart3 size={14} />
-                                <span>Tablero de Indicadores</span>
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => setSectorSubModulo('reuniones')}
-                                style={{
-                                    background: sectorSubModulo === 'reuniones' ? '#003B73' : 'transparent',
-                                    color: sectorSubModulo === 'reuniones' ? '#FFFFFF' : '#003B73',
-                                    border: 'none',
-                                    borderRadius: '7px',
-                                    padding: '5px 11px',
-                                    fontSize: '0.76rem',
-                                    fontWeight: 700,
-                                    cursor: 'pointer',
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    gap: '5px',
-                                    transition: 'all 0.15s ease'
-                                }}
-                            >
-                                <ClipboardCheck size={14} />
-                                <span>Reuniones de Servicio</span>
-                            </button>
-                        </div>
-
                         {/* Sub-Selector Tripartito Exclusivo para UCI (Cuidados Críticos) */}
                         {sectorId === 'UCI' && (
                             <div style={{
@@ -3560,6 +3569,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                         </div>
                                     </div>
                                 )}
+                                {renderSectorSubmodulo('UCI')}
                             </div>
 
                             {/* 🚑 SERVICIO: GUARDIA CLÍNICA */}
@@ -3597,6 +3607,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                             </div>
                                         </div>
                                     </button>
+                                    {renderSectorSubmodulo('GUARDIA')}
                                 </div>
                             )}
 
@@ -3635,6 +3646,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                             </div>
                                         </div>
                                     </button>
+                                    {renderSectorSubmodulo('QUIROFANO')}
                                 </div>
                             )}
 
@@ -3678,6 +3690,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                             </div>
                                         </div>
                                     </button>
+                                    {renderSectorSubmodulo('EPIDEMIOLOGIA')}
                                 </div>
                             )}
 
@@ -3720,6 +3733,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                             </div>
                                         </div>
                                     </button>
+                                    {renderSectorSubmodulo('DXI')}
                                 </div>
                             )}
 
@@ -3772,6 +3786,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                             Nuevo
                                         </span>
                                     </button>
+                                    {renderSectorSubmodulo('GUARDIA_GGO')}
                                 </div>
                             )}
 
@@ -3824,6 +3839,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                             Nuevo
                                         </span>
                                     </button>
+                                    {renderSectorSubmodulo('INTERNACION')}
                                 </div>
                             )}
 
@@ -3876,6 +3892,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                             Nuevo
                                         </span>
                                     </button>
+                                    {renderSectorSubmodulo('COMPRAS_STOCK')}
                                 </div>
                             )}
 
@@ -3928,6 +3945,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                             Nuevo
                                         </span>
                                     </button>
+                                    {renderSectorSubmodulo('CHEQUEO')}
                                 </div>
                             )}
                         </div>
