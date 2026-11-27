@@ -1114,67 +1114,28 @@ export default function DxiSuperficieTopografica3D({
     const wrapW = wrapRef.current?.clientWidth || 960;
 
     return (
-        <div
-            ref={wrapRef}
-            onPointerDown={handlePointerDown}
-            onPointerMove={handlePointerMove}
-            onPointerUp={handlePointerUp}
-            onPointerLeave={handlePointerLeave}
-            style={{
-                position: 'relative',
-                width: '100%',
-                height: `${height}px`,
-                borderRadius: '12px',
-                border: '1px solid #CBD5E1',
-                background: 'linear-gradient(180deg, #F8FAFC 0%, #EFF6FF 55%, #E2E8F0 100%)',
-                overflow: 'hidden',
-                cursor: 'grab',
-                userSelect: 'none',
-                touchAction: 'none'
-            }}
-        >
-            <canvas ref={glCanvasRef} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', display: 'block' }} />
-            <canvas ref={hudCanvasRef} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', display: 'block', pointerEvents: 'none' }} />
-
-            {/* ── BARRA SUPERIOR FULL-WIDTH: CARRILES 3D DE COLOR PURO + CONTROLES (Cero desperdicio de espacio lateral) ── */}
-            <div
-                onPointerDown={e => e.stopPropagation()}
-                style={{
-                    position: 'absolute',
-                    top: '8px',
-                    left: '10px',
-                    right: '10px',
-                    display: 'flex',
-                    flexWrap: 'wrap',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    gap: '6px',
-                    pointerEvents: 'none',
-                    zIndex: 10
-                }}
-            >
-                {/* Píldoras interactivas de cada carril 3D (Clic o Hover para resaltar una serie específica) */}
-                <div style={{
-                    display: 'flex',
-                    flexWrap: 'wrap',
-                    alignItems: 'center',
-                    gap: '5px',
-                    background: 'rgba(255, 255, 255, 0.92)',
-                    backdropFilter: 'blur(8px)',
-                    border: '1px solid #CBD5E1',
-                    borderRadius: '10px',
-                    padding: '4px 8px',
-                    boxShadow: '0 2px 10px rgba(15, 23, 42, 0.06)',
-                    pointerEvents: 'auto',
-                    maxWidth: '100%'
-                }}>
-                    <span style={{ fontSize: '0.64rem', fontWeight: 800, color: '#475569', textTransform: 'uppercase', marginRight: '2px' }}>
-                        {selectedKeys.length === 0
-                            ? 'Carriles 3D:'
-                            : selectedKeys.length === 1
-                                ? 'Solo 1 activa:'
-                                : `${selectedKeys.length} activas:`}
-                    </span>
+        <div style={{
+            width: '100%',
+            borderRadius: '12px',
+            border: '1px solid #CBD5E1',
+            background: '#FFFFFF',
+            overflow: 'hidden',
+            display: 'flex',
+            flexDirection: 'column',
+        }}>
+            {/* ── BARRA SUPERIOR LIMPIA (FUERA DEL LIENZO 3D PARA NO TAPAR LOS PICOS) ── */}
+            <div style={{
+                padding: '8px 12px',
+                background: '#F8FAFC',
+                borderBottom: '1px solid #E2E8F0',
+                display: 'flex',
+                flexWrap: 'wrap',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '8px',
+            }}>
+                {/* Píldoras interactivas de cada serie (clic para aislar o multi-seleccionar) */}
+                <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '5px', flex: '1 1 420px' }}>
                     {allPreparedSeries.map((s) => {
                         const hasCustomSelection = selectedKeys.length > 0;
                         const isSelected = selectedKeys.includes(s.key);
@@ -1186,31 +1147,30 @@ export default function DxiSuperficieTopografica3D({
                                 onClick={() => handleToggleSeriesPill(s.key)}
                                 title={
                                     !hasCustomSelection
-                                        ? `Clic para aislar solo "${s.label}" con animación de flujo (${s.sum.toLocaleString('es-AR')} estudios)`
+                                        ? `Clic para aislar "${s.label}" (${s.sum.toLocaleString('es-AR')})`
                                         : isSelected
-                                            ? `Clic para quitar "${s.label}" de la vista 3D`
-                                            : `Clic para sumar "${s.label}" junto a las seleccionadas`
+                                            ? `Clic para quitar "${s.label}"`
+                                            : `Clic para sumar "${s.label}"`
                                 }
                                 style={{
-                                    display: 'flex',
+                                    display: 'inline-flex',
                                     alignItems: 'center',
                                     gap: '5px',
-                                    padding: '2px 8px',
+                                    padding: '3px 8px',
                                     borderRadius: '999px',
-                                    border: `1.5px solid ${s.color}`,
+                                    border: `1px solid ${isSelected ? s.color : '#CBD5E1'}`,
                                     background: isSelected ? s.color : '#FFFFFF',
-                                    color: isSelected ? '#FFFFFF' : '#0F172A',
-                                    opacity: isDimmed ? 0.42 : 1,
+                                    color: isSelected ? '#FFFFFF' : '#1E293B',
+                                    opacity: isDimmed ? 0.45 : 1,
                                     fontSize: '0.69rem',
                                     fontWeight: 700,
                                     cursor: 'pointer',
-                                    transition: 'all 0.16s ease',
-                                    boxShadow: isSelected ? `0 2px 6px ${s.color}45` : 'none'
+                                    transition: 'all 0.15s ease',
                                 }}
                             >
                                 <span style={{
-                                    width: '8px',
-                                    height: '8px',
+                                    width: '7px',
+                                    height: '7px',
                                     borderRadius: '50%',
                                     background: isSelected ? '#FFFFFF' : s.color,
                                     flexShrink: 0
@@ -1219,7 +1179,6 @@ export default function DxiSuperficieTopografica3D({
                                 <strong style={{
                                     color: isSelected ? '#FFFFFF' : s.color,
                                     fontVariantNumeric: 'tabular-nums',
-                                    marginLeft: '1px'
                                 }}>
                                     {s.sum.toLocaleString('es-AR')}
                                 </strong>
@@ -1235,84 +1194,53 @@ export default function DxiSuperficieTopografica3D({
                                 background: '#EFF6FF',
                                 color: '#1D4ED8',
                                 borderRadius: '999px',
-                                padding: '2px 8px',
+                                padding: '3px 8px',
                                 fontSize: '0.67rem',
                                 fontWeight: 800,
                                 cursor: 'pointer'
                             }}
                         >
-                            ↺ Ver todas
+                            ↺ Todas
                         </button>
                     )}
-                    <button
-                        type="button"
-                        onClick={() => setFlowTrigger(t => t + 1)}
-                        title="Reproducir animación de flujo de carga de datos"
-                        style={{
-                            border: '1px solid #CBD5E1',
-                            background: '#F8FAFC',
-                            color: '#003B73',
-                            borderRadius: '999px',
-                            padding: '2px 8px',
-                            fontSize: '0.67rem',
-                            fontWeight: 800,
-                            cursor: 'pointer'
-                        }}
-                    >
-                        ▶ Flujo
-                    </button>
                 </div>
 
-                {/* Selector de Geometría 3D + Escala + Cámara */}
-                <div style={{
-                    display: 'flex',
-                    flexWrap: 'wrap',
-                    alignItems: 'center',
-                    gap: '4px',
-                    background: 'rgba(255, 255, 255, 0.92)',
-                    backdropFilter: 'blur(8px)',
-                    border: '1px solid #CBD5E1',
-                    borderRadius: '10px',
-                    padding: '4px',
-                    boxShadow: '0 2px 10px rgba(15, 23, 42, 0.06)',
-                    pointerEvents: 'auto'
-                }}>
-                    {/* Selector de modo geométrico 3D */}
-                    {[
-                        { id: 'ribbons', label: 'Crestas 3D' },
-                        { id: 'bars', label: 'Columnas 3D' },
-                        { id: 'surface', label: 'Superficie 3D' }
-                    ].map(m => (
-                        <button
-                            key={m.id}
-                            type="button"
-                            onClick={() => setVisualMode(m.id)}
-                            style={{
-                                border: 'none',
-                                borderRadius: '7px',
-                                padding: '4px 8px',
-                                fontSize: '0.69rem',
-                                fontWeight: 800,
-                                cursor: 'pointer',
-                                background: visualMode === m.id ? '#003B73' : 'transparent',
-                                color: visualMode === m.id ? '#FFFFFF' : '#334155'
-                            }}
-                        >
-                            {m.label}
-                        </button>
-                    ))}
+                {/* Controles esenciales compactos */}
+                <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '4px' }}>
+                    <div style={{ display: 'inline-flex', background: '#FFFFFF', border: '1px solid #CBD5E1', borderRadius: '8px', padding: '2px', gap: '2px' }}>
+                        {[
+                            { id: 'ribbons', label: 'Crestas' },
+                            { id: 'bars', label: 'Columnas' },
+                            { id: 'surface', label: 'Superficie' }
+                        ].map(m => (
+                            <button
+                                key={m.id}
+                                type="button"
+                                onClick={() => setVisualMode(m.id)}
+                                style={{
+                                    border: 'none',
+                                    borderRadius: '6px',
+                                    padding: '3px 8px',
+                                    fontSize: '0.68rem',
+                                    fontWeight: 700,
+                                    cursor: 'pointer',
+                                    background: visualMode === m.id ? '#003B73' : 'transparent',
+                                    color: visualMode === m.id ? '#FFFFFF' : '#475569'
+                                }}
+                            >
+                                {m.label}
+                            </button>
+                        ))}
+                    </div>
 
-                    <div style={{ width: '1px', height: '15px', background: '#CBD5E1', margin: '0 2px' }} />
-
-                    {/* Escala Real vs Escala Normalizada (%) para ver modalidades chicas con claridad */}
                     <button
                         type="button"
                         onClick={() => setScaleMode(prev => prev === 'global' ? 'normalized' : 'global')}
-                        title="Alternar entre Escala Real Absoluta y Escala Comparativa 100% por serie (ideal para ver modalidades de menor volumen con altura completa)"
+                        title="Alternar entre Escala Real y Escala Comparativa (%)"
                         style={{
                             border: '1px solid #BFDBFE',
                             borderRadius: '7px',
-                            padding: '3px 8px',
+                            padding: '4px 8px',
                             fontSize: '0.68rem',
                             fontWeight: 700,
                             cursor: 'pointer',
@@ -1320,72 +1248,75 @@ export default function DxiSuperficieTopografica3D({
                             color: scaleMode === 'normalized' ? '#FFFFFF' : '#1D4ED8'
                         }}
                     >
-                        {scaleMode === 'normalized' ? 'Escala: % Serie' : 'Escala: Real'}
+                        {scaleMode === 'normalized' ? 'Escala %' : 'Escala Real'}
                     </button>
 
-                    <div style={{ width: '1px', height: '15px', background: '#CBD5E1', margin: '0 2px' }} />
-
-                    {[
-                        { id: 'iso', label: 'Isométrica' },
-                        { id: 'front', label: 'Frontal' },
-                        { id: 'side', label: 'Lateral' },
-                        { id: 'top', label: 'Cenital' }
-                    ].map(p => (
-                        <button
-                            key={p.id}
-                            type="button"
-                            onClick={() => applyPreset(p.id)}
-                            style={{
-                                border: 'none',
-                                borderRadius: '7px',
-                                padding: '4px 7px',
-                                fontSize: '0.68rem',
-                                fontWeight: 700,
-                                cursor: 'pointer',
-                                background: activePreset === p.id ? '#0F172A' : 'transparent',
-                                color: activePreset === p.id ? '#FFFFFF' : '#475569'
-                            }}
-                        >
-                            {p.label}
-                        </button>
-                    ))}
+                    <div style={{ display: 'inline-flex', background: '#FFFFFF', border: '1px solid #CBD5E1', borderRadius: '8px', padding: '2px', gap: '2px' }}>
+                        {[
+                            { id: 'front', label: 'Frontal' },
+                            { id: 'iso', label: 'Iso' },
+                            { id: 'top', label: 'Cenital' }
+                        ].map(p => (
+                            <button
+                                key={p.id}
+                                type="button"
+                                onClick={() => applyPreset(p.id)}
+                                style={{
+                                    border: 'none',
+                                    borderRadius: '6px',
+                                    padding: '3px 7px',
+                                    fontSize: '0.68rem',
+                                    fontWeight: 700,
+                                    cursor: 'pointer',
+                                    background: activePreset === p.id ? '#0F172A' : 'transparent',
+                                    color: activePreset === p.id ? '#FFFFFF' : '#475569'
+                                }}
+                            >
+                                {p.label}
+                            </button>
+                        ))}
+                    </div>
 
                     <button
                         type="button"
-                        onClick={() => setShowWire(v => !v)}
-                        title="Mostrar malla vectorial"
+                        onClick={() => setFlowTrigger(t => t + 1)}
+                        title="Reproducir animación de flujo"
                         style={{
-                            border: 'none',
+                            border: '1px solid #CBD5E1',
+                            background: '#FFFFFF',
+                            color: '#003B73',
                             borderRadius: '7px',
-                            padding: '4px 7px',
+                            padding: '4px 8px',
                             fontSize: '0.68rem',
-                            fontWeight: 700,
-                            cursor: 'pointer',
-                            background: showWire ? '#0F172A' : 'transparent',
-                            color: showWire ? '#FFFFFF' : '#475569'
+                            fontWeight: 800,
+                            cursor: 'pointer'
                         }}
                     >
-                        ⬡ Vectores
-                    </button>
-                    <button
-                        type="button"
-                        onClick={() => setAutoRotate(v => !v)}
-                        title="Rotación 360° automática"
-                        style={{
-                            border: 'none',
-                            borderRadius: '7px',
-                            padding: '4px 7px',
-                            fontSize: '0.68rem',
-                            fontWeight: 700,
-                            cursor: 'pointer',
-                            background: autoRotate ? '#0F172A' : 'transparent',
-                            color: autoRotate ? '#FFFFFF' : '#475569'
-                        }}
-                    >
-                        ↻ Giro
+                        ▶ Flujo
                     </button>
                 </div>
             </div>
+
+            {/* ── LIENZO WEBGL 3D DESPEJADO (0% SUPERPOSICIÓN CON BOTONES) ── */}
+            <div
+                ref={wrapRef}
+                onPointerDown={handlePointerDown}
+                onPointerMove={handlePointerMove}
+                onPointerUp={handlePointerUp}
+                onPointerLeave={handlePointerLeave}
+                style={{
+                    position: 'relative',
+                    width: '100%',
+                    height: `${Math.max(320, height - 48)}px`,
+                    background: 'linear-gradient(180deg, #F8FAFC 0%, #EFF6FF 55%, #E2E8F0 100%)',
+                    overflow: 'hidden',
+                    cursor: 'grab',
+                    userSelect: 'none',
+                    touchAction: 'none'
+                }}
+            >
+                <canvas ref={glCanvasRef} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', display: 'block' }} />
+                <canvas ref={hudCanvasRef} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', display: 'block', pointerEvents: 'none' }} />
 
             {/* ── TOOLTIP CLÍNICO FLOTANTE EN HOVER ── */}
             {hoveredRow && hoverState && (
@@ -1436,6 +1367,7 @@ export default function DxiSuperficieTopografica3D({
                     ))}
                 </div>
             )}
+            </div>
         </div>
     );
 }

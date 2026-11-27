@@ -2690,74 +2690,30 @@ export default function DiagnosticoImagenesDashboard({
 
                     {/* Controles de Granularidad y Resumen */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-                        {/* Indicadores Clave */}
+                        {/* Resumen compacto (sin duplicar KPIs superiores) */}
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                             <div style={{
-                                background: '#F8FAFC',
-                                border: '1px solid #E2E8F0',
+                                background: '#EFF6FF',
+                                border: '1px solid #BFDBFE',
                                 padding: '4px 10px',
                                 borderRadius: '8px',
-                                fontSize: '0.75rem',
-                                color: '#475569'
+                                fontSize: '0.74rem',
+                                color: COLOR_PRIMARY
                             }}>
-                                Promedio: <strong style={{ color: '#0F172A' }}>{chartStats.avg}</strong> {activeGranularity === 'dia' ? 'est/día' : 'est/mes'}
+                                Total: <strong>{chartStats.total.toLocaleString('es-AR')}</strong>
                             </div>
-
                             {chartStats.peak && (
                                 <div style={{
                                     background: '#FEF3C7',
                                     border: '1px solid #FDE68A',
                                     padding: '4px 10px',
                                     borderRadius: '8px',
-                                    fontSize: '0.75rem',
+                                    fontSize: '0.74rem',
                                     color: '#92400E'
                                 }}>
                                     Pico: <strong>{chartStats.peak.total.toLocaleString('es-AR')}</strong> ({chartStats.peak.label})
                                 </div>
                             )}
-
-                            <div
-                                onClick={() => setFilterFinanciador(filterFinanciador === 'Obra Social' ? 'TODOS' : 'Obra Social')}
-                                title="Clic para filtrar solo estudios con Obra Social (comienzan con número excepto 042)"
-                                style={{
-                                    background: filterFinanciador === 'Obra Social' ? '#CCFBF1' : '#F0FDFA',
-                                    border: `1px solid ${filterFinanciador === 'Obra Social' ? '#0D9488' : '#99F6E4'}`,
-                                    padding: '4px 10px',
-                                    borderRadius: '8px',
-                                    fontSize: '0.75rem',
-                                    color: '#0F766E',
-                                    cursor: 'pointer'
-                                }}
-                            >
-                                🏥 Obra Social: <strong>{chartStats.obraSocial.toLocaleString('es-AR')}</strong>
-                            </div>
-
-                            <div
-                                onClick={() => setFilterFinanciador(filterFinanciador === 'Particular' ? 'TODOS' : 'Particular')}
-                                title="Clic para filtrar solo estudios Particulares (042 o comienzan con letras / nombre propio)"
-                                style={{
-                                    background: filterFinanciador === 'Particular' ? '#FFEDD5' : '#FFF7ED',
-                                    border: `1px solid ${filterFinanciador === 'Particular' ? '#EA580C' : '#FED7AA'}`,
-                                    padding: '4px 10px',
-                                    borderRadius: '8px',
-                                    fontSize: '0.75rem',
-                                    color: '#C2410C',
-                                    cursor: 'pointer'
-                                }}
-                            >
-                                👤 Particular: <strong>{chartStats.particular.toLocaleString('es-AR')}</strong>
-                            </div>
-
-                            <div style={{
-                                background: '#EFF6FF',
-                                border: '1px solid #BFDBFE',
-                                padding: '4px 10px',
-                                borderRadius: '8px',
-                                fontSize: '0.75rem',
-                                color: COLOR_PRIMARY
-                            }}>
-                                Total Período: <strong>{chartStats.total.toLocaleString('es-AR')}</strong>
-                            </div>
                         </div>
 
                         {/* Switch Vista: 3D Topográfico / 2D Líneas */}
@@ -2862,7 +2818,8 @@ export default function DiagnosticoImagenesDashboard({
 
                 {!chartCollapsed && (
                     <>
-                        {/* Selector / Leyenda interactiva de series */}
+                        {/* Selector / Leyenda interactiva de series (solo en modo 2D; en 3D se controla desde la barra superior del gráfico) */}
+                        {progressionViewMode === '2d' && (
                         <div style={{
                             display: 'flex',
                             flexWrap: 'wrap',
@@ -3052,9 +3009,10 @@ export default function DiagnosticoImagenesDashboard({
                                 </>
                             )}
                         </div>
+                        )}
 
                         {/* Contenedor del Gráfico (3D Topográfico WebGL o 2D Recharts) */}
-                        <div style={{ width: '100%', height: progressionViewMode === '3d' ? '470px' : '300px', marginTop: '6px', minWidth: 0, position: 'relative' }}>
+                        <div style={{ width: '100%', minHeight: progressionViewMode === '3d' ? '470px' : '300px', marginTop: '4px', minWidth: 0, position: 'relative' }}>
                             {loading ? (
                                 <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748B', gap: '8px' }}>
                                     <RefreshCw className="animate-spin" size={18} color={COLOR_PRIMARY} />
