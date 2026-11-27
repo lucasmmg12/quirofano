@@ -3,9 +3,14 @@ import {
     AlertTriangle, Award, BookOpen, Calendar, Camera, CheckCircle2,
     ChevronDown, ChevronUp, ClipboardCheck, Download, Edit3, ExternalLink,
     FileSpreadsheet, FileText, Image as ImageIcon, Layers, ListChecks,
-    Loader2, Plus, Presentation, RefreshCw, Save, Sparkles, Target,
-    Trash2, TrendingDown, TrendingUp, Users, X, Zap
+    Loader2, Lock, Plus, Presentation, RefreshCw, Save, Search, ShieldAlert,
+    Sparkles, Target, Trash2, TrendingDown, TrendingUp, Users, X, Zap
 } from 'lucide-react';
+import {
+    fetchDoraOportunidadesMejora,
+    formatDoraSectorLabel,
+    formatDoraStatus,
+} from '../../services/doraCalidadService';
 import {
     calcVariacionYTendencia,
     createBlankOrClonedInforme,
@@ -128,6 +133,68 @@ export default function ReunionesServicioPanel({ sectorId = 'DXI', addToast }) {
     const [newMonthValue, setNewMonthValue] = useState('2026-11');
     const [uploadingPhoto, setUploadingPhoto] = useState(false);
     const [lightboxFoto, setLightboxFoto] = useState(null);
+
+    // Oportunidades de Mejora en tiempo real desde Dora (SOLO LECTURA)
+    const [doraData, setDoraData] = useState({ reports: [], doraSectors: [], metrics: { total: 0, resueltos: 0, pendientes: 0, validacion: 0, criticos: 0, pctResolucion: 0, avgDiasCierre: null } });
+    const [loadingDora, setLoadingDora] = useState(false);
+    const [doraError, setDoraError] = useState('');
+    const [doraStatusFilter, setDoraStatusFilter] = useState('all'); // 'all' | 'pending' | 'validation' | 'resolved' | 'critical'
+    const [doraSectorFilter, setDoraSectorFilter] = useState('all');
+    const [doraSearch, setDoraSearch] = useState('');
+    const [expandedDoraId, setExpandedDoraId] = useState(null);
+
+    const loadDoraOm = useCallback(async () => {
+        setLoadingDora(true);
+        setDoraError('');
+        try {
+            const res = await fetchDoraOportunidadesMejora(sectorMeta.id);
+            setDoraData(res);
+            setDoraSectorFilter('all');
+        } catch (err) {
+            console.error('[DoraCalidad] Error consultando OM en vivo:', err);
+            setDoraError(err.message || 'No se pudo consultar Dora en este momento.');
+        } finally {
+            setLoadingDora(false);
+        }
+    }, [sectorMeta.id]);
+
+    useEffect(() => {
+        loadDoraOm();
+    }, [loadDoraOm]);
+
+    const filteredDoraReports = useMemo(() => {
+        const q = doraSearch.trim().toLowerCase();
+        return (doraData.reports || []).filter(r => {
+            if (doraSectorFilter !== 'all' && (r.dora_sector_match || r.sector) !== doraSectorFilter) return false;
+            const st = String(r.status || '');
+            if (doraStatusFilter === 'resolved' && st !== 'resolved') return false;
+            if (doraStatusFilter === 'validation' && st !== 'quality_validation') return false;
+            if (doraStatusFilter === 'pending' && (st === 'resolved' || st === 'quality_validation')) return false;
+            if (doraStatusFilter === 'critical') {
+                const urg = String(r.ai_urgency || '').toLowerCase();
+                if (!r.is_adverse_event && !urg.includes('crit') && !urg.includes('alta') && urg !== 'high' && urg !== 'critical') return false;
+            }
+            if (!q) return true;
+            return [r.tracking_id, r.ai_summary, r.content, r.ai_category, r.root_cause, r.corrective_plan, r.origin_sector, r.sector]
+                .some(v => String(v || '').toLowerCase().includes(q));
+        });
+    }, [doraData.reports, doraSectorFilter, doraStatusFilter, doraSearch]);
+
+    const handleImportDoraReportToRdir04 = (rep) => {
+        if (!draftInforme) return;
+        const nextNum = String((draftInforme.oportunidades_mejora || []).length + 1).padStart(2, '0');
+        const newOm = {
+            codigo: `OM-${nextNum}`,
+            oportunidad: rep.ai_summary || (rep.content || '').slice(0, 160) || `Reporte Dora ${rep.tracking_id || ''}`,
+            origen: `Dora ${rep.tracking_id || ''} · ${formatDoraSectorLabel(rep.dora_sector_match || rep.sector)}`,
+            accion_propuesta: rep.corrective_plan || rep.corrective_action_plan || rep.immediate_action || rep.resolution_notes || 'En análisis con Calidad y jefatura de servicio.',
+            responsable: `${sectorMeta.nombre} + Calidad`,
+            estado: rep.status === 'resolved' ? 'Cumplido' : 'En curso',
+        };
+        updateInformeField('oportunidades_mejora', [...(draftInforme.oportunidades_mejora || []), newOm]);
+        setActivePilar('informes');
+        notify(`OM ${rep.tracking_id || ''} copiada al Informe RDIR 04 (${formatPeriodoLabel(draftInforme.periodo)}). Recordá presionar Guardar.`);
+    };
 
     const notify = useCallback((msg, type = 'success') => {
         if (addToast) addToast(msg, type);
@@ -539,6 +606,7 @@ export default function ReunionesServicioPanel({ sectorId = 'DXI', addToast }) {
                             { id: 'informes', label: `1. Informes Mensuales (${informes.length})`, icon: FileText },
                             { id: 'revision', label: '2. Revisión por la Dirección', icon: Award },
                             { id: 'objetivos', label: `3. Objetivos 2027 (${objetivos.length})`, icon: Target },
+                            { id: 'dora_om', label: `4. OM en Vivo · Dora (${doraData.metrics.total})`, icon: ShieldAlert },
                         ].map(tab => {
                             const Icon = tab.icon;
                             const active = activePilar === tab.id;
@@ -1028,18 +1096,27 @@ export default function ReunionesServicioPanel({ sectorId = 'DXI', addToast }) {
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(460px, 1fr))', gap: '16px' }}>
                         <CardBlock
                             title="3. Oportunidades de Mejora (OM)"
-                            subtitle="Hallazgos acumulados del ejercicio y acciones adoptadas"
+                            subtitle="Resumen ejecutivo para RDIR 04 · Conectado en solo lectura al Sistema de Calidad Dora"
                             rightNode={
-                                <button
-                                    type="button"
-                                    onClick={() => updateInformeField('oportunidades_mejora', [
-                                        ...(draftInforme.oportunidades_mejora || []),
-                                        { codigo: `OM-${String((draftInforme.oportunidades_mejora || []).length + 1).padStart(2, '0')}`, oportunidad: '', origen: '', accion_propuesta: '', responsable: sectorMeta.nombre, estado: 'En curso' }
-                                    ])}
-                                    style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '4px 9px', borderRadius: '7px', border: '1px solid #CBD5E1', background: '#FFFFFF', fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer' }}
-                                >
-                                    <Plus size={13} /> + OM
-                                </button>
+                                <>
+                                    <button
+                                        type="button"
+                                        onClick={() => setActivePilar('dora_om')}
+                                        style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '4px 10px', borderRadius: '7px', border: '1px solid #BFDBFE', background: '#EFF6FF', color: COLOR_NAVY, fontSize: '0.72rem', fontWeight: 800, cursor: 'pointer' }}
+                                    >
+                                        <Lock size={12} /> Dora en vivo: {doraData.metrics.total} ({doraData.metrics.pctResolucion}% res.) →
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => updateInformeField('oportunidades_mejora', [
+                                            ...(draftInforme.oportunidades_mejora || []),
+                                            { codigo: `OM-${String((draftInforme.oportunidades_mejora || []).length + 1).padStart(2, '0')}`, oportunidad: '', origen: '', accion_propuesta: '', responsable: sectorMeta.nombre, estado: 'En curso' }
+                                        ])}
+                                        style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '4px 9px', borderRadius: '7px', border: '1px solid #CBD5E1', background: '#FFFFFF', fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer' }}
+                                    >
+                                        <Plus size={13} /> + OM
+                                    </button>
+                                </>
                             }
                         >
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
@@ -1633,6 +1710,216 @@ export default function ReunionesServicioPanel({ sectorId = 'DXI', addToast }) {
                             </div>
                         );
                     })}
+                </div>
+            )}
+
+            {/* =====================================================================
+                PILAR 4: OPORTUNIDADES DE MEJORA EN TIEMPO REAL — DORA (SOLO LECTURA)
+               ===================================================================== */}
+            {activePilar === 'dora_om' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                    {/* Banner de conexión Solo Lectura con Dora */}
+                    <div style={{
+                        background: '#FFFFFF', border: '1px solid #BFDBFE', borderLeft: `4px solid ${COLOR_NAVY}`,
+                        borderRadius: '10px', padding: '14px 18px',
+                        display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px'
+                    }}>
+                        <div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                <span style={{ fontSize: '0.94rem', fontWeight: 800, color: COLOR_NAVY }}>
+                                    Oportunidades de Mejora en Tiempo Real — Sistema de Calidad Dora
+                                </span>
+                                <span style={{
+                                    display: 'inline-flex', alignItems: 'center', gap: '4px',
+                                    padding: '2px 9px', borderRadius: '999px', fontSize: '0.68rem', fontWeight: 800,
+                                    background: '#ECFDF5', color: '#065F46', border: '1px solid #A7F3D0'
+                                }}>
+                                    <Lock size={11} /> SOLO LECTURA · EN VIVO
+                                </span>
+                            </div>
+                            <div style={{ fontSize: '0.76rem', color: '#64748B', marginTop: '3px' }}>
+                                Sectores vinculados en Dora: {(doraData.doraSectors || []).map(formatDoraSectorLabel).join(' · ') || 'Sin sectores mapeados'}
+                            </div>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={loadDoraOm}
+                            disabled={loadingDora}
+                            style={{
+                                display: 'inline-flex', alignItems: 'center', gap: '6px',
+                                padding: '7px 12px', borderRadius: '8px', border: '1px solid #CBD5E1',
+                                background: '#FFFFFF', color: COLOR_NAVY, fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer'
+                            }}
+                        >
+                            <RefreshCw size={14} className={loadingDora ? 'animate-spin' : ''} /> Actualizar desde Dora
+                        </button>
+                    </div>
+
+                    {/* 4 KPIs en vivo de Dora */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '12px' }}>
+                        {[
+                            { lbl: 'REPORTES / OM EN DORA', val: doraData.metrics.total, sub: `${doraData.metrics.pendientes} pendientes · ${doraData.metrics.validacion} en validación`, col: COLOR_NAVY },
+                            { lbl: 'TASA DE RESOLUCIÓN', val: `${doraData.metrics.pctResolucion}%`, sub: `${doraData.metrics.resueltos} reportes cerrados`, col: '#059669' },
+                            { lbl: 'CRÍTICOS / EVENTOS ADVERSOS', val: doraData.metrics.criticos, sub: 'Urgencia alta/crítica o EA', col: '#DC2626' },
+                            { lbl: 'PROMEDIO DÍAS DE CIERRE', val: doraData.metrics.avgDiasCierre !== null ? `${doraData.metrics.avgDiasCierre} d` : '—', sub: 'Desde creación hasta resolución', col: '#0284C7' },
+                        ].map((k, idx) => (
+                            <div key={idx} style={{ background: '#FFFFFF', borderRadius: '10px', border: '1px solid #E2E8F0', borderLeft: `4px solid ${k.col}`, padding: '13px 15px' }}>
+                                <div style={{ fontSize: '0.68rem', fontWeight: 800, color: '#64748B' }}>{k.lbl}</div>
+                                <div style={{ fontSize: '1.5rem', fontWeight: 800, color: '#0F172A', margin: '3px 0 2px' }}>{k.val}</div>
+                                <div style={{ fontSize: '0.72rem', color: '#475569' }}>{k.sub}</div>
+                            </div>
+                        ))}
+                    </div>
+
+                    {/* Filtros de consulta en vivo */}
+                    <div style={{
+                        background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '10px', padding: '12px 14px',
+                        display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px'
+                    }}>
+                        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
+                            {[
+                                { id: 'all', label: `Todos (${doraData.metrics.total})` },
+                                { id: 'pending', label: `Pendientes (${doraData.metrics.pendientes})` },
+                                { id: 'validation', label: `Validación Calidad (${doraData.metrics.validacion})` },
+                                { id: 'resolved', label: `Resueltos (${doraData.metrics.resueltos})` },
+                                { id: 'critical', label: `Críticos / EA (${doraData.metrics.criticos})` },
+                            ].map(f => (
+                                <button
+                                    key={f.id}
+                                    type="button"
+                                    onClick={() => setDoraStatusFilter(f.id)}
+                                    style={{
+                                        padding: '5px 10px', borderRadius: '8px', fontSize: '0.73rem', fontWeight: 700, cursor: 'pointer',
+                                        border: doraStatusFilter === f.id ? `1px solid ${COLOR_NAVY}` : '1px solid #CBD5E1',
+                                        background: doraStatusFilter === f.id ? COLOR_NAVY : '#FFFFFF',
+                                        color: doraStatusFilter === f.id ? '#FFFFFF' : '#475569'
+                                    }}
+                                >
+                                    {f.label}
+                                </button>
+                            ))}
+
+                            {(doraData.doraSectors || []).length > 1 && (
+                                <select
+                                    value={doraSectorFilter}
+                                    onChange={e => setDoraSectorFilter(e.target.value)}
+                                    style={{ padding: '5px 9px', borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.73rem', fontWeight: 700, color: '#0F172A' }}
+                                >
+                                    <option value="all">Todas las Sedes Dora</option>
+                                    {doraData.doraSectors.map(sec => (
+                                        <option key={sec} value={sec}>{formatDoraSectorLabel(sec)}</option>
+                                    ))}
+                                </select>
+                            )}
+                        </div>
+
+                        <div style={{ position: 'relative', minWidth: '240px', flex: '0 1 300px' }}>
+                            <Search size={14} style={{ position: 'absolute', left: '10px', top: '9px', color: '#64748B' }} />
+                            <input
+                                type="text"
+                                value={doraSearch}
+                                onChange={e => setDoraSearch(e.target.value)}
+                                placeholder="Buscar por código, resumen o causa..."
+                                style={{ ...inputStyle, paddingLeft: '30px' }}
+                            />
+                        </div>
+                    </div>
+
+                    {doraError && (
+                        <div style={{ padding: '12px 16px', borderRadius: '10px', background: '#FEF2F2', border: '1px solid #FECACA', color: '#991B1B', fontSize: '0.8rem', fontWeight: 600 }}>
+                            Error consultando Dora: {doraError}
+                        </div>
+                    )}
+
+                    {/* Listado de OM en tiempo real */}
+                    {loadingDora ? (
+                        <div style={{ background: '#FFFFFF', borderRadius: '10px', border: '1px solid #E2E8F0', padding: '44px', textAlign: 'center', color: '#64748B' }}>
+                            <Loader2 size={24} className="animate-spin" style={{ margin: '0 auto 8px' }} />
+                            Consultando reportes de Calidad en Dora...
+                        </div>
+                    ) : filteredDoraReports.length === 0 ? (
+                        <div style={{ background: '#FFFFFF', borderRadius: '10px', border: '1px solid #E2E8F0', padding: '40px', textAlign: 'center', color: '#64748B', fontSize: '0.84rem' }}>
+                            No se encontraron Oportunidades de Mejora en Dora con los filtros actuales.
+                        </div>
+                    ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                            {filteredDoraReports.map(rep => {
+                                const stInfo = formatDoraStatus(rep.status);
+                                const isOpen = expandedDoraId === rep.id;
+                                const fechaTxt = rep.created_at ? new Date(rep.created_at).toLocaleDateString('es-AR') : '—';
+                                const isCrit = rep.is_adverse_event || String(rep.ai_urgency || '').toLowerCase().includes('crit') || String(rep.ai_urgency || '').toLowerCase() === 'high';
+                                return (
+                                    <div key={rep.id} style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '10px', overflow: 'hidden' }}>
+                                        <div
+                                            onClick={() => setExpandedDoraId(isOpen ? null : rep.id)}
+                                            style={{
+                                                padding: '12px 15px', cursor: 'pointer',
+                                                display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap'
+                                            }}
+                                        >
+                                            <div style={{ flex: '1 1 460px', minWidth: 0 }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '7px', flexWrap: 'wrap', marginBottom: '4px' }}>
+                                                    <span style={{ fontSize: '0.72rem', fontWeight: 800, color: COLOR_NAVY, background: '#EFF6FF', padding: '2px 7px', borderRadius: '6px' }}>
+                                                        {rep.tracking_id || 'DORA'}
+                                                    </span>
+                                                    <StatusBadge value={stInfo.label} />
+                                                    {isCrit && (
+                                                        <span style={{ fontSize: '0.68rem', fontWeight: 800, padding: '2px 7px', borderRadius: '999px', background: '#FEE2E2', color: '#991B1B', border: '1px solid #FCA5A5' }}>
+                                                            {rep.is_adverse_event ? 'Evento Adverso' : 'Urgencia Alta'}
+                                                        </span>
+                                                    )}
+                                                    <span style={{ fontSize: '0.71rem', fontWeight: 700, color: '#475569' }}>
+                                                        {formatDoraSectorLabel(rep.dora_sector_match || rep.sector)}
+                                                    </span>
+                                                    <span style={{ fontSize: '0.7rem', color: '#94A3B8' }}>· {fechaTxt}</span>
+                                                </div>
+                                                <div style={{ fontSize: '0.84rem', fontWeight: 700, color: '#0F172A', lineHeight: 1.35 }}>
+                                                    {rep.ai_summary || (rep.content || 'Sin descripción').slice(0, 180)}
+                                                </div>
+                                            </div>
+
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+                                                {draftInforme && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            handleImportDoraReportToRdir04(rep);
+                                                        }}
+                                                        title="Copiar esta OM al informe RDIR 04 del mes (no modifica Dora)"
+                                                        style={{
+                                                            padding: '5px 9px', borderRadius: '7px', border: '1px solid #BFDBFE',
+                                                            background: '#EFF6FF', color: COLOR_NAVY, fontSize: '0.71rem', fontWeight: 700, cursor: 'pointer'
+                                                        }}
+                                                    >
+                                                        + Llevar al RDIR 04
+                                                    </button>
+                                                )}
+                                                {isOpen ? <ChevronUp size={16} color="#64748B" /> : <ChevronDown size={16} color="#64748B" />}
+                                            </div>
+                                        </div>
+
+                                        {isOpen && (
+                                            <div style={{ padding: '12px 16px', borderTop: '1px solid #F1F5F9', background: '#F8FAFC', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '10px', fontSize: '0.78rem' }}>
+                                                <div style={{ gridColumn: '1 / -1' }}>
+                                                    <strong style={{ color: COLOR_NAVY }}>Descripción del reporte:</strong>
+                                                    <div style={{ color: '#334155', marginTop: '2px', whiteSpace: 'pre-wrap' }}>{rep.content || '—'}</div>
+                                                </div>
+                                                <div><strong style={{ color: COLOR_NAVY }}>Categoría / Tipo:</strong> <span style={{ color: '#334155' }}>{rep.ai_category || rep.finding_type || '—'}</span></div>
+                                                <div><strong style={{ color: COLOR_NAVY }}>Sector origen:</strong> <span style={{ color: '#334155' }}>{rep.origin_sector || rep.reporter_sector || '—'}</span></div>
+                                                <div><strong style={{ color: COLOR_NAVY }}>Causa raíz:</strong> <span style={{ color: '#334155' }}>{rep.root_cause || 'Sin registrar'}</span></div>
+                                                <div><strong style={{ color: COLOR_NAVY }}>Acción inmediata:</strong> <span style={{ color: '#334155' }}>{rep.immediate_action || 'Sin registrar'}</span></div>
+                                                <div style={{ gridColumn: '1 / -1' }}>
+                                                    <strong style={{ color: '#065F46' }}>Plan correctivo / Resolución:</strong>{' '}
+                                                    <span style={{ color: '#0F172A' }}>{rep.corrective_plan || rep.corrective_action_plan || rep.resolution_notes || 'Pendiente de resolución en Dora.'}</span>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
                 </div>
             )}
 
