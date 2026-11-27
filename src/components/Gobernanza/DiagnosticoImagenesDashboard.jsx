@@ -2035,7 +2035,8 @@ export default function DiagnosticoImagenesDashboard({
                     const st = modStats[mk];
                     const cant = Number(r.Cantidad || 0);
                     st.total += cant;
-                    if (r.TipoFinanciador === 'PARTICULAR') st.part += cant;
+                    const tipoFin = String(r.TipoFinanciador || '').toLowerCase();
+                    if (tipoFin.includes('part')) st.part += cant;
                     else st.os += cant;
                     st.inf += Number(r.Informados || r.CantidadInformados || 0);
                     if (r.Centro) st.centros[r.Centro] = (st.centros[r.Centro] || 0) + cant;
@@ -2049,8 +2050,8 @@ export default function DiagnosticoImagenesDashboard({
                             const st = modStats[s.key] || { total: s.value, os: s.value, part: 0, inf: 0, centros: {}, agendas: {} };
                             const topCentroEntry = Object.entries(st.centros).sort((a, b) => b[1] - a[1])[0];
                             const topAgendaEntry = Object.entries(st.agendas).sort((a, b) => b[1] - a[1])[0];
-                            const osPct = st.total > 0 ? Math.round((st.os * 100) / st.total) : 0;
-                            const partPct = 100 - osPct;
+                            const osPct = st.total > 0 ? ((st.os * 100) / st.total).toFixed(1) : '0.0';
+                            const partPct = st.total > 0 ? ((st.part * 100) / st.total).toFixed(1) : '0.0';
                             const infPct = st.total > 0 && st.inf > 0 ? ((st.inf * 100) / st.total).toFixed(1) : null;
 
                             const rankTxt = idx === 0
@@ -2059,14 +2060,14 @@ export default function DiagnosticoImagenesDashboard({
                             const sedeTxt = topCentroEntry
                                 ? ` Su mayor demanda se registra en ${topCentroEntry[0]} (${Math.round((topCentroEntry[1] * 100) / Math.max(1, st.total))}%).`
                                 : '';
-                            const cobTxt = ` El ${osPct}% corresponde a Obra Social y el ${partPct}% a Particulares.`;
+                            const cobTxt = ` El ${osPct}% corresponde a Obra Social (${st.os.toLocaleString('es-AR')}) y el ${partPct}% a Particulares (${st.part.toLocaleString('es-AR')}).`;
                             const agendaTxt = topAgendaEntry
                                 ? ` Práctica principal: ${topAgendaEntry[0]}.`
                                 : '';
 
                             const chips = [
                                 ...(topCentroEntry ? [{ label: 'Sede líder', value: `${topCentroEntry[0]} (${topCentroEntry[1].toLocaleString('es-AR')})` }] : []),
-                                { label: 'Cobertura', value: `${osPct}% OS · ${partPct}% Part.` },
+                                { label: 'Cobertura', value: `${osPct}% OS · ${partPct}% Part. (${st.part.toLocaleString('es-AR')})` },
                                 ...(infPct ? [{ label: 'Informados', value: `${infPct}%` }] : []),
                             ];
 
