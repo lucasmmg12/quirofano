@@ -37,6 +37,7 @@ import {
 } from 'recharts';
 import SqlDocumentationModal from './SqlDocumentationModal';
 import { AnilloToroidal3D } from './GobernanzaCharts3D';
+import { GobernanzaBarraPulso, GobernanzaFlujoAnimado } from './GobernanzaPulseKit';
 import './Gobernanza.css';
 
 // ─── DATOS REALES EXTRAÍDOS DE TABLEAU INSTITUCIONAL (SANATORIO ARGENTINO) ───
@@ -3476,160 +3477,111 @@ export default function QuirofanoDashboard({
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', width: '100%', paddingBottom: '30px' }}>
             
-            {/* 1. HEADER INSTITUCIONAL CON KPIs MAESTROS */}
+            {/* 1. HEADER LIMPIO CALIDAD-QOAG (ESTÁNDAR DXI) */}
             <div style={{
-                background: 'linear-gradient(135deg, #0F172A 0%, #1E3A8A 50%, #0284C7 100%)',
-                borderRadius: '16px',
-                padding: '24px 28px',
-                color: '#FFFFFF',
-                boxShadow: '0 8px 24px rgba(15, 23, 42, 0.15)',
+                background: '#FFFFFF',
+                border: '1px solid #E2E8F0',
+                borderRadius: '12px',
+                padding: '14px 20px',
+                boxShadow: '0 1px 3px rgba(15, 23, 42, 0.03)',
                 display: 'flex',
                 flexDirection: 'column',
-                gap: '18px'
+                gap: '12px'
             }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '14px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        <h1 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 900, letterSpacing: '-0.5px' }}>
-                            QUIROFANO
-                        </h1>
-                        {loadingSurgeries && (
-                            <span style={{ fontSize: '0.72rem', color: '#93C5FD', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                <RefreshCw size={12} className="animate-spin" /> Actualizando...
-                            </span>
-                        )}
+                        <div style={{
+                            width: '38px', height: '38px', borderRadius: '10px',
+                            background: '#EFF6FF', border: '1px solid #BFDBFE',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#003B73', flexShrink: 0,
+                        }}>
+                            <Scissors size={19} />
+                        </div>
+                        <div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <h1 style={{ margin: 0, fontSize: '1.12rem', fontWeight: 900, color: '#003B73', letterSpacing: '-0.015em' }}>
+                                    Quirófano & Hospital de Día
+                                </h1>
+                                {loadingSurgeries && (
+                                    <span style={{ fontSize: '0.7rem', color: '#0284C7', display: 'inline-flex', alignItems: 'center', gap: '4px', fontWeight: 600 }}>
+                                        <RefreshCw size={12} className="animate-spin" /> Actualizando...
+                                    </span>
+                                )}
+                            </div>
+                            <div style={{ fontSize: '0.74rem', color: '#64748B', fontWeight: 500 }}>
+                                Quirófano Central · Sala de Partos · Hospital de Día · Hemodinamia c/ Anestesia
+                            </div>
+                        </div>
                     </div>
 
-                    {/* SELECTOR PARA TOCAR Y DIFERENCIAR ENTRE HDD Y QX CENTRALES */}
+                    {/* SELECTOR DE ÁMBITO + ACCIONES */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                         <div style={{
                             display: 'inline-flex',
-                            background: 'rgba(0, 0, 0, 0.35)',
-                            padding: '4px',
-                            borderRadius: '10px',
-                            border: '1px solid rgba(255, 255, 255, 0.2)',
-                            gap: '4px'
+                            background: '#F1F5F9',
+                            padding: '3px',
+                            borderRadius: '9px',
+                            border: '1px solid #E2E8F0',
+                            gap: '3px',
+                            flexWrap: 'wrap'
                         }}>
-                            <button
-                                type="button"
-                                onClick={() => setAmbitoFilter('TODOS')}
-                                style={{
-                                    padding: '6px 14px',
-                                    borderRadius: '7px',
-                                    border: 'none',
-                                    fontSize: '0.78rem',
-                                    fontWeight: ambitoFilter === 'TODOS' ? 800 : 600,
-                                    background: ambitoFilter === 'TODOS' ? '#FFFFFF' : 'transparent',
-                                    color: ambitoFilter === 'TODOS' ? '#0F172A' : '#E2E8F0',
-                                    cursor: 'pointer',
-                                    transition: 'all 0.15s ease',
-                                    boxShadow: ambitoFilter === 'TODOS' ? '0 2px 4px rgba(0,0,0,0.2)' : 'none'
-                                }}
-                            >
-                                🌐 Todas las Salas {dynamicMetrics ? `(${dynamicMetrics.globalRealizadas})` : ''}
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => setAmbitoFilter('CENTRALES')}
-                                style={{
-                                    padding: '6px 14px',
-                                    borderRadius: '7px',
-                                    border: 'none',
-                                    fontSize: '0.78rem',
-                                    fontWeight: ambitoFilter === 'CENTRALES' ? 800 : 600,
-                                    background: ambitoFilter === 'CENTRALES' ? '#38BDF8' : 'transparent',
-                                    color: ambitoFilter === 'CENTRALES' ? '#0F172A' : '#E2E8F0',
-                                    cursor: 'pointer',
-                                    transition: 'all 0.15s ease',
-                                    boxShadow: ambitoFilter === 'CENTRALES' ? '0 2px 4px rgba(0,0,0,0.2)' : 'none'
-                                }}
-                                title="Quirófano Central unificado (incluye Salas Qx 1 a 4 y Sala de Partos integrada)"
-                            >
-                                🏥 Quirófano Central {dynamicMetrics ? `(${dynamicMetrics.centralesRealizadas})` : ''}
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => setAmbitoFilter('HDD')}
-                                style={{
-                                    padding: '6px 14px',
-                                    borderRadius: '7px',
-                                    border: 'none',
-                                    fontSize: '0.78rem',
-                                    fontWeight: ambitoFilter === 'HDD' ? 800 : 600,
-                                    background: ambitoFilter === 'HDD' ? '#34D399' : 'transparent',
-                                    color: ambitoFilter === 'HDD' ? '#0F172A' : '#E2E8F0',
-                                    cursor: 'pointer',
-                                    transition: 'all 0.15s ease',
-                                    boxShadow: ambitoFilter === 'HDD' ? '0 2px 4px rgba(0,0,0,0.2)' : 'none'
-                                }}
-                                title="Hospital de Día (Qx 5 y Qx 6 · Excluye pasajes de hierro / Hemoterapia)"
-                            >
-                                ☀️ Hospital de Día - HdD {dynamicMetrics ? `(${dynamicMetrics.hddRealizadas})` : ''}
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => setAmbitoFilter('HEMODINAMIA')}
-                                style={{
-                                    padding: '6px 14px',
-                                    borderRadius: '7px',
-                                    border: 'none',
-                                    fontSize: '0.78rem',
-                                    fontWeight: ambitoFilter === 'HEMODINAMIA' ? 800 : 600,
-                                    background: ambitoFilter === 'HEMODINAMIA' ? '#F87171' : 'transparent',
-                                    color: ambitoFilter === 'HEMODINAMIA' ? '#0F172A' : '#E2E8F0',
-                                    cursor: 'pointer',
-                                    transition: 'all 0.15s ease',
-                                    boxShadow: ambitoFilter === 'HEMODINAMIA' ? '0 2px 4px rgba(0,0,0,0.2)' : 'none'
-                                }}
-                                title="Procedimientos de Hemodinamia con participación de Anestesiólogo"
-                            >
-                                ❤️ Hemodinamia c/ Anest. {dynamicMetrics ? `(${dynamicMetrics.hemodinamiaRealizadas})` : ''}
-                            </button>
+                            {[
+                                { id: 'TODOS', label: `Todas (${dynamicMetrics ? dynamicMetrics.globalRealizadas : 0})`, title: 'Todas las salas quirúrgicas' },
+                                { id: 'CENTRALES', label: `Qx Central (${dynamicMetrics ? dynamicMetrics.centralesRealizadas : 0})`, title: 'Quirófano Central unificado (Salas Qx 1 a 4 y Sala de Partos)' },
+                                { id: 'HDD', label: `HdD (${dynamicMetrics ? dynamicMetrics.hddRealizadas : 0})`, title: 'Hospital de Día (Qx 5 y Qx 6 · Excluye hierro)' },
+                                { id: 'HEMODINAMIA', label: `Hemodinamia (${dynamicMetrics ? dynamicMetrics.hemodinamiaRealizadas : 0})`, title: 'Hemodinamia con Anestesiólogo' },
+                            ].map(opt => {
+                                const isAct = ambitoFilter === opt.id;
+                                return (
+                                    <button
+                                        key={opt.id}
+                                        type="button"
+                                        onClick={() => setAmbitoFilter(opt.id)}
+                                        title={opt.title}
+                                        style={{
+                                            padding: '5px 11px',
+                                            borderRadius: '7px',
+                                            border: 'none',
+                                            fontSize: '0.74rem',
+                                            fontWeight: isAct ? 800 : 600,
+                                            background: isAct ? '#003B73' : 'transparent',
+                                            color: isAct ? '#FFFFFF' : '#475569',
+                                            cursor: 'pointer',
+                                            transition: 'all 0.15s ease',
+                                        }}
+                                    >
+                                        {opt.label}
+                                    </button>
+                                );
+                            })}
                         </div>
 
-                        {/* BOTONES DE EXPORTACIÓN Y EXPLORADOR NOMINAL */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                             <button
                                 type="button"
                                 onClick={() => handleExportAllQuirofanoExcel()}
                                 style={{
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    gap: '6px',
-                                    padding: '7px 14px',
-                                    borderRadius: '8px',
-                                    background: '#10B981',
-                                    border: 'none',
-                                    color: '#FFFFFF',
-                                    fontSize: '0.78rem',
-                                    fontWeight: 800,
-                                    cursor: 'pointer',
-                                    boxShadow: '0 2px 6px rgba(16, 185, 129, 0.35)',
-                                    transition: 'all 0.15s ease'
+                                    display: 'inline-flex', alignItems: 'center', gap: '6px',
+                                    padding: '6px 12px', borderRadius: '8px',
+                                    background: '#003B73', border: '1px solid #003B73', color: '#FFFFFF',
+                                    fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer',
                                 }}
-                                title="Descargar libro Excel completo con cirugías nominales paciente por paciente y 6 hojas analíticas"
+                                title="Descargar libro Excel completo con cirugías nominales y 6 hojas analíticas"
                             >
-                                <FileSpreadsheet size={15} /> Descargar a Excel
+                                <FileSpreadsheet size={14} /> Excel
                             </button>
                             <button
                                 type="button"
                                 onClick={() => setShowNominalModal(true)}
                                 style={{
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    gap: '6px',
-                                    padding: '7px 14px',
-                                    borderRadius: '8px',
-                                    background: 'rgba(255, 255, 255, 0.15)',
-                                    border: '1px solid rgba(255, 255, 255, 0.3)',
-                                    color: '#FFFFFF',
-                                    fontSize: '0.78rem',
-                                    fontWeight: 800,
-                                    cursor: 'pointer',
-                                    transition: 'all 0.15s ease'
+                                    display: 'inline-flex', alignItems: 'center', gap: '6px',
+                                    padding: '6px 12px', borderRadius: '8px',
+                                    background: '#F8FAFC', border: '1px solid #CBD5E1', color: '#0F172A',
+                                    fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer',
                                 }}
                                 title="Abrir explorador nominal de pacientes y cirugías"
                             >
-                                <Users size={15} /> Ver Pacientes ({scopedSurgeriesRows.length})
+                                <Users size={14} color="#003B73" /> Pacientes ({scopedSurgeriesRows.length})
                             </button>
                         </div>
 
@@ -3638,227 +3590,114 @@ export default function QuirofanoDashboard({
                                 type="button"
                                 onClick={onClose}
                                 style={{
-                                    background: 'rgba(239, 68, 68, 0.25)',
-                                    border: '1px solid #EF4444',
-                                    color: '#FECACA',
-                                    padding: '6px 12px',
-                                    borderRadius: '10px',
-                                    fontSize: '0.80rem',
-                                    fontWeight: 800,
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '6px',
-                                    cursor: 'pointer'
+                                    background: '#FEF2F2', border: '1px solid #FECACA', color: '#DC2626',
+                                    padding: '6px 12px', borderRadius: '8px', fontSize: '0.76rem', fontWeight: 800,
+                                    display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer'
                                 }}
                             >
-                                <X size={16} /> Cerrar
+                                <X size={15} /> Cerrar
                             </button>
                         )}
                     </div>
-
-                    {/* AVISO INSTITUCIONAL DE VISTA BLOQUEADA Y SUPEDITADA EN ENCABEZADO GENERAL */}
-                    {selectedCrossFilter && (
-                        <div style={{
-                            marginTop: '12px',
-                            background: 'rgba(254, 243, 199, 0.16)',
-                            border: '1px solid #FCD34D',
-                            borderRadius: '10px',
-                            padding: '10px 16px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                            flexWrap: 'wrap',
-                            gap: '10px',
-                            color: '#FFFFFF'
-                        }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                <div style={{
-                                    background: '#F59E0B',
-                                    color: '#0F172A',
-                                    borderRadius: '6px',
-                                    width: '28px',
-                                    height: '28px',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    flexShrink: 0
-                                }}>
-                                    <Lock size={16} strokeWidth={2.5} />
-                                </div>
-                                <div style={{ fontSize: '0.80rem' }}>
-                                    <span style={{ fontWeight: 800, color: '#FDE68A', textTransform: 'uppercase', letterSpacing: '0.4px', marginRight: '6px' }}>
-                                        🔒 Panel Bloqueado:
-                                    </span>
-                                    <span>
-                                        {selectedCrossFilter.type === 'OBRA_SOCIAL' ? 'Obra Social' : selectedCrossFilter.type === 'CIRUJANO' ? 'Cirujano' : 'Especialidad'}: <strong>{selectedCrossFilter.value}</strong> para el período <strong>{activePeriodLabel}</strong> ({scopedSurgeriesRows.length} cirugías supeditadas).
-                                    </span>
-                                </div>
-                            </div>
-                            <button
-                                type="button"
-                                onClick={handleClearCrossFilter}
-                                style={{
-                                    background: '#FFFFFF',
-                                    border: 'none',
-                                    color: '#DC2626',
-                                    borderRadius: '6px',
-                                    padding: '5px 12px',
-                                    fontSize: '0.74rem',
-                                    fontWeight: 800,
-                                    cursor: 'pointer',
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    gap: '5px',
-                                    boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
-                                }}
-                            >
-                                <X size={13} strokeWidth={3} /> Quitar Bloqueo / Ver Todo
-                            </button>
-                        </div>
-                    )}
                 </div>
 
-                {/* KPI CARDS ENCABEZADO REACTIVOS AL PERÍODO Y AL ÁMBITO */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '14px' }}>
-                    {/* CARD 1: CIRUGÍAS REALIZADAS */}
+                {/* AVISO INSTITUCIONAL DE VISTA BLOQUEADA Y SUPEDITADA */}
+                {selectedCrossFilter && (
                     <div style={{
-                        background: 'rgba(255, 255, 255, 0.08)',
-                        backdropFilter: 'blur(10px)',
-                        borderRadius: '12px',
-                        padding: '16px 18px',
-                        border: '1px solid rgba(255, 255, 255, 0.18)',
-                        boxShadow: '0 4px 12px rgba(0, 0, 0, 0.06)',
-                        transition: 'transform 0.15s ease, box-shadow 0.15s ease'
+                        background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: '10px',
+                        padding: '9px 14px', display: 'flex', alignItems: 'center',
+                        justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px', color: '#78350F'
                     }}>
-                        <div style={{ fontSize: '0.72rem', opacity: 0.85, fontWeight: 700, textTransform: 'uppercase', marginBottom: '4px', letterSpacing: '0.04em' }}>
-                            {selectedCrossFilter
-                                ? `Cirugías Realizadas (Supeditado)`
-                                : (ambitoFilter === 'CENTRALES' 
-                                    ? 'Cirugías Realizadas (Centrales)' 
-                                    : ambitoFilter === 'HDD' 
-                                        ? 'Cirugías Realizadas (Hospital de Día)' 
-                                        : 'Cirugías Realizadas (Período)')}
-                        </div>
-                        <div style={{ fontSize: '2.1rem', fontWeight: 800, fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.02em', color: '#FFFFFF' }}>
-                            {loadingSurgeries ? '...' : dynamicMetrics ? dynamicMetrics.realizadas.toLocaleString('es-AR') : '0'}
-                        </div>
-                        <div style={{ fontSize: '0.74rem', color: '#A7F3D0', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '5px', marginTop: '3px', flexWrap: 'wrap' }}>
-                            <TrendingUp size={13} /> {loadingSurgeries ? 'Cargando...' : dynamicMetrics ? (
-                                dynamicMetrics.realizadasVisitas && dynamicMetrics.realizadasVisitas !== dynamicMetrics.realizadas
-                                    ? `${dynamicMetrics.realizadasVisitas.toLocaleString('es-AR')} por visita · ${dynamicMetrics.total.toLocaleString('es-AR')} programadas`
-                                    : `${dynamicMetrics.total.toLocaleString('es-AR')} programadas`
-                            ) : 'Sin registros'}
-                        </div>
-                    </div>
-
-                    {/* CARD 2: TASA NETA REAL */}
-                    <div style={{
-                        background: 'rgba(255, 255, 255, 0.08)',
-                        backdropFilter: 'blur(10px)',
-                        borderRadius: '12px',
-                        padding: '16px 18px',
-                        border: '1px solid rgba(255, 255, 255, 0.18)',
-                        boxShadow: '0 4px 12px rgba(0, 0, 0, 0.06)',
-                        transition: 'transform 0.15s ease, box-shadow 0.15s ease'
-                    }}>
-                        <div style={{ fontSize: '0.72rem', opacity: 0.85, fontWeight: 700, textTransform: 'uppercase', marginBottom: '4px', letterSpacing: '0.04em', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '9px', fontSize: '0.78rem' }}>
+                            <Lock size={15} color="#D97706" />
                             <span>
-                                {ambitoFilter === 'CENTRALES' 
-                                    ? 'Tasa Suspensión (Centrales)' 
-                                    : ambitoFilter === 'HDD' 
-                                        ? 'Tasa Suspensión (HdD)' 
-                                        : 'Tasa Neta Real (QOAG)'}
+                                <strong>Panel Bloqueado:</strong>{' '}
+                                {selectedCrossFilter.type === 'OBRA_SOCIAL' ? 'Obra Social' : selectedCrossFilter.type === 'CIRUJANO' ? 'Cirujano' : 'Especialidad'}:{' '}
+                                <strong>{selectedCrossFilter.value}</strong> ({scopedSurgeriesRows.length} cirugías supeditadas).
                             </span>
-                            {dynamicMetrics && dynamicMetrics.motivo3Count > 0 && (
-                                <span style={{ fontSize: '0.62rem', background: '#059669', color: '#FFFFFF', padding: '1px 7px', borderRadius: '9999px', fontWeight: 800 }} title="Impacto del ajuste por cirugías ya realizadas y cesáreas anticipadas">
-                                    -{dynamicMetrics.impactoPuntosPct} p.p.
-                                </span>
-                            )}
                         </div>
-                        <div style={{ fontSize: '2.1rem', fontWeight: 800, fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.02em', color: '#FCD34D' }}>
-                            {loadingSurgeries ? '...' : dynamicMetrics ? `${dynamicMetrics.tasaSuspNeta}%` : '0%'}
-                        </div>
-                        <div style={{ fontSize: '0.74rem', opacity: 0.90, marginTop: '3px', lineHeight: 1.35 }}>
-                            {loadingSurgeries ? '...' : dynamicMetrics ? (
-                                <>
-                                    <strong>{dynamicMetrics.suspendidasNetas}</strong> netas s/ {dynamicMetrics.total} turnos • Bruta: <strong>{dynamicMetrics.tasaSuspBruta}%</strong> ({dynamicMetrics.motivo3Count} ya realizadas)
-                                </>
-                            ) : '0 cancelaciones'}
-                        </div>
+                        <button
+                            type="button"
+                            onClick={handleClearCrossFilter}
+                            style={{
+                                background: '#FFFFFF', border: '1px solid #FCA5A5', color: '#DC2626',
+                                borderRadius: '6px', padding: '4px 10px', fontSize: '0.72rem', fontWeight: 800,
+                                cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '4px',
+                            }}
+                        >
+                            <X size={12} strokeWidth={3} /> Quitar Bloqueo
+                        </button>
                     </div>
+                )}
+            </div>
 
-                    {/* CARD 3: DISTRIBUCIÓN CLARA Y TOCABLE */}
-                    <div 
-                        onClick={() => {
+            {/* BARRA DE PULSO ANIMADA QUIRÓFANO (ESTÁNDAR DXI) */}
+            <GobernanzaBarraPulso
+                loading={loadingSurgeries}
+                items={[
+                    {
+                        key: 'realizadas',
+                        label: selectedCrossFilter ? 'Realizadas (Supeditado)' : 'Cirugías Realizadas',
+                        value: Number(dynamicMetrics?.realizadas || 0),
+                        ringPct: dynamicMetrics?.total > 0 ? Math.min(100, (dynamicMetrics.realizadas * 100) / dynamicMetrics.total) : 0,
+                        sub: dynamicMetrics ? `${dynamicMetrics.total.toLocaleString('es-AR')} programadas` : 'Sin registros',
+                    },
+                    {
+                        key: 'tasa_susp',
+                        label: 'Tasa Suspensión Neta (QOAG)',
+                        value: Number(dynamicMetrics?.tasaSuspNeta || 0),
+                        decimals: 1,
+                        suffix: '%',
+                        accentColor: Number(dynamicMetrics?.tasaSuspNeta || 0) > 10 ? '#DC2626' : '#D97706',
+                        sub: dynamicMetrics ? `${dynamicMetrics.suspendidasNetas} netas · Bruta ${dynamicMetrics.tasaSuspBruta}%` : '0 cancelaciones',
+                    },
+                    {
+                        key: 'salas',
+                        label: ambitoFilter === 'TODOS' ? 'Central / Hospital de Día' : `Ámbito: ${ambitoFilter}`,
+                        value: dynamicMetrics
+                            ? (ambitoFilter === 'TODOS' ? `${dynamicMetrics.centralesRealizadas} / ${dynamicMetrics.hddRealizadas}` : Number(dynamicMetrics.realizadas || 0))
+                            : '0 / 0',
+                        sub: dynamicMetrics
+                            ? (ambitoFilter === 'TODOS'
+                                ? `Central ${dynamicMetrics.centralesRealizadas} · HdD ${dynamicMetrics.hddRealizadas}${dynamicMetrics.hemodinamiaRealizadas > 0 ? ` · Hemo ${dynamicMetrics.hemodinamiaRealizadas}` : ''}`
+                                : `${((dynamicMetrics.realizadas / Math.max(1, dynamicMetrics.globalRealizadas)) * 100).toFixed(1)}% del Sanatorio`)
+                            : 'Sin cirugías',
+                        actionLabel: 'Alternar',
+                        onAction: () => {
                             if (ambitoFilter === 'TODOS') setAmbitoFilter('CENTRALES');
                             else if (ambitoFilter === 'CENTRALES') setAmbitoFilter('HDD');
                             else setAmbitoFilter('TODOS');
-                        }}
-                        style={{ 
-                            background: 'rgba(255, 255, 255, 0.08)', 
-                            backdropFilter: 'blur(10px)', 
-                            borderRadius: '12px', 
-                            padding: '16px 18px', 
-                            border: ambitoFilter !== 'TODOS' ? '1.5px solid #38BDF8' : '1px solid rgba(255, 255, 255, 0.18)',
-                            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.06)',
-                            cursor: 'pointer',
-                            transition: 'all 0.15s ease'
-                        }}
-                        title="Haz clic para alternar filtro entre Quirófanos Centrales, Hospital de Día y Todas"
-                    >
-                        <div style={{ fontSize: '0.72rem', opacity: 0.85, fontWeight: 700, textTransform: 'uppercase', marginBottom: '4px', letterSpacing: '0.04em', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span>
-                                {ambitoFilter === 'TODOS' ? 'Distribución de Salas' : `Ámbito: ${ambitoFilter === 'CENTRALES' ? 'Qx Central (1-4 y Sala Partos)' : 'Hospital de Día (HdD)'}`}
-                            </span>
-                            <span style={{ fontSize: '0.62rem', background: 'rgba(255, 255, 255, 0.22)', padding: '1px 7px', borderRadius: '9999px', fontWeight: 700 }}>
-                                Alternar
-                            </span>
-                        </div>
-                        <div style={{ fontSize: '2.1rem', fontWeight: 800, fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.02em', color: '#67E8F9' }}>
-                            {loadingSurgeries ? '...' : dynamicMetrics ? (
-                                ambitoFilter === 'TODOS' 
-                                    ? `${dynamicMetrics.centralesRealizadas} / ${dynamicMetrics.hddRealizadas}`
-                                    : `${dynamicMetrics.realizadas} realizadas`
-                            ) : '0 / 0'}
-                        </div>
-                        <div style={{ fontSize: '0.74rem', opacity: 0.85, marginTop: '3px', lineHeight: 1.35 }}>
-                            {loadingSurgeries ? '...' : dynamicMetrics ? (
-                                ambitoFilter === 'TODOS' ? (
-                                    <>
-                                        <div><strong>Realizadas (Qx):</strong> Central + Parto {dynamicMetrics.centralesRealizadas}{dynamicMetrics.centralesRealizadasVisitas && dynamicMetrics.centralesRealizadasVisitas !== dynamicMetrics.centralesRealizadas ? ` (${dynamicMetrics.centralesRealizadasVisitas} vis.)` : ''} · HdD {dynamicMetrics.hddRealizadas}</div>
-                                        <div style={{ opacity: 0.8, fontSize: '0.68rem', marginTop: '2px' }}>
-                                            <strong>Programadas ({dynamicMetrics.globalTotal}):</strong> Central + Parto {dynamicMetrics.centrales} · HdD {dynamicMetrics.hdd}{dynamicMetrics.hemodinamiaRealizadas > 0 ? ` · (Hemo sep.: ${dynamicMetrics.hemodinamiaRealizadas})` : ''}
-                                        </div>
-                                    </>
-                                ) : (
-                                    <div>{dynamicMetrics.total} programadas ({((dynamicMetrics.realizadas / Math.max(1, dynamicMetrics.globalRealizadas)) * 100).toFixed(1)}% del total del Sanatorio)</div>
-                                )
-                            ) : 'Sin cirugías'}
-                        </div>
-                    </div>
+                        },
+                    },
+                    {
+                        key: 'urgencias',
+                        label: 'Urgencias / Demanda',
+                        value: dynamicMetrics ? (dynamicMetrics.urgencias > 0 ? Number(dynamicMetrics.urgencias) : Math.round(dynamicMetrics.total * 0.11)) : 0,
+                        accentColor: '#DC2626',
+                        sub: dynamicMetrics?.urgencias > 0 ? 'urgencias registradas' : '~11% presión no programada',
+                    },
+                ]}
+            />
 
-                    {/* CARD 4: URGENCIAS / DEMANDA */}
-                    <div style={{
-                        background: 'rgba(255, 255, 255, 0.08)',
-                        backdropFilter: 'blur(10px)',
-                        borderRadius: '12px',
-                        padding: '16px 18px',
-                        border: '1px solid rgba(255, 255, 255, 0.18)',
-                        boxShadow: '0 4px 12px rgba(0, 0, 0, 0.06)',
-                        transition: 'transform 0.15s ease, box-shadow 0.15s ease'
-                    }}>
-                        <div style={{ fontSize: '0.72rem', opacity: 0.85, fontWeight: 700, textTransform: 'uppercase', marginBottom: '4px', letterSpacing: '0.04em' }}>
-                            Urgencias / Demanda
-                        </div>
-                        <div style={{ fontSize: '2.1rem', fontWeight: 800, fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.02em', color: '#FCA5A5' }}>
-                            {loadingSurgeries ? '...' : dynamicMetrics ? `${dynamicMetrics.urgencias > 0 ? dynamicMetrics.urgencias : Math.round(dynamicMetrics.total * 0.11)}` : '0'}
-                        </div>
-                        <div style={{ fontSize: '0.74rem', color: '#FCA5A5', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '5px', marginTop: '3px' }}>
-                            <Flame size={13} /> {loadingSurgeries ? '...' : dynamicMetrics ? (dynamicMetrics.urgencias > 0 ? `${dynamicMetrics.urgencias} urgencias registradas` : '~11% presión no programada') : 'Sin registros'}
-                        </div>
-                    </div>
-                </div>
-            </div>
+            {/* FLUJO ANIMADO QUIRÚRGICO */}
+            {!loadingSurgeries && dynamicMetrics && dynamicMetrics.globalTotal > 0 && (
+                <GobernanzaFlujoAnimado
+                    title="Flujo Quirúrgico: Programación y Resolución por Ámbito"
+                    originLabel="PROGRAMADAS"
+                    originValue={Number(dynamicMetrics.globalTotal || 0)}
+                    activeKey={ambitoFilter}
+                    onSelect={(k) => {
+                        if (k === 'SUSP') setActiveTab('suspensiones');
+                        else if (k === 'CENTRALES' || k === 'HDD' || k === 'HEMODINAMIA' || k === 'TODOS') setAmbitoFilter(k);
+                    }}
+                    branches={[
+                        { key: 'CENTRALES', label: 'Realizadas · Quirófano Central + Partos', count: Number(dynamicMetrics.centralesRealizadas || 0), color: '#003B73' },
+                        { key: 'HDD', label: 'Realizadas · Hospital de Día (HdD)', count: Number(dynamicMetrics.hddRealizadas || 0), color: '#059669' },
+                        { key: 'HEMODINAMIA', label: 'Realizadas · Hemodinamia c/ Anest.', count: Number(dynamicMetrics.hemodinamiaRealizadas || 0), color: '#0284C7' },
+                        { key: 'SUSP', label: 'Suspendidas Netas (ver causales 1..13)', count: Number(dynamicMetrics.suspendidasNetas || 0), color: '#D97706' },
+                    ]}
+                />
+            )}
 
             {/* 2. PESTAÑAS DE NAVEGACIÓN TÉCNICA */}
             <div style={{

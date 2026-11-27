@@ -11,7 +11,8 @@ import {
 } from 'recharts';
 import * as XLSX from 'xlsx';
 import { supabase } from '../../lib/supabase';
-import { CilindrosOcupacion3D } from './GobernanzaCharts3D';
+import { CilindrosOcupacion3D, AnilloToroidal3D } from './GobernanzaCharts3D';
+import { GobernanzaBarraPulso } from './GobernanzaPulseKit';
 
 // ─── CONSTANTES VISUALES CALIDAD-QOAG ───
 const MESES_CORTO = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sept', 'oct', 'nov', 'dic'];
@@ -1349,173 +1350,184 @@ export default function InternacionDashboard({
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', fontFamily: 'Inter, system-ui, sans-serif' }}>
-            {/* ═══ HEADER INSTITUCIONAL CALIDAD-QOAG (SINCRONIZADO AL TELAR) ═══ */}
+            {/* ═══ HEADER LIMPIO CALIDAD-QOAG (ESTÁNDAR DXI) ═══ */}
             <div style={{
-                background: 'linear-gradient(135deg, #003B73 0%, #0284C7 100%)',
-                borderRadius: '14px',
-                padding: '20px 24px',
-                color: '#FFFFFF',
-                boxShadow: '0 6px 20px -4px rgba(0, 59, 115, 0.25)',
+                background: '#FFFFFF',
+                border: '1px solid #E2E8F0',
+                borderRadius: '12px',
+                padding: '14px 20px',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                gap: '12px',
+                boxShadow: '0 1px 3px rgba(15, 23, 42, 0.03)',
             }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px', marginBottom: '16px' }}>
-                    <div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                            <span style={{
-                                background: 'rgba(255,255,255,0.16)',
-                                border: '1px solid rgba(255,255,255,0.28)',
-                                borderRadius: '999px',
-                                padding: '3px 10px',
-                                fontSize: '0.72rem',
-                                fontWeight: 700,
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '5px',
-                            }}>
-                                <Calendar size={12} /> Período Telar: {effectiveDesde} al {effectiveHasta}
-                            </span>
-                            {filtrosMeta.last_sync && (
-                                <span style={{ fontSize: '0.7rem', opacity: 0.85 }}>
-                                    Base SALUS: {fmtDateTimeAR(filtrosMeta.last_sync)}
-                                </span>
-                            )}
-                        </div>
-                        <h2 style={{ margin: 0, fontSize: '1.45rem', fontWeight: 900, letterSpacing: '-0.02em' }}>
-                            TABLERO DE INTERNACIÓN
-                        </h2>
-                        <div style={{ fontSize: '0.8rem', opacity: 0.88, marginTop: '2px' }}>
-                            Gobernanza de Datos · Neonatología, Pediatría (Piso & UTIP), Internado Adultos, Terapia Adultos y Hospital de Día
-                        </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <div style={{
+                        width: '38px', height: '38px', borderRadius: '10px',
+                        background: '#EFF6FF', border: '1px solid #BFDBFE',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#003B73', flexShrink: 0,
+                    }}>
+                        <Bed size={20} />
                     </div>
-
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                        <button
-                            type="button"
-                            onClick={() => setShowCamasModal(true)}
-                            style={{
-                                background: 'rgba(255,255,255,0.14)',
-                                border: '1px solid rgba(255,255,255,0.28)',
-                                color: '#FFFFFF',
-                                borderRadius: '8px',
-                                padding: '7px 12px',
-                                fontSize: '0.76rem',
-                                fontWeight: 700,
-                                cursor: 'pointer',
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '6px',
-                            }}
-                        >
-                            <Settings size={14} /> Dotación Camas
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => setShowInquilinosModal(true)}
-                            style={{
-                                background: 'rgba(255,255,255,0.14)',
-                                border: '1px solid rgba(255,255,255,0.28)',
-                                color: '#FFFFFF',
-                                borderRadius: '8px',
-                                padding: '7px 12px',
-                                fontSize: '0.76rem',
-                                fontWeight: 700,
-                                cursor: 'pointer',
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '6px',
-                            }}
-                        >
-                            <Building2 size={14} /> Inquilinos ({inquilinos.filter(i => i.activo).length})
-                        </button>
-                        <button
-                            type="button"
-                            onClick={handleExportExcel}
-                            style={{
-                                background: '#10B981',
-                                border: 'none',
-                                color: '#FFFFFF',
-                                borderRadius: '8px',
-                                padding: '7px 12px',
-                                fontSize: '0.76rem',
-                                fontWeight: 700,
-                                cursor: 'pointer',
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '6px',
-                            }}
-                        >
-                            <FileSpreadsheet size={14} /> Excel Pacientes
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => { loadAggData(); loadNominalData(); loadMetadata(); }}
-                            style={{
-                                background: 'rgba(255,255,255,0.14)',
-                                border: '1px solid rgba(255,255,255,0.28)',
-                                color: '#FFFFFF',
-                                borderRadius: '8px',
-                                padding: '7px 10px',
-                                cursor: 'pointer',
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                            }}
-                            title="Refrescar datos"
-                        >
-                            <RefreshCw size={14} className={loadingAgg || loadingNominal ? 'animate-spin' : ''} />
-                        </button>
+                    <div>
+                        <h2 style={{ margin: 0, fontSize: '1.12rem', fontWeight: 900, color: '#003B73', letterSpacing: '-0.015em' }}>
+                            Internación y Camas
+                        </h2>
+                        <div style={{ fontSize: '0.74rem', color: '#64748B', fontWeight: 500 }}>
+                            Neonatología · Pediatría · Internado Adultos · Terapia · Hospital de Día
+                            {filtrosMeta.last_sync ? ` · SALUS ${fmtDateTimeAR(filtrosMeta.last_sync)}` : ''}
+                        </div>
                     </div>
                 </div>
 
-                {/* 4 KPI CARDS DEL PERÍODO TELAR */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
-                    <div style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.18)', borderRadius: '10px', padding: '14px 16px' }}>
-                        <div style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', opacity: 0.85, letterSpacing: '0.04em' }}>
-                            Ingresos (Período Telar)
-                        </div>
-                        <div style={{ fontSize: '1.9rem', fontWeight: 900, fontVariantNumeric: 'tabular-nums', marginTop: '2px' }}>
-                            {loadingNominal ? '...' : fmtNum(telarKpis.ingresosPeriodo)}
-                        </div>
-                        <div style={{ fontSize: '0.72rem', opacity: 0.85, marginTop: '2px' }}>
-                            Int: {fmtNum(telarKpis.bySector.INTERNADO?.ingresos || 0)} · Ped: {fmtNum(telarKpis.bySector.PEDIATRIA?.ingresos || 0)} · Neo: {fmtNum(telarKpis.bySector.NEONATOLOGIA?.ingresos || 0)} · UCI/TI: {fmtNum((telarKpis.bySector.UCI?.ingresos || 0) + (telarKpis.bySector['TERAPIA INTERMEDIA']?.ingresos || 0))} · HdD: {fmtNum(telarKpis.ingresosHddSinHierro)}{telarKpis.ingresosHddHierro > 0 ? ` (+${fmtNum(telarKpis.ingresosHddHierro)} Hierro)` : ''}
-                        </div>
-                    </div>
-
-                    <div style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.18)', borderRadius: '10px', padding: '14px 16px' }}>
-                        <div style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', opacity: 0.85, letterSpacing: '0.04em' }}>
-                            Días Cama (Regla 0,5)
-                        </div>
-                        <div style={{ fontSize: '1.9rem', fontWeight: 900, fontVariantNumeric: 'tabular-nums', marginTop: '2px', color: '#BAE6FD' }}>
-                            {loadingNominal ? '...' : fmtNum(telarKpis.diasCamaPeriodo, 1)}
-                        </div>
-                        <div style={{ fontSize: '0.72rem', opacity: 0.85, marginTop: '2px' }}>
-                            Int: {fmtNum(telarKpis.bySector.INTERNADO?.diasCama || 0, 1)} · Ped: {fmtNum(telarKpis.bySector.PEDIATRIA?.diasCama || 0, 1)} · Neo: {fmtNum(telarKpis.bySector.NEONATOLOGIA?.diasCama || 0, 1)} · UCI: {fmtNum((telarKpis.bySector.UCI?.diasCama || 0) + (telarKpis.bySector['TERAPIA INTERMEDIA']?.diasCama || 0), 1)}
-                        </div>
-                    </div>
-
-                    <div style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.18)', borderRadius: '10px', padding: '14px 16px' }}>
-                        <div style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', opacity: 0.85, letterSpacing: '0.04em' }}>
-                            % Ocupación ({MESES_CORTO[telarYMD.m - 1]} {telarYMD.y}{telarKpis.isCurrentMonthCutoff ? ` · al día ${cutoffYMD.d}` : ''})
-                        </div>
-                        <div style={{ fontSize: '1.9rem', fontWeight: 900, fontVariantNumeric: 'tabular-nums', marginTop: '2px', color: '#FDE68A' }}>
-                            {telarKpis.ocupIntMes !== null ? `${fmtNum(telarKpis.ocupIntMes, 1)}%` : '—'}
-                        </div>
-                        <div style={{ fontSize: '0.72rem', opacity: 0.85, marginTop: '2px' }}>
-                            Internado Adultos · Neonatología: {telarKpis.ocupNeoMes !== null ? `${fmtNum(telarKpis.ocupNeoMes, 1)}%` : '—'}
-                        </div>
-                    </div>
-
-                    <div style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.18)', borderRadius: '10px', padding: '14px 16px' }}>
-                        <div style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', opacity: 0.85, letterSpacing: '0.04em' }}>
-                            Hospital de Día (Horas)
-                        </div>
-                        <div style={{ fontSize: '1.9rem', fontWeight: 900, fontVariantNumeric: 'tabular-nums', marginTop: '2px', color: '#A7F3D0' }}>
-                            {loadingNominal ? '...' : `${fmtNum(telarKpis.horasHddPeriodo, 1)} hs`}
-                        </div>
-                        <div style={{ fontSize: '0.72rem', opacity: 0.85, marginTop: '2px' }}>
-                            C/Hierro · {fmtNum(telarKpis.ingresosHddSinHierro)} s/Hierro{telarKpis.ingresosHddHierro > 0 ? ` + ${fmtNum(telarKpis.ingresosHddHierro)} Hierro` : ''}
-                        </div>
-                    </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                    <button
+                        type="button"
+                        onClick={() => setShowCamasModal(true)}
+                        style={{
+                            background: '#F8FAFC', border: '1px solid #CBD5E1', color: '#0F172A',
+                            borderRadius: '8px', padding: '7px 12px', fontSize: '0.75rem', fontWeight: 700,
+                            cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '6px',
+                        }}
+                    >
+                        <Settings size={14} color="#003B73" /> Dotación Camas
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setShowInquilinosModal(true)}
+                        style={{
+                            background: '#F8FAFC', border: '1px solid #CBD5E1', color: '#0F172A',
+                            borderRadius: '8px', padding: '7px 12px', fontSize: '0.75rem', fontWeight: 700,
+                            cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '6px',
+                        }}
+                    >
+                        <Building2 size={14} color="#003B73" /> Inquilinos ({inquilinos.filter(i => i.activo).length})
+                    </button>
+                    <button
+                        type="button"
+                        onClick={handleExportExcel}
+                        style={{
+                            background: '#003B73', border: '1px solid #003B73', color: '#FFFFFF',
+                            borderRadius: '8px', padding: '7px 12px', fontSize: '0.75rem', fontWeight: 700,
+                            cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '6px',
+                        }}
+                    >
+                        <FileSpreadsheet size={14} /> Excel Pacientes
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => { loadAggData(); loadNominalData(); loadMetadata(); }}
+                        style={{
+                            background: '#FFFFFF', border: '1px solid #CBD5E1', color: '#475569',
+                            borderRadius: '8px', padding: '7px 10px', cursor: 'pointer',
+                            display: 'inline-flex', alignItems: 'center',
+                        }}
+                        title="Refrescar datos"
+                    >
+                        <RefreshCw size={14} className={loadingAgg || loadingNominal ? 'animate-spin' : ''} />
+                    </button>
                 </div>
             </div>
+
+            {/* ═══ BARRA DE PULSO ANIMADA (ESTÁNDAR DXI) ═══ */}
+            <GobernanzaBarraPulso
+                loading={loadingNominal}
+                items={[
+                    {
+                        key: 'ingresos',
+                        label: 'Ingresos del Período',
+                        value: Number(telarKpis.ingresosPeriodo || 0),
+                        sub: `Int ${fmtNum(telarKpis.bySector.INTERNADO?.ingresos || 0)} · Ped ${fmtNum(telarKpis.bySector.PEDIATRIA?.ingresos || 0)} · Neo ${fmtNum(telarKpis.bySector.NEONATOLOGIA?.ingresos || 0)}`,
+                    },
+                    {
+                        key: 'dias_cama',
+                        label: 'Días Cama (Regla 0,5)',
+                        value: Number(telarKpis.diasCamaPeriodo || 0),
+                        decimals: 1,
+                        sub: `UCI/TI ${fmtNum((telarKpis.bySector.UCI?.diasCama || 0) + (telarKpis.bySector['TERAPIA INTERMEDIA']?.diasCama || 0), 1)} · Neo ${fmtNum(telarKpis.bySector.NEONATOLOGIA?.diasCama || 0, 1)}`,
+                    },
+                    {
+                        key: 'ocupacion',
+                        label: `Ocupación (${MESES_CORTO[telarYMD.m - 1]} ${telarYMD.y})`,
+                        value: telarKpis.ocupIntMes !== null ? Number(telarKpis.ocupIntMes) : '—',
+                        decimals: 1,
+                        suffix: telarKpis.ocupIntMes !== null ? '%' : '',
+                        ringPct: telarKpis.ocupIntMes !== null ? Number(telarKpis.ocupIntMes) : undefined,
+                        sub: `Int. Adultos · Neo ${telarKpis.ocupNeoMes !== null ? `${fmtNum(telarKpis.ocupNeoMes, 1)}%` : '—'}`,
+                    },
+                    {
+                        key: 'hdd',
+                        label: 'Hospital de Día',
+                        value: Number(telarKpis.horasHddPeriodo || 0),
+                        decimals: 1,
+                        suffix: ' hs',
+                        sub: `${fmtNum(telarKpis.ingresosHddSinHierro)} s/Hierro${telarKpis.ingresosHddHierro > 0 ? ` + ${fmtNum(telarKpis.ingresosHddHierro)} Hierro` : ''}`,
+                    },
+                ]}
+            />
+
+            {/* ═══ HERO 3D: DISTRIBUCIÓN DE INGRESOS POR SECTOR / PISO ═══ */}
+            {!loadingNominal && telarKpis.ingresosPeriodo > 0 && (
+                <div style={{
+                    background: '#FFFFFF',
+                    border: '1px solid #E2E8F0',
+                    borderRadius: '12px',
+                    padding: '14px 18px',
+                    boxShadow: '0 1px 3px rgba(15, 23, 42, 0.03)',
+                }}>
+                    <AnilloToroidal3D
+                        titulo="Mix de Ingresos por Sector de Internación"
+                        subtitulo="Hacé clic en un sector para inspeccionar su participación y saltar al detalle nominal"
+                        altura={220}
+                        unitLabel="ingresos"
+                        centerLabel="INGRESOS"
+                        centerSub="Período"
+                        onFilterBoard={(sectorKey) => {
+                            if (sectorKey === 'UCI_TI') goToDetallesWithSector(['UCI', 'TERAPIA INTERMEDIA']);
+                            else goToDetallesWithSector([sectorKey]);
+                        }}
+                        segmentos={[
+                            {
+                                key: 'INTERNADO',
+                                label: 'Internado Adultos',
+                                value: telarKpis.bySector.INTERNADO?.ingresos || 0,
+                                color: '#003B73',
+                                detail: `${fmtNum(telarKpis.bySector.INTERNADO?.diasCama || 0, 1)} días-cama`,
+                            },
+                            {
+                                key: 'PEDIATRIA',
+                                label: 'Pediatría',
+                                value: telarKpis.bySector.PEDIATRIA?.ingresos || 0,
+                                color: '#0284C7',
+                                detail: `${fmtNum(telarKpis.bySector.PEDIATRIA?.diasCama || 0, 1)} días-cama`,
+                            },
+                            {
+                                key: 'NEONATOLOGIA',
+                                label: 'Neonatología',
+                                value: telarKpis.bySector.NEONATOLOGIA?.ingresos || 0,
+                                color: '#0EA5E9',
+                                detail: `${fmtNum(telarKpis.bySector.NEONATOLOGIA?.diasCama || 0, 1)} días-cama`,
+                            },
+                            {
+                                key: 'UCI_TI',
+                                label: 'UCI / Terapia Intermedia',
+                                value: (telarKpis.bySector.UCI?.ingresos || 0) + (telarKpis.bySector['TERAPIA INTERMEDIA']?.ingresos || 0),
+                                color: '#4338CA',
+                                detail: `${fmtNum((telarKpis.bySector.UCI?.diasCama || 0) + (telarKpis.bySector['TERAPIA INTERMEDIA']?.diasCama || 0), 1)} días-cama`,
+                            },
+                            {
+                                key: 'HOSPITAL DE DIA',
+                                label: 'Hospital de Día',
+                                value: (telarKpis.ingresosHddSinHierro || 0) + (telarKpis.ingresosHddHierro || 0),
+                                color: '#059669',
+                                detail: `${fmtNum(telarKpis.horasHddPeriodo || 0, 1)} hs acumuladas`,
+                            },
+                        ].filter(s => s.value > 0)}
+                    />
+                </div>
+            )}
 
             {/* ═══ BARRA DE PESTAÑAS + FILTROS NO TEMPORALES ═══ */}
             <div style={{

@@ -34,7 +34,8 @@ import QuirofanoDashboard from './QuirofanoDashboard';
 import GuardiaInternadoPanel from './GuardiaInternadoPanel';
 import GuardiaAdmisionesOcupacionPanel from './GuardiaAdmisionesOcupacionPanel';
 import AgenteEpicrisisPanel from './AgenteEpicrisisPanel';
-import { EmbudoConversion3D } from './GobernanzaCharts3D';
+import { EmbudoConversion3D, AnilloToroidal3D } from './GobernanzaCharts3D';
+import { GobernanzaBarraPulso, GobernanzaFlujoAnimado } from './GobernanzaPulseKit';
 import './Gobernanza.css';
 
 // ─── CATÁLOGO DIDÁCTICO Y CLÍNICO DE EXPLICACIÓN DE GRÁFICOS ───
@@ -1026,231 +1027,120 @@ export default function GuardiaClinicaDashboard({
             {activeDashboardTab === 'resumen' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                     
-                    {/* ─── TABLERO DEFINITIVO: LOS 7 INDICADORES NUCLEARES DE GESTIÓN ─── */}
-                    <div style={{
-                        background: '#FFFFFF',
-                        borderRadius: '12px',
-                        border: '1px solid #E2E8F0',
-                        padding: '18px 20px',
-                        boxShadow: '0 2px 8px -2px rgba(0,0,0,0.04)'
-                    }}>
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', flexWrap: 'wrap', gap: '8px' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <Activity size={18} color="#1E40AF" />
-                                <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: '#0F172A' }}>
-                                    Tablero Definitivo de Gestión de Urgencias (7 Indicadores Clave)
-                                </h4>
-                            </div>
-                            <span style={{ fontSize: '0.72rem', color: '#64748B', fontWeight: 600 }}>
-                                Enfoque sintético acordado con Dirección Médica y Gobernanza
-                            </span>
-                        </div>
+                    {/* ─── BARRA DE PULSO ANIMADA GUARDIA CLÍNICA (ESTÁNDAR DXI) ─── */}
+                    {(() => {
+                        const cantPiso = Number(currentAdmisiones?.destino_internado_count || enrichedMetrics.cantInternacionPiso || 0);
+                        const cantUci = Number(currentAdmisiones?.destino_uci_count || enrichedMetrics.cantUCI || 0);
+                        const cantCir = Number(enrichedMetrics.urgenciasRealesCount || 0);
+                        const totalConsultas = Number(currentData.total_consultas || 0);
+                        const altaAmb = Math.max(0, totalConsultas - cantPiso - cantUci - cantCir);
+                        const esperaMedVal = franjaFiltro === 'diurna'
+                            ? Number(enrichedMetrics.esperaDiurna || 0)
+                            : franjaFiltro === 'nocturna'
+                                ? Number(enrichedMetrics.esperaNocturna || 0)
+                                : Number(currentData.espera_medico_min_promedio || 0);
 
-                        <div style={{
-                            display: 'grid',
-                            gridTemplateColumns: 'repeat(auto-fit, minmax(290px, 1fr))',
-                            gap: '14px'
-                        }}>
-                            {/* 1. Demanda Total */}
-                            <KpiCard
-                                icon={<Activity size={18} color="#2563EB" />}
-                                title="1. Demanda Total Asistencial"
-                                value={currentData.total_consultas.toLocaleString()}
-                                subtitle="Consultas efectivas atendidas en Guardia Clínica"
-                                meta="100% Presentes"
-                                metaStatus="ok"
-                                detalle="Total de pacientes admitidos en ventanilla con Asistencia = 'Presente' en Grupo Agenda GUARDIA CLINICA."
-                                origen="VLISE_Visitas (Asistencia = Presente)"
-                                onClick={() => setSelectedOutlierModal('demanda_total')}
-                            />
+                        return (
+                            <>
+                                <GobernanzaBarraPulso
+                                    items={[
+                                        {
+                                            key: 'demanda',
+                                            label: 'Demanda Total',
+                                            value: totalConsultas,
+                                            sub: '100% Presentes',
+                                            actionLabel: 'Auditar',
+                                            onAction: () => setSelectedOutlierModal('demanda_total'),
+                                        },
+                                        {
+                                            key: 'puerta_triage',
+                                            label: 'Puerta – Triage',
+                                            value: Number(enrichedMetrics.esperaPuertaTriage || 0),
+                                            suffix: ' min',
+                                            ringPct: Number(currentData.cobertura_triage_pct || 0),
+                                            accentColor: Number(enrichedMetrics.esperaPuertaTriage) <= 15 ? '#003B73' : '#D97706',
+                                            sub: `Cob. ${currentData.cobertura_triage_pct}% (SALUS 621)`,
+                                            actionLabel: 'Triage',
+                                            onAction: () => handleSelectTab('triage'),
+                                        },
+                                        {
+                                            key: 'puerta_medico',
+                                            label: 'Puerta – Médico',
+                                            value: esperaMedVal,
+                                            suffix: ' min',
+                                            accentColor: esperaMedVal <= 30 ? '#003B73' : '#D97706',
+                                            sub: `Diurna ${enrichedMetrics.esperaDiurna}m · Noche ${enrichedMetrics.esperaNocturna}m`,
+                                            actionLabel: 'Progresión',
+                                            onAction: () => setShowPuertaMedicoProgression(true),
+                                        },
+                                        {
+                                            key: 'pases',
+                                            label: 'Pases Internación / UCI',
+                                            value: cantPiso + cantUci,
+                                            sub: `Piso: ${cantPiso} · UCI: ${cantUci}`,
+                                            actionLabel: 'Ver Pases',
+                                            onAction: () => handleSelectTab('internado'),
+                                        },
+                                        {
+                                            key: 'cirugias',
+                                            label: 'Cirugías Urgencia',
+                                            value: cantCir,
+                                            sub: `${enrichedMetrics.urgenciasRealesPct}% neta (≤48h)`,
+                                            actionLabel: 'Resolución',
+                                            onAction: () => handleSelectTab('resolucion'),
+                                        },
+                                    ]}
+                                />
 
-                            {/* 2. Puerta – Triage */}
-                            <KpiCard
-                                icon={<Clock size={18} color="#059669" />}
-                                title="2. Tiempo Puerta – Triage"
-                                value={`${enrichedMetrics.esperaPuertaTriage} min`}
-                                subtitle="Desde ventanilla hasta signos vitales de enfermería"
-                                meta="Meta: < 15 min"
-                                metaStatus={enrichedMetrics.esperaPuertaTriage <= 15 ? 'ok' : 'warning'}
-                                detalle="Minutos transcurridos entre [Fecha Entrada Real] en ventanilla y la apertura del Protocolo 621 en [PR InstRespEntrada]."
-                                origen="VLISE_Visitas cruzada con [PR InstRespEntrada]"
-                                onClick={() => handleSelectTab('triage')}
-                            />
-
-                            {/* 3. Puerta – Médico por Franja Horaria (Clickeable: abre progresión temporal) */}
-                            <div 
-                                onClick={() => setShowPuertaMedicoProgression(true)}
-                                style={{
-                                    background: '#FFFFFF',
-                                    border: '1px solid #E2E8F0',
-                                    borderRadius: '10px',
-                                    padding: '14px',
-                                    display: 'flex',
-                                    flexDirection: 'column',
-                                    justifyContent: 'space-between',
-                                    position: 'relative',
-                                    cursor: 'pointer',
-                                    transition: 'all 0.2s ease',
-                                    boxShadow: '0 1px 3px rgba(0, 0, 0, 0.04)'
-                                }}
-                                onMouseOver={(e) => {
-                                    e.currentTarget.style.borderColor = '#F59E0B';
-                                    e.currentTarget.style.boxShadow = '0 6px 18px -2px rgba(217, 119, 6, 0.16)';
-                                }}
-                                onMouseOut={(e) => {
-                                    e.currentTarget.style.borderColor = '#E2E8F0';
-                                    e.currentTarget.style.boxShadow = '0 1px 3px rgba(0, 0, 0, 0.04)';
-                                }}
-                                title="Clic para abrir el gráfico de progresión día tras día, semana a semana o mes a mes"
-                            >
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                                        <Clock size={18} color="#D97706" />
-                                        <span style={{ fontSize: '0.85rem', fontWeight: 800, color: '#1E293B' }}>
-                                            3. Puerta – Médico (Horario)
-                                        </span>
-                                        <span style={{
-                                            fontSize: '0.64rem',
-                                            fontWeight: 700,
-                                            background: '#FEF3C7',
-                                            color: '#B45309',
-                                            border: '1px solid #FDE68A',
-                                            padding: '1px 5px',
-                                            borderRadius: '4px',
-                                            display: 'inline-flex',
-                                            alignItems: 'center',
-                                            gap: '2px'
-                                        }}>
-                                            📈 Ver gráfico
-                                        </span>
+                                {/* ─── HERO 3D: CLASIFICACIÓN TRIAGE MANCHESTER / ESI (COLORES CLÍNICOS PRESERVADOS) ─── */}
+                                {triageChartData.length > 0 && (
+                                    <div style={{
+                                        background: '#FFFFFF',
+                                        border: '1px solid #E2E8F0',
+                                        borderRadius: '12px',
+                                        padding: '14px 18px',
+                                        boxShadow: '0 1px 3px rgba(15, 23, 42, 0.03)',
+                                    }}>
+                                        <AnilloToroidal3D
+                                            titulo="Clasificación de Triage Clínico (Protocolo SALUS 621)"
+                                            subtitulo="Semáforo normativo Manchester/ESI · Hacé clic en un nivel para inspeccionar su peso asistencial"
+                                            altura={220}
+                                            unitLabel="consultas"
+                                            centerLabel="TRIAGE"
+                                            centerSub={`${currentData.cobertura_triage_pct}% cob.`}
+                                            onFilterBoard={() => handleSelectTab('triage')}
+                                            segmentos={triageChartData.map((t, i) => ({
+                                                key: t.name || `t_${i}`,
+                                                label: t.name,
+                                                value: Number(t.value || 0),
+                                                color: t.color,
+                                                detail: `${Number(t.pct || 0).toFixed(1)}% del total`,
+                                            }))}
+                                        />
                                     </div>
-                                    <span style={{ fontSize: '0.68rem', fontWeight: 700, padding: '2px 6px', borderRadius: '4px', background: enrichedMetrics.esperaDiurna <= 30 ? '#DCFCE7' : '#FEF3C7', color: enrichedMetrics.esperaDiurna <= 30 ? '#166534' : '#92400E' }}>
-                                        Meta &lt; 30m
-                                    </span>
-                                </div>
+                                )}
 
-                                <div style={{ margin: '10px 0' }}>
-                                    <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
-                                        <span style={{ fontSize: '1.8rem', fontWeight: 800, color: '#D97706' }}>
-                                            {franjaFiltro === 'diurna' ? `${enrichedMetrics.esperaDiurna}m` : franjaFiltro === 'nocturna' ? `${enrichedMetrics.esperaNocturna}m` : `${currentData.espera_medico_min_promedio}m`}
-                                        </span>
-                                        <span style={{ fontSize: '0.72rem', color: '#64748B', fontWeight: 600 }}>
-                                            {franjaFiltro === 'diurna' ? 'Franja Diurna (08–22h)' : franjaFiltro === 'nocturna' ? 'Madrugada (22–08h)' : 'Promedio 24 horas'}
-                                        </span>
-                                    </div>
-                                </div>
-
-                                <div style={{ display: 'flex', gap: '4px', background: '#F1F5F9', padding: '3px', borderRadius: '6px' }}>
-                                    <button
-                                        type="button"
-                                        onClick={(e) => { e.stopPropagation(); setFranjaFiltro('diurna'); }}
-                                        style={{
-                                            flex: 1,
-                                            padding: '4px 6px',
-                                            borderRadius: '4px',
-                                            border: 'none',
-                                            background: franjaFiltro === 'diurna' ? '#FFFFFF' : 'transparent',
-                                            color: franjaFiltro === 'diurna' ? '#1E40AF' : '#64748B',
-                                            fontSize: '0.68rem',
-                                            fontWeight: franjaFiltro === 'diurna' ? 800 : 600,
-                                            cursor: 'pointer',
-                                            boxShadow: franjaFiltro === 'diurna' ? '0 1px 2px rgba(0,0,0,0.06)' : 'none'
+                                {/* ─── FLUJO ANIMADO DE DESTINOS POST-GUARDIA ─── */}
+                                {totalConsultas > 0 && (
+                                    <GobernanzaFlujoAnimado
+                                        title="Flujo de Resolución y Destinos Post-Guardia"
+                                        originLabel="CONSULTAS"
+                                        originValue={totalConsultas}
+                                        onSelect={(k) => {
+                                            if (k === 'PISO' || k === 'UCI') handleSelectTab('internado');
+                                            else if (k === 'CIRUGIA') handleSelectTab('resolucion');
                                         }}
-                                    >
-                                        Diurna 08-22h
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={(e) => { e.stopPropagation(); setFranjaFiltro('nocturna'); }}
-                                        style={{
-                                            flex: 1,
-                                            padding: '4px 6px',
-                                            borderRadius: '4px',
-                                            border: 'none',
-                                            background: franjaFiltro === 'nocturna' ? '#FFFFFF' : 'transparent',
-                                            color: franjaFiltro === 'nocturna' ? '#1E40AF' : '#64748B',
-                                            fontSize: '0.68rem',
-                                            fontWeight: franjaFiltro === 'nocturna' ? 800 : 600,
-                                            cursor: 'pointer',
-                                            boxShadow: franjaFiltro === 'nocturna' ? '0 1px 2px rgba(0,0,0,0.06)' : 'none'
-                                        }}
-                                    >
-                                        Noche 22-08h
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={(e) => { e.stopPropagation(); setFranjaFiltro('24hs'); }}
-                                        style={{
-                                            flex: 1,
-                                            padding: '4px 6px',
-                                            borderRadius: '4px',
-                                            border: 'none',
-                                            background: franjaFiltro === '24hs' ? '#FFFFFF' : 'transparent',
-                                            color: franjaFiltro === '24hs' ? '#1E40AF' : '#64748B',
-                                            fontSize: '0.68rem',
-                                            fontWeight: franjaFiltro === '24hs' ? 800 : 600,
-                                            cursor: 'pointer',
-                                            boxShadow: franjaFiltro === '24hs' ? '0 1px 2px rgba(0,0,0,0.06)' : 'none'
-                                        }}
-                                    >
-                                        Global 24h
-                                    </button>
-                                </div>
-                            </div>
-
-                            {/* 4. Triage Documentado (Meta Progresiva) */}
-                            <KpiCard
-                                icon={<CheckCircle2 size={18} color="#0284C7" />}
-                                title="4. Triage Documentado (SALUS 621)"
-                                value={`${currentData.cobertura_triage_pct}%`}
-                                subtitle={`${currentData.consultas_con_triage?.toLocaleString()} clasificados · Meta Hito 1: 50%`}
-                                meta="Meta Progresiva: 50%"
-                                metaStatus={currentData.cobertura_triage_pct >= 50 ? 'ok' : 'warning'}
-                                detalle="Porcentaje de consultas de guardia con Protocolo 621 completado. Clic para ver el mapa de cobertura por hora y horas ciegas."
-                                origen="VLISE_Visitas cruzada con [PR InstRespEntrada]"
-                                onClick={() => handleSelectTab('triage')}
-                            />
-
-                            {/* 5. Pases a Internación (Piso Clínico) */}
-                            <KpiCard
-                                icon={<Bed size={18} color="#4338CA" />}
-                                title="5. Pases a Internación"
-                                value={`${currentAdmisiones?.destino_internado_count || enrichedMetrics.cantInternacionPiso} pac.`}
-                                subtitle={`${currentAdmisiones?.destino_internado_pct || enrichedMetrics.pctInternacionPiso}% de admisiones clínicas a Piso`}
-                                meta="100% Admisión Clínica"
-                                metaStatus="ok"
-                                detalle="Pacientes ingresados con formulario SALUS (INT) ADMISION MEDICA CLINICA derivados a Piso Clínico. Clic para auditar fichas completas."
-                                origen="VLISE_Visitas + TABLEAU_Admisiones"
-                                onClick={() => handleSelectTab('internado')}
-                            />
-
-                            {/* 6. Derivaciones a UCI (Cuidados Críticos) */}
-                            <KpiCard
-                                icon={<ShieldAlert size={18} color="#DC2626" />}
-                                title="6. Derivaciones a UCI"
-                                value={`${currentAdmisiones?.destino_uci_count || enrichedMetrics.cantUCI} pac.`}
-                                subtitle={`${currentAdmisiones?.destino_uci_pct || enrichedMetrics.pctUCI}% de admisiones clínicas en Terapia`}
-                                meta="Monitoreo Crítico"
-                                metaStatus={(currentAdmisiones?.destino_uci_count || enrichedMetrics.cantUCI) > 0 ? 'warning' : 'ok'}
-                                detalle="Pacientes con Admisión Clínica Médica derivados a camas de Terapia Intensiva (UCI). Clic para ver listado e historias."
-                                origen="VLISE_Visitas (Area=UCI) + TABLEAU_Admisiones"
-                                onClick={() => handleSelectTab('internado')}
-                            />
-
-                            {/* 7. Cirugías Efectivas de Guardia */}
-                            <KpiCard
-                                icon={<Scissors size={18} color="#2563EB" />}
-                                title="7. Cirugías Efectivas de Urgencia"
-                                value={`${enrichedMetrics.urgenciasRealesCount} pac.`}
-                                subtitle={`${enrichedMetrics.urgenciasRealesPct}% neta · ${enrichedMetrics.programadasExcluidasCount} programadas excluidas`}
-                                meta="Excluye Programadas"
-                                metaStatus="ok"
-                                detalle="Pacientes con cirugía de urgencia real (<= 48hs). Excluye ingresos de cirugías previamente programadas que entraron por ventanilla administrativa."
-                                origen="TABLEAU_Cirugias (Filtro Tipo Urgencia, sin programadas)"
-                                onClick={() => handleSelectTab('resolucion')}
-                            />
-                        </div>
-                    </div>
+                                        branches={[
+                                            { key: 'ALTA', label: 'Resolución / Alta Ambulatoria', count: altaAmb, color: '#003B73' },
+                                            { key: 'PISO', label: 'Pases a Piso Clínico', count: cantPiso, color: '#0284C7' },
+                                            { key: 'UCI', label: 'Derivaciones a UCI', count: cantUci, color: '#DC2626' },
+                                            { key: 'CIRUGIA', label: 'Cirugías de Urgencia ≤48h', count: cantCir, color: '#4338CA' },
+                                        ]}
+                                    />
+                                )}
+                            </>
+                        );
+                    })()}
 
                     {/* Visualizador de Distribución Demográfica por Sexo */}
                 <div style={{

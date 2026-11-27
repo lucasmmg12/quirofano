@@ -11,7 +11,8 @@ import {
 } from 'recharts';
 import * as XLSX from 'xlsx';
 import { supabase } from '../../lib/supabase';
-import { CapsulaBalance3D } from './GobernanzaCharts3D';
+import { CapsulaBalance3D, AnilloToroidal3D } from './GobernanzaCharts3D';
+import { GobernanzaBarraPulso, GobernanzaFlujoAnimado } from './GobernanzaPulseKit';
 
 const MESES_CORTO = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sept', 'oct', 'nov', 'dic'];
 
@@ -524,167 +525,123 @@ export default function ComprasConsumoStockDashboard({
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', fontFamily: 'Inter, system-ui, sans-serif' }}>
-            {/* ═══ HEADER INSTITUCIONAL CALIDAD-QOAG ═══ */}
+            {/* ═══ HEADER LIMPIO CALIDAD-QOAG (ESTÁNDAR DXI) ═══ */}
             <div style={{
-                background: 'linear-gradient(135deg, #003B73 0%, #0369A1 60%, #0284C7 100%)',
-                borderRadius: '14px',
-                padding: '20px 24px',
-                color: '#FFFFFF',
-                boxShadow: '0 6px 20px -4px rgba(0, 59, 115, 0.25)',
+                background: '#FFFFFF',
+                border: '1px solid #E2E8F0',
+                borderRadius: '12px',
+                padding: '14px 20px',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                gap: '12px',
+                boxShadow: '0 1px 3px rgba(15, 23, 42, 0.03)',
             }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px', marginBottom: '16px' }}>
-                    <div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px', flexWrap: 'wrap' }}>
-                            <span style={{
-                                background: 'rgba(255,255,255,0.16)',
-                                border: '1px solid rgba(255,255,255,0.28)',
-                                borderRadius: '999px',
-                                padding: '3px 10px',
-                                fontSize: '0.72rem',
-                                fontWeight: 700,
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '5px',
-                            }}>
-                                <Calendar size={12} /> Período Telar: {effectiveDesde} al {effectiveHasta}
-                            </span>
-                            <span style={{
-                                background: soloClinicos ? 'rgba(16,185,129,0.22)' : 'rgba(255,255,255,0.16)',
-                                border: '1px solid rgba(255,255,255,0.28)',
-                                borderRadius: '999px',
-                                padding: '3px 10px',
-                                fontSize: '0.7rem',
-                                fontWeight: 700,
-                            }}>
-                                {soloClinicos ? '🏥 Clínicos & Farmacia' : '🏢 Todos los Almacenes'}
-                            </span>
-                        </div>
-                        <h2 style={{ margin: 0, fontSize: '1.42rem', fontWeight: 900, letterSpacing: '-0.02em' }}>
-                            TABLERO INTEGRADO · COMPRAS – CONSUMO – STOCK
-                        </h2>
-                        <div style={{ fontSize: '0.79rem', opacity: 0.88, marginTop: '2px' }}>
-                            Gobernanza Logística & Farmacia (SALUS · FC_AlbaranesC, FM_Movimientos, FM_Stocks & Lotes · 2024–2026)
-                        </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <div style={{
+                        width: '38px', height: '38px', borderRadius: '10px',
+                        background: '#EFF6FF', border: '1px solid #BFDBFE',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#003B73', flexShrink: 0,
+                    }}>
+                        <Package size={20} />
                     </div>
-
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                        {/* Conmutador Clínicos vs Todos */}
-                        <div style={{ display: 'inline-flex', background: 'rgba(0,0,0,0.22)', padding: '3px', borderRadius: '8px', gap: '2px' }}>
-                            <button
-                                type="button"
-                                onClick={() => { setSoloClinicos(true); setFilterAlmacen('TODOS'); }}
-                                style={{
-                                    padding: '5px 10px',
-                                    borderRadius: '6px',
-                                    border: 'none',
-                                    background: soloClinicos ? '#FFFFFF' : 'transparent',
-                                    color: soloClinicos ? '#003B73' : '#E2E8F0',
-                                    fontSize: '0.72rem',
-                                    fontWeight: 800,
-                                    cursor: 'pointer',
-                                }}
-                            >
-                                Clínicos / Farmacia
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => { setSoloClinicos(false); setFilterAlmacen('TODOS'); }}
-                                style={{
-                                    padding: '5px 10px',
-                                    borderRadius: '6px',
-                                    border: 'none',
-                                    background: !soloClinicos ? '#FFFFFF' : 'transparent',
-                                    color: !soloClinicos ? '#003B73' : '#E2E8F0',
-                                    fontSize: '0.72rem',
-                                    fontWeight: 800,
-                                    cursor: 'pointer',
-                                }}
-                            >
-                                Todos (58+)
-                            </button>
+                    <div>
+                        <h2 style={{ margin: 0, fontSize: '1.12rem', fontWeight: 900, color: '#003B73', letterSpacing: '-0.015em' }}>
+                            Compras · Consumo · Stock
+                        </h2>
+                        <div style={{ fontSize: '0.74rem', color: '#64748B', fontWeight: 500 }}>
+                            Logística & Farmacia SALUS · {soloClinicos ? 'Clínicos & Farmacia' : 'Todos los Almacenes (58+)'}
                         </div>
-
-                        <button
-                            type="button"
-                            onClick={() => handleExportExcel(true)}
-                            style={{
-                                background: '#10B981',
-                                border: 'none',
-                                color: '#FFFFFF',
-                                borderRadius: '8px',
-                                padding: '7px 12px',
-                                fontSize: '0.75rem',
-                                fontWeight: 700,
-                                cursor: 'pointer',
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '5px',
-                            }}
-                        >
-                            <Download size={14} /> Excel Reposición
-                        </button>
-                        <button
-                            type="button"
-                            onClick={loadAllData}
-                            style={{
-                                background: 'rgba(255,255,255,0.14)',
-                                border: '1px solid rgba(255,255,255,0.28)',
-                                color: '#FFFFFF',
-                                borderRadius: '8px',
-                                padding: '7px 10px',
-                                cursor: 'pointer',
-                                display: 'inline-flex',
-                            }}
-                            title="Refrescar"
-                        >
-                            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-                        </button>
                     </div>
                 </div>
 
-                {/* 4 KPI CARDS */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '12px' }}>
-                    <div style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.18)', borderRadius: '10px', padding: '14px 16px' }}>
-                        <div style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', opacity: 0.85 }}>Compras (Período Telar)</div>
-                        <div style={{ fontSize: '1.8rem', fontWeight: 900, fontVariantNumeric: 'tabular-nums', marginTop: '2px' }}>
-                            {loading ? '...' : fmtARS(kpis.comprasImp, true)}
-                        </div>
-                        <div style={{ fontSize: '0.72rem', opacity: 0.88, marginTop: '2px' }}>
-                            {fmtNum(kpis.comprasRem)} remitos · {fmtNum(kpis.proveedoresActivos)} proveedores
-                        </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                    <div style={{ display: 'inline-flex', background: '#F1F5F9', padding: '3px', borderRadius: '8px', border: '1px solid #E2E8F0', gap: '2px' }}>
+                        <button
+                            type="button"
+                            onClick={() => { setSoloClinicos(true); setFilterAlmacen('TODOS'); }}
+                            style={{
+                                padding: '5px 10px', borderRadius: '6px', border: 'none',
+                                background: soloClinicos ? '#003B73' : 'transparent',
+                                color: soloClinicos ? '#FFFFFF' : '#475569',
+                                fontSize: '0.73rem', fontWeight: 700, cursor: 'pointer',
+                            }}
+                        >
+                            Clínicos / Farmacia
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => { setSoloClinicos(false); setFilterAlmacen('TODOS'); }}
+                            style={{
+                                padding: '5px 10px', borderRadius: '6px', border: 'none',
+                                background: !soloClinicos ? '#003B73' : 'transparent',
+                                color: !soloClinicos ? '#FFFFFF' : '#475569',
+                                fontSize: '0.73rem', fontWeight: 700, cursor: 'pointer',
+                            }}
+                        >
+                            Todos (58+)
+                        </button>
                     </div>
 
-                    <div style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.18)', borderRadius: '10px', padding: '14px 16px' }}>
-                        <div style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', opacity: 0.85 }}>Consumo Valorizado (VES+VEA)</div>
-                        <div style={{ fontSize: '1.8rem', fontWeight: 900, fontVariantNumeric: 'tabular-nums', marginTop: '2px', color: '#BAE6FD' }}>
-                            {loading ? '...' : fmtARS(kpis.consumoImp, true)}
-                        </div>
-                        <div style={{ fontSize: '0.72rem', opacity: 0.88, marginTop: '2px' }}>
-                            {fmtNum(kpis.consumoUnid)} unid. · Ratio C/Cons: {kpis.ratioCC ? `${kpis.ratioCC.toFixed(2)}x` : '—'}
-                        </div>
-                    </div>
-
-                    <div style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.18)', borderRadius: '10px', padding: '14px 16px' }}>
-                        <div style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', opacity: 0.85 }}>Stock Valorizado Actual</div>
-                        <div style={{ fontSize: '1.8rem', fontWeight: 900, fontVariantNumeric: 'tabular-nums', marginTop: '2px', color: '#A7F3D0' }}>
-                            {loading ? '...' : fmtARS(kpis.valorStock, true)}
-                        </div>
-                        <div style={{ fontSize: '0.72rem', opacity: 0.88, marginTop: '2px' }}>
-                            {fmtNum(kpis.skusConStock)} SKUs activos · Cobertura prom: {kpis.coberturaProm ?? '—'} días
-                        </div>
-                    </div>
-
-                    <div style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.18)', borderRadius: '10px', padding: '14px 16px' }}>
-                        <div style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', opacity: 0.85 }}>Alertas Abastecimiento</div>
-                        <div style={{ fontSize: '1.8rem', fontWeight: 900, fontVariantNumeric: 'tabular-nums', marginTop: '2px', color: '#FDE68A' }}>
-                            {loading ? '...' : fmtNum(kpis.quiebres + kpis.criticos)}
-                        </div>
-                        <div style={{ fontSize: '0.72rem', opacity: 0.88, marginTop: '2px' }}>
-                            🔴 {fmtNum(kpis.quiebres)} quiebres · 🟠 {fmtNum(kpis.criticos)} &lt;7d · 🟡 {fmtNum(kpis.reponer)} reponer
-                        </div>
-                    </div>
+                    <button
+                        type="button"
+                        onClick={() => handleExportExcel(true)}
+                        style={{
+                            background: '#003B73', border: '1px solid #003B73', color: '#FFFFFF',
+                            borderRadius: '8px', padding: '7px 12px', fontSize: '0.75rem', fontWeight: 700,
+                            cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '5px',
+                        }}
+                    >
+                        <Download size={14} /> Excel Reposición
+                    </button>
+                    <button
+                        type="button"
+                        onClick={loadAllData}
+                        style={{
+                            background: '#FFFFFF', border: '1px solid #CBD5E1', color: '#475569',
+                            borderRadius: '8px', padding: '7px 10px', cursor: 'pointer', display: 'inline-flex',
+                        }}
+                        title="Refrescar"
+                    >
+                        <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+                    </button>
                 </div>
             </div>
+
+            {/* ═══ BARRA DE PULSO ANIMADA COMPRAS · CONSUMO · STOCK (ESTÁNDAR DXI) ═══ */}
+            <GobernanzaBarraPulso
+                loading={loading}
+                items={[
+                    {
+                        key: 'compras',
+                        label: 'Compras Período',
+                        value: fmtARS(kpis.comprasImp, true),
+                        sub: `${fmtNum(kpis.comprasRem)} remitos · ${fmtNum(kpis.proveedoresActivos)} prov.`,
+                    },
+                    {
+                        key: 'consumo',
+                        label: 'Consumo Valorizado',
+                        value: fmtARS(kpis.consumoImp, true),
+                        sub: `${fmtNum(kpis.consumoUnid)} unid. · Ratio ${kpis.ratioCC ? `${kpis.ratioCC.toFixed(2)}x` : '—'}`,
+                    },
+                    {
+                        key: 'stock',
+                        label: 'Stock Valorizado Actual',
+                        value: fmtARS(kpis.valorStock, true),
+                        sub: `${fmtNum(kpis.skusConStock)} SKUs · Cob. ${kpis.coberturaProm ?? '—'}d`,
+                    },
+                    {
+                        key: 'alertas',
+                        label: 'Alertas Abastecimiento',
+                        value: Number((kpis.quiebres || 0) + (kpis.criticos || 0)),
+                        accentColor: ((kpis.quiebres || 0) + (kpis.criticos || 0)) > 0 ? '#DC2626' : '#059669',
+                        sub: `${fmtNum(kpis.quiebres)} quiebres · ${fmtNum(kpis.criticos)} <7d · ${fmtNum(kpis.reponer)} reponer`,
+                        actionLabel: 'Stock',
+                        onAction: () => handleSelectTab('stock'),
+                    },
+                ]}
+            />
 
             {/* ═══ NAVEGACIÓN + FILTRO DE ALMACÉN ═══ */}
             <div style={{
@@ -743,6 +700,55 @@ export default function ComprasConsumoStockDashboard({
             {/* ═══ 1. RESUMEN INTEGRADO ═══ */}
             {activeTab === 'resumen' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                    {/* Hero 3D: Distribución de Consumo Valorizado por Servicio/Almacén */}
+                    {rankingAlmacenes.length > 0 && (() => {
+                        const palette = ['#003B73', '#0284C7', '#0EA5E9', '#4338CA', '#059669', '#64748B'];
+                        const topAlmacenes = rankingAlmacenes.filter(a => a.consumoImp > 0).slice(0, 6);
+                        if (!topAlmacenes.length) return null;
+                        return (
+                            <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '12px', padding: '14px 18px', boxShadow: '0 1px 3px rgba(15,23,42,0.03)' }}>
+                                <AnilloToroidal3D
+                                    titulo="Mix de Consumo Valorizado por Almacén / Servicio (Top 6)"
+                                    subtitulo="Hacé clic en un almacén para inspeccionar su peso económico y filtrar el tablero"
+                                    altura={220}
+                                    unitLabel="$ ARS"
+                                    centerLabel="CONSUMO"
+                                    centerSub="Top 6"
+                                    onFilterBoard={(almacenKey) => setFilterAlmacen(almacenKey)}
+                                    segmentos={topAlmacenes.map((a, idx) => ({
+                                        key: a.almacen,
+                                        label: a.almacen,
+                                        value: Math.round(a.consumoImp),
+                                        color: palette[idx % palette.length],
+                                        detail: `${fmtARS(a.consumoImp, true)} · Stock ${fmtARS(a.valorStock, true)}`,
+                                    }))}
+                                />
+                            </div>
+                        );
+                    })()}
+
+                    {/* Flujo Animado de Salud de Inventario */}
+                    {scopedStock.length > 0 && (() => {
+                        const critYQuiebre = (kpis.quiebres || 0) + (kpis.criticos || 0);
+                        const reponerCnt = kpis.reponer || 0;
+                        const sobrestockCnt = kpis.sobrestock || 0;
+                        const saludableCnt = Math.max(0, scopedStock.length - critYQuiebre - reponerCnt - sobrestockCnt);
+                        return (
+                            <GobernanzaFlujoAnimado
+                                title="Flujo de Salud y Cobertura de Inventario"
+                                originLabel="ARTÍCULOS"
+                                originValue={scopedStock.length}
+                                onSelect={() => handleSelectTab('stock')}
+                                branches={[
+                                    { key: 'OPTIMO', label: 'Stock Saludable / Óptimo', count: saludableCnt, color: '#059669' },
+                                    { key: 'SOBRESTOCK', label: 'Sobrestock (> 90 días)', count: sobrestockCnt, color: '#0284C7' },
+                                    { key: 'REPONER', label: 'A Reponer (< 15 días)', count: reponerCnt, color: '#D97706' },
+                                    { key: 'CRITICO', label: 'Crítico / Quiebre (< 7 días)', count: critYQuiebre, color: '#DC2626' },
+                                ]}
+                            />
+                        );
+                    })()}
+
                     {/* Evolución Mensual Compras vs Consumo */}
                     <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '12px', padding: '16px 18px', boxShadow: '0 1px 3px rgba(15,23,42,0.04)' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
