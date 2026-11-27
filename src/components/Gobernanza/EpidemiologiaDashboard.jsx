@@ -13,6 +13,8 @@ import {
     Legend
 } from 'recharts';
 import { exportEpidemiologiaReportPdf } from '../../utils/epidemiologiaReportPdf';
+import { AnilloToroidal3D } from './GobernanzaCharts3D';
+import { GobernanzaBarraPulso } from './GobernanzaPulseKit';
 
 // ─── DATOS OFICIALES DE SALUS PARA VIGILANCIA EPIDEMIOLÓGICA (SANATORIO ARGENTINO) ───
 const SERIE_EPIDEMIOLOGICA_MENSUAL = [
@@ -346,170 +348,69 @@ export default function EpidemiologiaDashboard({
                 </div>
             </div>
 
-            {/* ─── TARJETAS DE INDICADORES (6 INDICADORES EN GRILLA SIMÉTRICA Y LIMPIA) ─── */}
-            <div style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-                gap: '14px',
-                marginBottom: '20px'
-            }}>
-                {/* 1. TOTAL CONSOLIDADO DE VIGILANCIA (PRIMERA TARJETA) */}
-                <div 
-                    onClick={() => setFiltroPatologia('TODAS')}
-                    style={{
-                        background: filtroPatologia === 'TODAS' ? '#0F2942' : '#FFFFFF',
-                        borderRadius: '14px',
-                        padding: '16px 18px',
-                        border: `2px solid ${filtroPatologia === 'TODAS' ? '#0F2942' : '#E2E8F0'}`,
-                        cursor: 'pointer',
-                        boxShadow: filtroPatologia === 'TODAS' ? '0 4px 12px rgba(15, 41, 66, 0.2)' : '0 1px 3px rgba(0,0,0,0.03)',
-                        transition: 'all 0.15s ease'
-                    }}
-                >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                        <span style={{ fontSize: '20px' }}>📊</span>
-                        <span style={{ 
-                            fontSize: '12px', 
-                            fontWeight: '800', 
-                            color: filtroPatologia === 'TODAS' ? '#FFFFFF' : '#0F2942', 
-                            textTransform: 'uppercase' 
-                        }}>
-                            Total Casos
-                        </span>
-                    </div>
-                    <div style={{ 
-                        fontSize: '28px', 
-                        fontWeight: '900', 
-                        color: filtroPatologia === 'TODAS' ? '#38BDF8' : '#0F2942', 
-                        letterSpacing: '-0.03em' 
-                    }}>
-                        {kpis.totalMes} <span style={{ 
-                            fontSize: '11px', 
-                            fontWeight: '600', 
-                            color: filtroPatologia === 'TODAS' ? '#94A3B8' : '#64748B' 
-                        }}>en el período</span>
-                    </div>
-                </div>
+            {/* ─── BARRA DE PULSO + ANILLO 3D EPIDEMIOLÓGICO (Estándar DxI · Planilla C2 intacta debajo) ─── */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginBottom: '20px' }}>
+                <GobernanzaBarraPulso
+                    items={[
+                        {
+                            key: 'epi_total',
+                            label: 'Total Casos Planilla C2',
+                            value: Number(kpis.totalMes) || 0,
+                            sub: 'en el período',
+                            accentColor: '#003B73',
+                            actionLabel: filtroPatologia !== 'TODAS' ? `${filtroPatologia} ✕` : null,
+                            actionActive: filtroPatologia !== 'TODAS',
+                            onAction: () => setFiltroPatologia('TODAS'),
+                        },
+                        {
+                            key: 'epi_resp',
+                            label: 'Respiratorias + Bronquiolitis',
+                            value: (Number(kpis.respiratoriasMes) || 0) + (Number(kpis.bronquiolitisMes) || 0),
+                            sub: `Bronq (<2a): ${kpis.bronquiolitisMes}`,
+                            accentColor: '#0284C7',
+                        },
+                        {
+                            key: 'epi_diarreas',
+                            label: 'Diarreas Agudas',
+                            value: Number(kpis.diarreasMes) || 0,
+                            sub: `${kpis.totalMes > 0 ? ((kpis.diarreasMes * 100) / kpis.totalMes).toFixed(1) : '0.0'}%`,
+                            accentColor: '#1E40AF',
+                        },
+                        {
+                            key: 'epi_otros',
+                            label: 'Varicela + ETS / ITS',
+                            value: (Number(kpis.varicelaMes) || 0) + (Number(kpis.etsMes) || 0),
+                            sub: `Varicela: ${kpis.varicelaMes} · ETS: ${kpis.etsMes}`,
+                            accentColor: '#003B73',
+                        },
+                    ]}
+                />
 
-                {/* 2. BRONQUIOLITIS EN MENORES DE 2 AÑOS */}
-                <div 
-                    onClick={() => setFiltroPatologia(filtroPatologia === 'BRONQUIOLITIS' ? 'TODAS' : 'BRONQUIOLITIS')}
-                    style={{
-                        background: '#FFFFFF',
-                        borderRadius: '14px',
-                        padding: '16px 18px',
-                        border: `2px solid ${filtroPatologia === 'BRONQUIOLITIS' ? '#0284C7' : '#E2E8F0'}`,
-                        cursor: 'pointer',
-                        boxShadow: filtroPatologia === 'BRONQUIOLITIS' ? '0 4px 12px rgba(2, 132, 199, 0.15)' : '0 1px 3px rgba(0,0,0,0.03)',
-                        transition: 'all 0.15s ease'
-                    }}
-                >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                        <span style={{ fontSize: '20px' }}>👶</span>
-                        <span style={{ fontSize: '12px', fontWeight: '800', color: '#0F2942', textTransform: 'uppercase' }}>
-                            Bronquiolitis (&lt; 2a)
-                        </span>
-                    </div>
-                    <div style={{ fontSize: '28px', fontWeight: '900', color: '#0369A1', letterSpacing: '-0.03em' }}>
-                        {kpis.bronquiolitisMes} <span style={{ fontSize: '11px', fontWeight: '600', color: '#64748B' }}>en el período</span>
-                    </div>
-                </div>
-
-                {/* 3. ETI Y NEUMONÍA */}
-                <div 
-                    onClick={() => setFiltroPatologia(filtroPatologia === 'RESPIRATORIAS' ? 'TODAS' : 'RESPIRATORIAS')}
-                    style={{
-                        background: '#FFFFFF',
-                        borderRadius: '14px',
-                        padding: '16px 18px',
-                        border: `2px solid ${filtroPatologia === 'RESPIRATORIAS' ? '#2563EB' : '#E2E8F0'}`,
-                        cursor: 'pointer',
-                        boxShadow: filtroPatologia === 'RESPIRATORIAS' ? '0 4px 12px rgba(37, 99, 235, 0.15)' : '0 1px 3px rgba(0,0,0,0.03)',
-                        transition: 'all 0.15s ease'
-                    }}
-                >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                        <span style={{ fontSize: '20px' }}>🌡️</span>
-                        <span style={{ fontSize: '12px', fontWeight: '800', color: '#0F2942', textTransform: 'uppercase' }}>
-                            ETI y Neumonía
-                        </span>
-                    </div>
-                    <div style={{ fontSize: '28px', fontWeight: '900', color: '#1E40AF', letterSpacing: '-0.03em' }}>
-                        {kpis.respiratoriasMes} <span style={{ fontSize: '11px', fontWeight: '600', color: '#64748B' }}>en el período</span>
-                    </div>
-                </div>
-
-                {/* 4. GASTROENTÉRICAS: DIARREAS AGUDAS */}
-                <div 
-                    onClick={() => setFiltroPatologia(filtroPatologia === 'DIARREAS' ? 'TODAS' : 'DIARREAS')}
-                    style={{
-                        background: '#FFFFFF',
-                        borderRadius: '14px',
-                        padding: '16px 18px',
-                        border: `2px solid ${filtroPatologia === 'DIARREAS' ? '#D97706' : '#E2E8F0'}`,
-                        cursor: 'pointer',
-                        boxShadow: filtroPatologia === 'DIARREAS' ? '0 4px 12px rgba(217, 119, 6, 0.15)' : '0 1px 3px rgba(0,0,0,0.03)',
-                        transition: 'all 0.15s ease'
-                    }}
-                >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                        <span style={{ fontSize: '20px' }}>🦠</span>
-                        <span style={{ fontSize: '12px', fontWeight: '800', color: '#0F2942', textTransform: 'uppercase' }}>
-                            Diarreas Agudas
-                        </span>
-                    </div>
-                    <div style={{ fontSize: '28px', fontWeight: '900', color: '#B45309', letterSpacing: '-0.03em' }}>
-                        {kpis.diarreasMes} <span style={{ fontSize: '11px', fontWeight: '600', color: '#64748B' }}>en el período</span>
-                    </div>
-                </div>
-
-                {/* 5. VARICELA */}
-                <div 
-                    onClick={() => setFiltroPatologia(filtroPatologia === 'VARICELA' ? 'TODAS' : 'VARICELA')}
-                    style={{
-                        background: '#FFFFFF',
-                        borderRadius: '14px',
-                        padding: '16px 18px',
-                        border: `2px solid ${filtroPatologia === 'VARICELA' ? '#DC2626' : '#E2E8F0'}`,
-                        cursor: 'pointer',
-                        boxShadow: filtroPatologia === 'VARICELA' ? '0 4px 12px rgba(220, 38, 38, 0.15)' : '0 1px 3px rgba(0,0,0,0.03)',
-                        transition: 'all 0.15s ease'
-                    }}
-                >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                        <span style={{ fontSize: '20px' }}>🩺</span>
-                        <span style={{ fontSize: '12px', fontWeight: '800', color: '#0F2942', textTransform: 'uppercase' }}>
-                            Varicela
-                        </span>
-                    </div>
-                    <div style={{ fontSize: '28px', fontWeight: '900', color: '#DC2626', letterSpacing: '-0.03em' }}>
-                        {kpis.varicelaMes} <span style={{ fontSize: '11px', fontWeight: '600', color: '#64748B' }}>en el período</span>
-                    </div>
-                </div>
-
-                {/* 6. ENFERMEDADES DE TRANSMISIÓN SEXUAL (ETS) */}
-                <div 
-                    onClick={() => setFiltroPatologia(filtroPatologia === 'ETS' ? 'TODAS' : 'ETS')}
-                    style={{
-                        background: '#FFFFFF',
-                        borderRadius: '14px',
-                        padding: '16px 18px',
-                        border: `2px solid ${filtroPatologia === 'ETS' ? '#7C3AED' : '#E2E8F0'}`,
-                        cursor: 'pointer',
-                        boxShadow: filtroPatologia === 'ETS' ? '0 4px 12px rgba(124, 58, 237, 0.15)' : '0 1px 3px rgba(0,0,0,0.03)',
-                        transition: 'all 0.15s ease'
-                    }}
-                >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                        <span style={{ fontSize: '20px' }}>🛡️</span>
-                        <span style={{ fontSize: '12px', fontWeight: '800', color: '#0F2942', textTransform: 'uppercase' }}>
-                            ETS / ITS
-                        </span>
-                    </div>
-                    <div style={{ fontSize: '28px', fontWeight: '900', color: '#6D28D9', letterSpacing: '-0.03em' }}>
-                        {kpis.etsMes} <span style={{ fontSize: '11px', fontWeight: '600', color: '#64748B' }}>en el período</span>
-                    </div>
-                </div>
+                {kpis.totalMes > 0 && (
+                    <AnilloToroidal3D
+                        segments={[
+                            { key: 'RESPIRATORIAS', label: 'ETI y Neumonía', value: Number(kpis.respiratoriasMes) || 0, rgb: [0, 59, 115] },
+                            { key: 'BRONQUIOLITIS', label: 'Bronquiolitis (<2a)', value: Number(kpis.bronquiolitisMes) || 0, rgb: [2, 132, 199] },
+                            { key: 'DIARREAS', label: 'Diarreas Agudas', value: Number(kpis.diarreasMes) || 0, rgb: [217, 119, 6] },
+                            { key: 'ETS', label: 'ETS / ITS', value: Number(kpis.etsMes) || 0, rgb: [124, 58, 237] },
+                            { key: 'VARICELA', label: 'Varicela', value: Number(kpis.varicelaMes) || 0, rgb: [220, 38, 38] },
+                        ]
+                            .filter(s => s.value > 0)
+                            .sort((a, b) => b.value - a.value)
+                            .map(s => {
+                                const pctStr = `${((s.value * 100) / Math.max(1, kpis.totalMes)).toFixed(1)}%`;
+                                return {
+                                    label: s.label,
+                                    value: s.value,
+                                    valueLabel: s.value.toLocaleString('es-AR'),
+                                    rgb: s.rgb,
+                                    detail: `${pctStr} del total`,
+                                    narrative: `${s.label} acumula ${s.value.toLocaleString('es-AR')} casos notificados en la Planilla C2 (${pctStr} del total del período). Tocá filtrar para focalizar la vigilancia y las tablas inferiores.`,
+                                    onFilterBoard: () => setFiltroPatologia(prev => (prev === s.key ? 'TODAS' : s.key)),
+                                };
+                            })}
+                    />
+                )}
             </div>
 
             {/* ─── GRÁFICO HISTÓRICO: CURVA EPIDEMIOLÓGICA ─── */}

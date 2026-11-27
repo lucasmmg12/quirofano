@@ -20,6 +20,7 @@ import {
 } from '../../services/chequeoGobernanzaService';
 import DxiSuperficieTopografica3D from './DxiSuperficieTopografica3D';
 import { AnilloToroidal3D, EmbudoConversion3D, CapsulaBalance3D } from './GobernanzaCharts3D';
+import { GobernanzaBarraPulso, GobernanzaFlujoAnimado } from './GobernanzaPulseKit';
 
 const COLOR_PRIMARY = '#003B73';
 const SERIES_PALETTE = ['#003B73', '#0284C7', '#10B981', '#6366F1', '#F59E0B', '#EC4899', '#8B5CF6', '#64748B'];
@@ -648,34 +649,55 @@ export default function ChequeoGobernanzaDashboard({
                         </div>
                     </div>
 
-                    {/* 4 KPIs Circuito */}
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '14px' }}>
-                        <KpiCard
-                            label="Chequeos Realizados (Presentes)"
-                            value={agg.uniquePatients.toLocaleString('es-AR')}
-                            subtext={`de ${agg.totalAgendados.toLocaleString('es-AR')} pacientes agendados`}
-                            icon={Users} accent="#10B981" bg="#ECFDF5"
-                        />
-                        <KpiCard
-                            label="Consultas de Informe (CHQ INF)"
-                            value={agg.uniqueInfPresentes.toLocaleString('es-AR')}
-                            subtext={`Presentes de ${agg.totalInfAgendados.toLocaleString('es-AR')} agendados`}
-                            icon={FileText} accent="#0284C7" bg="#F0F9FF"
-                        />
-                        <KpiCard
-                            label="Tasa de Retorno a Informe"
-                            value={`${agg.tasaRetornoInforme}%`}
-                            subtext={`${agg.uniqueInfPresentes.toLocaleString('es-AR')} pacientes vieron su devolución médica`}
-                            icon={ClipboardCheck} accent="#6366F1" bg="#EEF2FF"
-                        />
-                        <KpiCard
-                            label="Demora Promedio al Informe"
-                            value={agg.avgDiasInforme > 0 ? `${agg.avgDiasInforme} días` : '—'}
-                            pill={agg.centrosInf.length > 0 ? agg.centrosInf.map(c => `${c.name === 'San Luis' ? 'SL' : 'SF'}: ${c.value}`).join(' · ') : null}
-                            subtext="Días promedio entre el chequeo y la consulta de informe"
-                            icon={Clock} accent="#D97706" bg="#FFFBEB"
-                        />
-                    </div>
+                    {/* Barra de Pulso Animada (Estándar DxI · 1 línea limpia) */}
+                    <GobernanzaBarraPulso
+                        loading={loadingVisitas}
+                        items={[
+                            {
+                                key: 'chq_realizados',
+                                label: 'Chequeos Realizados',
+                                value: agg.uniquePatients,
+                                sub: `/ ${agg.totalAgendados.toLocaleString('es-AR')} agendados`,
+                                accentColor: '#003B73',
+                            },
+                            {
+                                key: 'chq_informes',
+                                label: 'Consultas de Informe',
+                                value: agg.uniqueInfPresentes,
+                                sub: `de ${agg.totalInfAgendados.toLocaleString('es-AR')} agendadas`,
+                                accentColor: '#0284C7',
+                            },
+                            {
+                                key: 'chq_retorno',
+                                label: 'Retorno a Informe',
+                                value: Number(agg.tasaRetornoInforme) || 0,
+                                decimals: 1,
+                                suffix: '%',
+                                ringPct: Number(agg.tasaRetornoInforme) || 0,
+                                sub: 'devolución médica',
+                                accentColor: '#003B73',
+                            },
+                            {
+                                key: 'chq_demora',
+                                label: 'Demora Prom. Informe',
+                                value: agg.avgDiasInforme > 0 ? `${agg.avgDiasInforme} d` : '—',
+                                sub: agg.centrosInf.length > 0 ? agg.centrosInf.map(c => `${c.name === 'San Luis' ? 'SL' : 'SF'}: ${c.value}`).join(' · ') : 'chequeo → informe',
+                                accentColor: '#1E40AF',
+                            },
+                        ]}
+                    />
+
+                    {/* Flujo Animado del Circuito Preventivo → Informe */}
+                    <GobernanzaFlujoAnimado
+                        title="Flujo del Circuito Preventivo → Consulta de Informe"
+                        originLabel="AGENDADOS CHEQUEO"
+                        originValue={agg.totalAgendados}
+                        branches={[
+                            { key: 'presentes', label: 'Chequeos Efectivos (Presentes)', count: agg.uniquePatients, color: '#003B73' },
+                            { key: 'informe', label: 'Retornaron a Consulta de Informe', count: agg.uniqueInfPresentes, color: '#0284C7' },
+                            { key: 'ausentes', label: 'Ausentes al Chequeo', count: Math.max(0, agg.totalAgendados - agg.uniquePatients), color: '#64748B' },
+                        ]}
+                    />
 
                     {/* GRÁFICO 1: Evolución Mensual Chequeo vs Informe (3D / 2D) */}
                     <SectionCard

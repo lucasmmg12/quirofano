@@ -13,6 +13,8 @@ import {
 import * as XLSX from 'xlsx';
 import { supabase } from '../../lib/supabase';
 import GgoEmbudo3D from './GgoEmbudo3D';
+import { AnilloToroidal3D } from './GobernanzaCharts3D';
+import { GobernanzaBarraPulso, GobernanzaFlujoAnimado } from './GobernanzaPulseKit';
 
 const SYNC_SERVER_URL = import.meta.env.VITE_SYNC_SERVER_URL || 'http://localhost:3001';
 
@@ -664,116 +666,137 @@ export default function GuardiaGgoDashboard({
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '18px', fontFamily: 'Inter, system-ui, -apple-system, sans-serif' }}>
-            {/* ── HEADER INSTITUCIONAL CALIDAD-QOAG ── */}
+            {/* ── HEADER CLÍNICO LIMPIO (Estética Calidad-QOAG · sin badges duplicados) ── */}
             <div style={{
-                background: 'linear-gradient(135deg, #003B73 0%, #0F4C81 58%, #1E40AF 100%)',
+                background: '#FFFFFF',
                 borderRadius: '12px',
-                padding: '20px 24px',
-                color: '#FFFFFF',
-                boxShadow: '0 4px 16px rgba(0, 59, 115, 0.14)',
+                border: '1px solid #E2E8F0',
+                padding: '14px 18px',
+                display: 'flex',
+                flexWrap: 'wrap',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                gap: '12px',
+                boxShadow: '0 1px 3px rgba(15, 23, 42, 0.03)',
             }}>
-                <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px', marginBottom: '16px' }}>
-                    <div>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
-                            <span style={{
-                                fontSize: '11px', fontWeight: 700, letterSpacing: '0.04em',
-                                background: 'rgba(255,255,255,0.16)', padding: '3px 10px', borderRadius: '999px',
-                                border: '1px solid rgba(255,255,255,0.22)'
-                            }}>
-                                Período Telar: {desdeYM} al {hastaYM}
-                            </span>
-                            <span style={{
-                                fontSize: '11px', fontWeight: 600,
-                                background: 'rgba(219, 39, 119, 0.28)', padding: '3px 10px', borderRadius: '999px',
-                                border: '1px solid rgba(244, 114, 182, 0.45)'
-                            }}>
-                                Agenda SALUS: GUARDIAS GINECOLOGIA · + Cruce Eco Guardia
-                            </span>
-                            {lastUpdated && (
-                                <span style={{ fontSize: '11px', opacity: 0.8 }}>
-                                    Actualizado: {formatDateTimeShort(lastUpdated)}
-                                </span>
-                            )}
-                        </div>
-                        <h2 style={{ margin: 0, fontSize: '20px', fontWeight: 800, letterSpacing: '-0.01em' }}>
-                            GUARDIA GINECO-OBSTÉTRICA (GGO)
-                        </h2>
-                        <p style={{ margin: '4px 0 0', fontSize: '13px', opacity: 0.88 }}>
-                            Puerta de entrada a Quirófano · Auditoría de tiempos por tramo, derivación a Ecografía de Guardia y Calidad Clínica
-                        </p>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <div style={{
+                        width: '36px', height: '36px', borderRadius: '9px',
+                        background: '#EFF6FF', border: '1px solid #BFDBFE',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#003B73'
+                    }}>
+                        <HeartPulse size={19} />
                     </div>
-
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                        <button
-                            onClick={handleExportExcelNominal}
-                            style={{
-                                display: 'inline-flex', alignItems: 'center', gap: '6px',
-                                background: '#10B981', color: '#FFFFFF', border: 'none',
-                                borderRadius: '8px', padding: '8px 13px', fontSize: '12px', fontWeight: 700,
-                                cursor: 'pointer', boxShadow: '0 2px 6px rgba(0,0,0,0.12)'
-                            }}
-                        >
-                            <FileSpreadsheet size={15} />
-                            Excel GGO → Qx
-                        </button>
-                        <button
-                            onClick={handleSyncSalus}
-                            disabled={syncing}
-                            style={{
-                                display: 'inline-flex', alignItems: 'center', gap: '6px',
-                                background: 'rgba(255,255,255,0.16)', color: '#FFFFFF',
-                                border: '1px solid rgba(255,255,255,0.3)',
-                                borderRadius: '8px', padding: '8px 13px', fontSize: '12px', fontWeight: 700,
-                                cursor: syncing ? 'wait' : 'pointer'
-                            }}
-                        >
-                            <RefreshCw size={14} className={syncing ? 'animate-spin' : ''} />
-                            {syncing ? 'Sincronizando...' : 'Sincronizar SALUS'}
-                        </button>
-                    </div>
+                    <h2 style={{ margin: 0, fontSize: '1.08rem', fontWeight: 800, color: '#0F172A' }}>
+                        Guardia Gineco-Obstétrica (GGO)
+                    </h2>
                 </div>
 
-                {/* 4 KPI Cards ejecutivas */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
-                    <div style={{ background: 'rgba(255,255,255,0.11)', borderRadius: '10px', padding: '14px 16px', border: '1px solid rgba(255,255,255,0.16)' }}>
-                        <div style={{ fontSize: '11px', fontWeight: 700, opacity: 0.85, textTransform: 'uppercase' }}>Consultas GGO</div>
-                        <div style={{ fontSize: '26px', fontWeight: 800, marginTop: '4px' }}>{fmtNum(kpis.totalConsultas)}</div>
-                        <div style={{ fontSize: '11px', opacity: 0.88, marginTop: '4px' }}>
-                            Obstetricia: <b>{fmtNum(kpis.totalObst)}</b> · Ginecología: <b>{fmtNum(kpis.totalGine)}</b>
-                        </div>
-                    </div>
-
-                    <div style={{ background: 'rgba(255,255,255,0.11)', borderRadius: '10px', padding: '14px 16px', border: '1px solid rgba(255,255,255,0.16)' }}>
-                        <div style={{ fontSize: '11px', fontWeight: 700, opacity: 0.85, textTransform: 'uppercase' }}>Derivación a Eco Guardia</div>
-                        <div style={{ fontSize: '26px', fontWeight: 800, marginTop: '4px', color: '#FBCFE8' }}>
-                            {fmtNum(kpis.totalEco)} <span style={{ fontSize: '14px', fontWeight: 700 }}>({fmtNum(kpis.pctEco, 1)}%)</span>
-                        </div>
-                        <div style={{ fontSize: '11px', opacity: 0.88, marginTop: '4px' }}>
-                            Consultas GGO que derivaron a GUARDIAS ECOGRAFIAS
-                        </div>
-                    </div>
-
-                    <div style={{ background: 'rgba(255,255,255,0.11)', borderRadius: '10px', padding: '14px 16px', border: '1px solid rgba(255,255,255,0.16)' }}>
-                        <div style={{ fontSize: '11px', fontWeight: 700, opacity: 0.85, textTransform: 'uppercase' }}>Cirugías de Urgencia (≤48h)</div>
-                        <div style={{ fontSize: '26px', fontWeight: 800, marginTop: '4px', color: '#93C5FD' }}>
-                            {fmtNum(kpis.totalQxUrg)} <span style={{ fontSize: '14px', fontWeight: 700 }}>({fmtNum(kpis.pctQxUrg, 1)}%)</span>
-                        </div>
-                        <div style={{ fontSize: '11px', opacity: 0.88, marginTop: '4px' }}>
-                            Programadas excluidas: <b>{fmtNum(kpis.totalQxProg)}</b> · Internaciones: <b>{fmtNum(kpis.totalInt)}</b>
-                        </div>
-                    </div>
-
-                    <div style={{ background: 'rgba(255,255,255,0.14)', borderRadius: '10px', padding: '14px 16px', border: '1px solid rgba(255,255,255,0.28)' }}>
-                        <div style={{ fontSize: '11px', fontWeight: 700, opacity: 0.9, textTransform: 'uppercase' }}>Mediana Puerta GGO → Quirófano</div>
-                        <div style={{ fontSize: '26px', fontWeight: 800, marginTop: '4px', color: '#FDE68A' }}>
-                            {fmtMin(kpis.medPuertaQx)}
-                        </div>
-                        <div style={{ fontSize: '11px', opacity: 0.92, marginTop: '4px' }}>
-                            GGO: <b>{fmtNum(kpis.pctGgoEnCuello, 0)}%</b> ({fmtMin(kpis.medT1 + kpis.medT2)}) · Post-GGO: <b>{fmtNum(kpis.pctPostGgoEnCuello, 0)}%</b> ({fmtMin(kpis.medT3 + kpis.medT4)})
-                        </div>
-                    </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                    <button
+                        type="button"
+                        onClick={handleExportExcelNominal}
+                        title="Exportar Excel GGO → Quirófano"
+                        style={{
+                            width: '34px', height: '34px', borderRadius: '8px',
+                            border: '1px solid #BFDBFE', background: '#EFF6FF', color: '#003B73',
+                            display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer'
+                        }}
+                    >
+                        <FileSpreadsheet size={16} />
+                    </button>
+                    <button
+                        type="button"
+                        onClick={handleSyncSalus}
+                        disabled={syncing}
+                        title="Sincronizar datos desde SALUS"
+                        style={{
+                            display: 'inline-flex', alignItems: 'center', gap: '6px',
+                            background: '#003B73', color: '#FFFFFF', border: 'none',
+                            borderRadius: '8px', padding: '7px 12px', fontSize: '12px', fontWeight: 700,
+                            cursor: syncing ? 'wait' : 'pointer', height: '34px'
+                        }}
+                    >
+                        <RefreshCw size={13} className={syncing ? 'animate-spin' : ''} />
+                        {syncing ? 'Sincronizando...' : 'Sincronizar'}
+                    </button>
                 </div>
             </div>
+
+            {/* ── BARRA DE PULSO ANIMADA (Estándar DxI) ── */}
+            <GobernanzaBarraPulso
+                loading={loading}
+                items={[
+                    {
+                        key: 'ggo_total',
+                        label: 'Consultas GGO',
+                        value: Number(kpis.totalConsultas) || 0,
+                        sub: `Obst: ${fmtNum(kpis.totalObst)} · Gine: ${fmtNum(kpis.totalGine)}`,
+                        accentColor: '#003B73',
+                    },
+                    {
+                        key: 'ggo_eco',
+                        label: 'Derivación Eco Guardia',
+                        value: Number(kpis.totalEco) || 0,
+                        ringPct: Number(kpis.pctEco) || 0,
+                        sub: `${fmtNum(kpis.pctEco, 1)}% del total`,
+                        accentColor: '#0284C7',
+                    },
+                    {
+                        key: 'ggo_qx',
+                        label: 'Cirugías Urgencia ≤48h',
+                        value: Number(kpis.totalQxUrg) || 0,
+                        sub: `${fmtNum(kpis.pctQxUrg, 1)}% · Int: ${fmtNum(kpis.totalInt)}`,
+                        accentColor: '#003B73',
+                    },
+                    {
+                        key: 'ggo_med',
+                        label: 'Mediana Puerta → Qx',
+                        value: fmtMin(kpis.medPuertaQx),
+                        sub: `GGO ${fmtNum(kpis.pctGgoEnCuello, 0)}% · Post ${fmtNum(kpis.pctPostGgoEnCuello, 0)}%`,
+                        accentColor: '#1E40AF',
+                    },
+                ]}
+            />
+
+            {/* ── HERO #1 ANILLO 3D + FLUJO ANIMADO EN TAB RESUMEN ── */}
+            {activeTab === 'resumen' && (Number(kpis.totalConsultas) || 0) > 0 && (
+                <>
+                    <AnilloToroidal3D
+                        segments={[
+                            {
+                                label: 'Obstetricia',
+                                value: Number(kpis.totalObst) || 0,
+                                valueLabel: fmtNum(kpis.totalObst),
+                                rgb: [0, 59, 115],
+                                detail: `${((Number(kpis.totalObst || 0) * 100) / Math.max(1, Number(kpis.totalConsultas || 1))).toFixed(1)}% del total`,
+                                narrative: `Obstetricia representa ${fmtNum(kpis.totalObst)} consultas en Guardia GGO durante el período analizado, concentrando el principal volumen asistencial materno-fetal.`,
+                                onFilterBoard: () => handleSelectTab('cuello_botella'),
+                            },
+                            {
+                                label: 'Ginecología',
+                                value: Number(kpis.totalGine) || 0,
+                                valueLabel: fmtNum(kpis.totalGine),
+                                rgb: [2, 132, 199],
+                                detail: `${((Number(kpis.totalGine || 0) * 100) / Math.max(1, Number(kpis.totalConsultas || 1))).toFixed(1)}% del total`,
+                                narrative: `Ginecología registra ${fmtNum(kpis.totalGine)} consultas de urgencia en el período, con derivación selectiva a Ecografía de Guardia y Quirófano según severidad.`,
+                                onFilterBoard: () => handleSelectTab('severidad'),
+                            },
+                        ].filter(s => s.value > 0)}
+                    />
+                    <GobernanzaFlujoAnimado
+                        title="Flujo de Resolución GGO → Eco Guardia · Internación · Quirófano"
+                        originLabel="CONSULTAS GGO"
+                        originValue={Number(kpis.totalConsultas) || 0}
+                        branches={[
+                            { key: 'eco', label: 'Derivación a Ecografía de Guardia', count: Number(kpis.totalEco) || 0, color: '#0284C7' },
+                            { key: 'int', label: 'Internaciones desde GGO', count: Number(kpis.totalInt) || 0, color: '#1E40AF' },
+                            { key: 'qx', label: 'Cirugías de Urgencia (≤48h)', count: Number(kpis.totalQxUrg) || 0, color: '#003B73' },
+                            { key: 'alta', label: 'Resolución Ambulatoria Directa', count: Math.max(0, (Number(kpis.totalConsultas) || 0) - (Number(kpis.totalInt) || 0) - (Number(kpis.totalQxUrg) || 0)), color: '#64748B' },
+                        ]}
+                    />
+                </>
+            )}
 
             {/* ── NAVEGACIÓN DE PESTAÑAS ── */}
             <div style={{
