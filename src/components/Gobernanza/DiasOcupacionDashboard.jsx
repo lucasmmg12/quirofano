@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback, lazy, Suspense } from 'react';
 import { supabase } from '../../lib/supabase';
-import {
-    BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
-    XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, LabelList
+import { 
+    BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, 
+    XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, LabelList 
 } from 'recharts';
-import {
-    HeartPulse, BarChart3, FlaskConical, BookOpen, Filter, Calendar, Bed, Activity, Users,
-    AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, ChevronRight, RotateCcw,
-    X, FileText, Layers, PanelLeftClose, PanelLeftOpen, LayoutDashboard,
+import { 
+    HeartPulse, BarChart3, FlaskConical, BookOpen, Filter, Calendar, Bed, Activity, Users, 
+    AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, ChevronRight, RotateCcw, 
+    X, FileText, Layers, PanelLeftClose, PanelLeftOpen, LayoutDashboard, 
     Sparkles, RefreshCw, Sliders, Table, Eye, Download, Clock, HeartHandshake,
     Check, Maximize2, CheckSquare, Square, GripVertical, Move, ClipboardCheck
 } from 'lucide-react';
@@ -17,9 +17,9 @@ import TelarDataModal from './TelarDataModal';
 import UciMortalidadAuditModal from './UciMortalidadAuditModal';
 import SqlDocumentationModal from './SqlDocumentationModal';
 import DraggableChartCard from './DraggableChartCard';
-import {
-    SECTORES_CONFIG,
-    INDICADORES_CATALOGO,
+import { 
+    SECTORES_CONFIG, 
+    INDICADORES_CATALOGO, 
     DEFAULT_ACTIVE_INDICATOR_IDS,
     INDICADORES_GUARDIA_CATALOGO,
     DEFAULT_ACTIVE_GUARDIA_IDS,
@@ -141,7 +141,7 @@ const COLORS_ESTANCIA = {
 };
 
 const ESPECIALIDAD_PALETTE = [
-    '#F59E0B', '#10B981', '#3B82F6', '#8B5CF6', '#EC4899',
+    '#F59E0B', '#10B981', '#3B82F6', '#8B5CF6', '#EC4899', 
     '#14B8A6', '#6366F1', '#F97316', '#06B6D4', '#84CC16',
     '#A855F7', '#EAB308', '#64748B', '#D946EF', '#0EA5E9'
 ];
@@ -214,10 +214,10 @@ export function calcularDiasEstancia(fechaIngreso, fechaAlta) {
 export function esDiaOcupadoValido(fechaOcupacion, fechaIngreso, fechaAlta) {
     if (!fechaOcupacion || !fechaIngreso || !fechaAlta) return true;
     const dOcup = String(fechaOcupacion).substring(0, 10);
-
+    
     const dIng = new Date(fechaIngreso);
     const ingStr = `${dIng.getFullYear()}-${String(dIng.getMonth() + 1).padStart(2, '0')}-${String(dIng.getDate()).padStart(2, '0')}`;
-
+    
     const dAlt = new Date(fechaAlta);
     const altStr = `${dAlt.getFullYear()}-${String(dAlt.getMonth() + 1).padStart(2, '0')}-${String(dAlt.getDate()).padStart(2, '0')}`;
 
@@ -277,7 +277,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
     const handleToggleUci = () => {
         setIsUciOpen(prev => {
             const next = !prev;
-            try { localStorage.setItem('telar_uci_expanded', String(next)); } catch { }
+            try { localStorage.setItem('telar_uci_expanded', String(next)); } catch {}
             return next;
         });
     };
@@ -290,7 +290,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
         if (isUciOnly) return;
         setIsGuardiaOpen(prev => {
             const next = !prev;
-            try { localStorage.setItem('telar_guardia_expanded', String(next)); } catch { }
+            try { localStorage.setItem('telar_guardia_expanded', String(next)); } catch {}
             return next;
         });
     };
@@ -307,14 +307,14 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
     const handleToggleGuardiaIndicator = (id) => {
         setActiveGuardiaIds(prev => {
             const next = prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id];
-            try { localStorage.setItem('telar_active_guardia_indicators', JSON.stringify(next)); } catch { }
+            try { localStorage.setItem('telar_active_guardia_indicators', JSON.stringify(next)); } catch {}
             return next;
         });
     };
 
     const handleSelectAllGuardiaIndicators = () => {
         setActiveGuardiaIds(DEFAULT_ACTIVE_GUARDIA_IDS);
-        try { localStorage.setItem('telar_active_guardia_indicators', JSON.stringify(DEFAULT_ACTIVE_GUARDIA_IDS)); } catch { }
+        try { localStorage.setItem('telar_active_guardia_indicators', JSON.stringify(DEFAULT_ACTIVE_GUARDIA_IDS)); } catch {}
         addToast?.('Todos los indicadores de Guardia activados', 'success');
     };
 
@@ -327,7 +327,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
         if (isUciOnly) return;
         setIsQuirofanoOpen(prev => {
             const next = !prev;
-            try { localStorage.setItem('telar_quirofano_expanded', String(next)); } catch { }
+            try { localStorage.setItem('telar_quirofano_expanded', String(next)); } catch {}
             return next;
         });
     };
@@ -344,14 +344,14 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
     const handleToggleQuirofanoIndicator = (id) => {
         setActiveQuirofanoIds(prev => {
             const next = prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id];
-            try { localStorage.setItem('telar_active_quirofano_indicators', JSON.stringify(next)); } catch { }
+            try { localStorage.setItem('telar_active_quirofano_indicators', JSON.stringify(next)); } catch {}
             return next;
         });
     };
 
     const handleSelectAllQuirofanoIndicators = () => {
         setActiveQuirofanoIds(DEFAULT_ACTIVE_QUIROFANO_IDS);
-        try { localStorage.setItem('telar_active_quirofano_indicators', JSON.stringify(DEFAULT_ACTIVE_QUIROFANO_IDS)); } catch { }
+        try { localStorage.setItem('telar_active_quirofano_indicators', JSON.stringify(DEFAULT_ACTIVE_QUIROFANO_IDS)); } catch {}
         addToast?.('Todos los indicadores de Quirófano activados', 'success');
     };
 
@@ -364,7 +364,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
         if (isUciOnly) return;
         setIsEpidemiologiaOpen(prev => {
             const next = !prev;
-            try { localStorage.setItem('telar_epidemiologia_expanded', String(next)); } catch { }
+            try { localStorage.setItem('telar_epidemiologia_expanded', String(next)); } catch {}
             return next;
         });
     };
@@ -381,14 +381,14 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
     const handleToggleEpidemiologiaIndicator = (id) => {
         setActiveEpidemiologiaIds(prev => {
             const next = prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id];
-            try { localStorage.setItem('telar_active_epidemiologia_indicators', JSON.stringify(next)); } catch { }
+            try { localStorage.setItem('telar_active_epidemiologia_indicators', JSON.stringify(next)); } catch {}
             return next;
         });
     };
 
     const handleSelectAllEpidemiologiaIndicators = () => {
         setActiveEpidemiologiaIds(DEFAULT_ACTIVE_EPIDEMIOLOGIA_IDS);
-        try { localStorage.setItem('telar_active_epidemiologia_indicators', JSON.stringify(DEFAULT_ACTIVE_EPIDEMIOLOGIA_IDS)); } catch { }
+        try { localStorage.setItem('telar_active_epidemiologia_indicators', JSON.stringify(DEFAULT_ACTIVE_EPIDEMIOLOGIA_IDS)); } catch {}
         addToast?.('Todos los indicadores de Epidemiología activados', 'success');
     };
 
@@ -401,7 +401,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
         if (isUciOnly) return;
         setIsDxiOpen(prev => {
             const next = !prev;
-            try { localStorage.setItem('telar_dxi_expanded', String(next)); } catch { }
+            try { localStorage.setItem('telar_dxi_expanded', String(next)); } catch {}
             return next;
         });
     };
@@ -418,14 +418,14 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
     const handleToggleDxiIndicator = (id) => {
         setActiveDxiIds(prev => {
             const next = prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id];
-            try { localStorage.setItem('telar_active_dxi_indicators', JSON.stringify(next)); } catch { }
+            try { localStorage.setItem('telar_active_dxi_indicators', JSON.stringify(next)); } catch {}
             return next;
         });
     };
 
     const handleSelectAllDxiIndicators = () => {
         setActiveDxiIds(DEFAULT_ACTIVE_DXI_IDS);
-        try { localStorage.setItem('telar_active_dxi_indicators', JSON.stringify(DEFAULT_ACTIVE_DXI_IDS)); } catch { }
+        try { localStorage.setItem('telar_active_dxi_indicators', JSON.stringify(DEFAULT_ACTIVE_DXI_IDS)); } catch {}
         addToast?.('Todos los indicadores de Diagnóstico por Imágenes activados', 'success');
     };
 
@@ -503,7 +503,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
     useEffect(() => {
         try {
             localStorage.setItem('telar_active_indicators_v2', JSON.stringify(activeIndicatorIds));
-        } catch { }
+        } catch {}
     }, [activeIndicatorIds]);
 
     const handleToggleIndicator = (id) => {
@@ -539,7 +539,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
             const updated = { ...prev, [id]: { ...(prev[id] || {}), ...newSize } };
             try {
                 localStorage.setItem('telar_chart_sizes_v2', JSON.stringify(updated));
-            } catch { }
+            } catch {}
             return updated;
         });
     };
@@ -579,7 +579,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
             updated.splice(newIndex, 0, removed);
             try {
                 localStorage.setItem('telar_chart_order_v2', JSON.stringify(updated));
-            } catch { }
+            } catch {}
             return updated;
         });
         setDraggedChartId(null);
@@ -603,7 +603,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
             updated[newIdx] = temp;
             try {
                 localStorage.setItem('telar_chart_order_v2', JSON.stringify(updated));
-            } catch { }
+            } catch {}
             return updated;
         });
     };
@@ -614,7 +614,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
         try {
             localStorage.removeItem('telar_chart_order_v2');
             localStorage.removeItem('telar_chart_sizes_v2');
-        } catch { }
+        } catch {}
         addToast?.('Disposición y tamaños de gráficos restablecidos', 'success');
     };
 
@@ -632,7 +632,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
     const [modalidadFiltro, setModalidadFiltro] = useState('TODAS'); // 'TODAS' | 'Laboratorio' | 'Imágenes'
     const [boxFiltro, setBoxFiltro] = useState('TODOS'); // 'TODOS' o 'BOX 1', etc.
     const [loadingPeticiones, setLoadingPeticiones] = useState(false);
-
+    
     // Estado de Última Actualización SALUS
     const [ultimaActualizacion, setUltimaActualizacion] = useState(null);
     const [loadingActualizacion, setLoadingActualizacion] = useState(false);
@@ -1193,8 +1193,8 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
         const diasPeriodo = Math.max(1, Math.ceil(diffMs / (1000 * 60 * 60 * 24)) + 1);
 
         const camasDisponibles = Number(camasTotales || 0) * diasPeriodo;
-        const porcOcupacion = camasDisponibles > 0
-            ? ((diasOcupados / camasDisponibles) * 100).toFixed(1)
+        const porcOcupacion = camasDisponibles > 0 
+            ? ((diasOcupados / camasDisponibles) * 100).toFixed(1) 
             : '0.0';
 
         // Admisiones únicas en el período filtrado (censadas o dadas de alta/deceso en el período)
@@ -1219,8 +1219,8 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
         });
         const defunciones = defuncionesRows.length;
 
-        const porcDefuncion = totalAdmisiones > 0
-            ? ((defunciones / totalAdmisiones) * 100).toFixed(1)
+        const porcDefuncion = totalAdmisiones > 0 
+            ? ((defunciones / totalAdmisiones) * 100).toFixed(1) 
             : '0.0';
 
         // Promedio de Estancia (ALOS) según estándar censal hospitalario
@@ -1493,32 +1493,32 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
         };
 
         const dataModalidadesUci = [
-            {
-                name: 'Laboratorio & Bioquímica',
+            { 
+                name: 'Laboratorio & Bioquímica', 
                 modalidad: 'Laboratorio & Bioquímica',
-                value: modCounts['Laboratorio & Bioquímica'] || 0,
+                value: modCounts['Laboratorio & Bioquímica'] || 0, 
                 count: modCounts['Laboratorio & Bioquímica'] || 0,
-                pct: totalBaseUci > 0 ? ((modCounts['Laboratorio & Bioquímica'] / totalBaseUci) * 100).toFixed(1) : '0.0',
+                pct: totalBaseUci > 0 ? ((modCounts['Laboratorio & Bioquímica'] / totalBaseUci) * 100).toFixed(1) : '0.0', 
                 porcentaje: totalBaseUci > 0 ? ((modCounts['Laboratorio & Bioquímica'] / totalBaseUci) * 100).toFixed(1) : '0.0',
-                color: MOD_COLORS['Laboratorio & Bioquímica']
+                color: MOD_COLORS['Laboratorio & Bioquímica'] 
             },
-            {
-                name: 'Diagnóstico por Imágenes / RX',
+            { 
+                name: 'Diagnóstico por Imágenes / RX', 
                 modalidad: 'Diagnóstico por Imágenes / RX',
-                value: modCounts['Imágenes / RX'] || 0,
+                value: modCounts['Imágenes / RX'] || 0, 
                 count: modCounts['Imágenes / RX'] || 0,
-                pct: totalBaseUci > 0 ? ((modCounts['Imágenes / RX'] / totalBaseUci) * 100).toFixed(1) : '0.0',
+                pct: totalBaseUci > 0 ? ((modCounts['Imágenes / RX'] / totalBaseUci) * 100).toFixed(1) : '0.0', 
                 porcentaje: totalBaseUci > 0 ? ((modCounts['Imágenes / RX'] / totalBaseUci) * 100).toFixed(1) : '0.0',
-                color: MOD_COLORS['Imágenes / RX']
+                color: MOD_COLORS['Imágenes / RX'] 
             },
-            {
-                name: 'Anatomía Patológica',
+            { 
+                name: 'Anatomía Patológica', 
                 modalidad: 'Anatomía Patológica',
-                value: modCounts['Anatomía Patológica'] || 0,
+                value: modCounts['Anatomía Patológica'] || 0, 
                 count: modCounts['Anatomía Patológica'] || 0,
-                pct: totalBaseUci > 0 ? ((modCounts['Anatomía Patológica'] / totalBaseUci) * 100).toFixed(1) : '0.0',
+                pct: totalBaseUci > 0 ? ((modCounts['Anatomía Patológica'] / totalBaseUci) * 100).toFixed(1) : '0.0', 
                 porcentaje: totalBaseUci > 0 ? ((modCounts['Anatomía Patológica'] / totalBaseUci) * 100).toFixed(1) : '0.0',
-                color: MOD_COLORS['Anatomía Patológica']
+                color: MOD_COLORS['Anatomía Patológica'] 
             }
         ].filter(item => (item.value || 0) > 0);
 
@@ -1535,11 +1535,11 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
         // 10. Intensidad Diagnóstica (Estudios / Días Camas Ocupados)
         // Usa la tabla nominal si ya se cargó bajo demanda, o el conteo rápido fijo en la vista general
         const totalEstudiosSector = peticionesFiltradas.length > 0 ? peticionesFiltradas.length : peticionesFastCount;
-        const intensidadCamaDia = diasOcupados > 0
-            ? (totalEstudiosSector / diasOcupados).toFixed(2)
+        const intensidadCamaDia = diasOcupados > 0 
+            ? (totalEstudiosSector / diasOcupados).toFixed(2) 
             : '0.00';
-        const estudiosPorAdmision = totalAdmisiones > 0
-            ? (totalEstudiosSector / totalAdmisiones).toFixed(1)
+        const estudiosPorAdmision = totalAdmisiones > 0 
+            ? (totalEstudiosSector / totalAdmisiones).toFixed(1) 
             : '0.0';
 
         // 11. Distribución de Estudios por Box / Cama
@@ -1808,18 +1808,18 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
             console.error('Error sincronizando telarStore:', e);
         }
     }, [
-        metrics.diasOcupados,
-        metrics.camasDisponibles,
-        metrics.porcOcupacion,
-        metrics.porcDefuncion,
-        metrics.alos,
-        metrics.totalAdmisiones,
+        metrics.diasOcupados, 
+        metrics.camasDisponibles, 
+        metrics.porcOcupacion, 
+        metrics.porcDefuncion, 
+        metrics.alos, 
+        metrics.totalAdmisiones, 
         metrics.intensidadCamaDia,
-        camasTotales,
+        camasTotales, 
         fechaDesde,
         fechaHasta,
-        activeSectorConfig.label,
-        uciSubNivel,
+        activeSectorConfig.label, 
+        uciSubNivel, 
         sectorId,
         activeIndicatorsList,
         filteredRows,
@@ -1855,7 +1855,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                         isDragging={draggedChartId === chartId}
                         isDropTarget={dragOverChartId === chartId}
                         actions={
-                            <button
+                            <button 
                                 onClick={() => setInspectDataIndicator({ id: 'chart_especialidades', label: 'Admisiones por Especialidad', sector: activeSectorConfig.label, chartData: metrics.dataEspecialidades, dataType: 'admisiones' })}
                                 style={{ background: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: '6px', padding: '3px 8px', fontSize: '0.72rem', fontWeight: 600, color: '#1E40AF', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
                                 title="Expandir gráfico y exportar a Excel"
@@ -1870,19 +1870,19 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                     <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
                                     <XAxis dataKey="mes" stroke="#64748B" fontSize={11} />
                                     <YAxis stroke="#64748B" fontSize={11} />
-                                    <Tooltip
+                                    <Tooltip 
                                         formatter={(val, name, entry) => {
                                             const sumMes = (metrics.topEspecialidades || []).reduce((acc, k) => acc + (Number(entry?.payload?.[k]) || 0), 0);
                                             const pct = sumMes > 0 ? ((val / sumMes) * 100).toFixed(0) : 0;
                                             return [`${val} (${pct}%)`, name];
                                         }}
-                                        contentStyle={{ borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.8rem' }}
+                                        contentStyle={{ borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.8rem' }} 
                                     />
                                     <Legend wrapperStyle={{ fontSize: '0.7rem', paddingTop: '8px' }} />
                                     {metrics.topEspecialidades.map((esp, i) => (
-                                        <Bar key={esp} dataKey={esp} stackId="a" fill={ESPECIALIDAD_PALETTE[i % ESPECIALIDAD_PALETTE.length]} name={esp} />
-                                    ))}
-                                </BarChart>
+                                         <Bar key={esp} dataKey={esp} stackId="a" fill={ESPECIALIDAD_PALETTE[i % ESPECIALIDAD_PALETTE.length]} name={esp} />
+                                     ))}
+                                 </BarChart>
                             </ResponsiveContainer>
                         )}
                     </DraggableChartCard>
@@ -1909,7 +1909,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                         isDragging={draggedChartId === chartId}
                         isDropTarget={dragOverChartId === chartId}
                         actions={
-                            <button
+                            <button 
                                 onClick={() => setInspectDataIndicator({ id: 'chart_admisiones_totales', label: 'Cantidad de Admisiones Totales', sector: activeSectorConfig.label, chartData: metrics.dataAdmisionesTotales, dataType: 'admisiones' })}
                                 style={{ background: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: '6px', padding: '3px 8px', fontSize: '0.72rem', fontWeight: 600, color: '#1E40AF', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
                                 title="Expandir gráfico y exportar a Excel"
@@ -1924,23 +1924,23 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                     <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
                                     <XAxis dataKey="mes" stroke="#64748B" fontSize={11} />
                                     <YAxis stroke="#64748B" fontSize={11} />
-                                    <Tooltip
+                                    <Tooltip 
                                         formatter={(val) => {
                                             const totalPeriodo = (metrics.dataAdmisionesTotales || []).reduce((acc, d) => acc + (Number(d.total) || 0), 0);
                                             const pct = totalPeriodo > 0 ? ((val / totalPeriodo) * 100).toFixed(1) : 0;
                                             return [`${val} admisiones (${pct}% del período)`, 'Admisiones'];
                                         }}
-                                        contentStyle={{ borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.8rem' }}
+                                        contentStyle={{ borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.8rem' }} 
                                     />
                                     <Bar dataKey="total" fill="#1E40AF" radius={[4, 4, 0, 0]} name="Admisiones">
-                                        <LabelList
-                                            dataKey="total"
-                                            position="top"
+                                        <LabelList 
+                                            dataKey="total" 
+                                            position="top" 
                                             formatter={(val) => {
                                                 const totalPeriodo = (metrics.dataAdmisionesTotales || []).reduce((acc, d) => acc + (Number(d.total) || 0), 0);
                                                 return totalPeriodo > 0 ? `${((val / totalPeriodo) * 100).toFixed(0)}%` : '';
                                             }}
-                                            style={{ fill: '#1E40AF', fontSize: '0.72rem', fontWeight: 700 }}
+                                            style={{ fill: '#1E40AF', fontSize: '0.72rem', fontWeight: 700 }} 
                                         />
                                     </Bar>
                                 </BarChart>
@@ -1970,7 +1970,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                         isDragging={draggedChartId === chartId}
                         isDropTarget={dragOverChartId === chartId}
                         actions={
-                            <button
+                            <button 
                                 onClick={() => setInspectDataIndicator({ id: 'chart_motivos_alta', label: 'Motivos de Alta', sector: activeSectorConfig.label, chartData: metrics.dataMotivosAlta, dataType: 'admisiones' })}
                                 style={{ background: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: '6px', padding: '3px 8px', fontSize: '0.72rem', fontWeight: 600, color: '#1E40AF', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
                                 title="Expandir gráfico y exportar a Excel"
@@ -1998,13 +1998,13 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                             <Cell key={`cell-${index}`} fill={entry.color} />
                                         ))}
                                     </Pie>
-                                    <Tooltip
+                                    <Tooltip 
                                         formatter={(val, name, entry) => [`${val} admisiones (${entry?.payload?.pct || 0}%)`, name]}
-                                        contentStyle={{ borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.8rem' }}
+                                        contentStyle={{ borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.8rem' }} 
                                     />
-                                    <Legend
+                                    <Legend 
                                         formatter={(value, entry) => `${value} (${entry?.payload?.pct || 0}%)`}
-                                        wrapperStyle={{ fontSize: '0.72rem', paddingTop: '6px' }}
+                                        wrapperStyle={{ fontSize: '0.72rem', paddingTop: '6px' }} 
                                     />
                                 </PieChart>
                             </ResponsiveContainer>
@@ -2033,13 +2033,13 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                         isDragging={draggedChartId === chartId}
                         isDropTarget={dragOverChartId === chartId}
                         actions={
-                            <button
-                                onClick={() => setInspectDataIndicator({
-                                    id: 'chart_sexo_demografia',
-                                    label: `Distribución de Pacientes ${sectorId === 'UCI' ? 'UCI ' : ''}por Sexo`,
-                                    sector: activeSectorConfig.label,
-                                    chartData: metrics.dataSexoDemografia,
-                                    dataType: 'admisiones'
+                            <button 
+                                onClick={() => setInspectDataIndicator({ 
+                                    id: 'chart_sexo_demografia', 
+                                    label: `Distribución de Pacientes ${sectorId === 'UCI' ? 'UCI ' : ''}por Sexo`, 
+                                    sector: activeSectorConfig.label, 
+                                    chartData: metrics.dataSexoDemografia, 
+                                    dataType: 'admisiones' 
                                 })}
                                 style={{ background: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: '6px', padding: '3px 8px', fontSize: '0.72rem', fontWeight: 600, color: '#1E40AF', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
                                 title="Expandir gráfico y exportar a Excel"
@@ -2090,19 +2090,19 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                                     <Cell key={`cell-sexo-${index}`} fill={entry.color} />
                                                 ))}
                                             </Pie>
-                                            <Tooltip
+                                            <Tooltip 
                                                 formatter={(val, name, entry) => [`${val} pacientes (${entry.payload.pct}%)`, name]}
-                                                contentStyle={{ borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.8rem' }}
+                                                contentStyle={{ borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.8rem' }} 
                                             />
                                             <Legend wrapperStyle={{ fontSize: '0.75rem', paddingTop: '4px' }} />
                                         </PieChart>
                                     </ResponsiveContainer>
                                 </div>
-                                <div style={{
-                                    background: '#F8FAFC',
-                                    border: '1px solid #E2E8F0',
-                                    borderRadius: '8px',
-                                    padding: '6px 10px',
+                                <div style={{ 
+                                    background: '#F8FAFC', 
+                                    border: '1px solid #E2E8F0', 
+                                    borderRadius: '8px', 
+                                    padding: '6px 10px', 
                                     margin: '0 8px 6px 8px',
                                     fontSize: '0.72rem',
                                     color: '#475569',
@@ -2137,7 +2137,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                         isDragging={draggedChartId === chartId}
                         isDropTarget={dragOverChartId === chartId}
                         actions={
-                            <button
+                            <button 
                                 onClick={() => setInspectDataIndicator({ id: 'chart_rango_etario', label: 'Rango Etario de Pacientes', sector: activeSectorConfig.label, chartData: metrics.dataRangoEtario, dataType: 'admisiones' })}
                                 style={{ background: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: '6px', padding: '3px 8px', fontSize: '0.72rem', fontWeight: 600, color: '#1E40AF', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
                                 title="Expandir gráfico y exportar a Excel"
@@ -2165,13 +2165,13 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                             <Cell key={`cell-${index}`} fill={entry.color} />
                                         ))}
                                     </Pie>
-                                    <Tooltip
+                                    <Tooltip 
                                         formatter={(val, name, entry) => [`${val} pacientes (${entry?.payload?.pct || 0}%)`, name]}
-                                        contentStyle={{ borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.8rem' }}
+                                        contentStyle={{ borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.8rem' }} 
                                     />
-                                    <Legend
+                                    <Legend 
                                         formatter={(value, entry) => `${value} (${entry?.payload?.pct || 0}%)`}
-                                        wrapperStyle={{ fontSize: '0.72rem', paddingTop: '6px' }}
+                                        wrapperStyle={{ fontSize: '0.72rem', paddingTop: '6px' }} 
                                     />
                                 </PieChart>
                             </ResponsiveContainer>
@@ -2200,7 +2200,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                         isDragging={draggedChartId === chartId}
                         isDropTarget={dragOverChartId === chartId}
                         actions={
-                            <button
+                            <button 
                                 onClick={() => setInspectDataIndicator({ id: 'chart_estancias', label: 'Categorías de Estancias', sector: activeSectorConfig.label, chartData: metrics.dataEstancias, dataType: 'admisiones' })}
                                 style={{ background: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: '6px', padding: '3px 8px', fontSize: '0.72rem', fontWeight: 600, color: '#1E40AF', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
                                 title="Expandir gráfico y exportar a Excel"
@@ -2215,13 +2215,13 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                     <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
                                     <XAxis dataKey="mes" stroke="#64748B" fontSize={10} />
                                     <YAxis stroke="#64748B" fontSize={10} />
-                                    <Tooltip
+                                    <Tooltip 
                                         formatter={(val, name, entry) => {
                                             const total = (Number(entry?.payload?.corta) || 0) + (Number(entry?.payload?.media) || 0) + (Number(entry?.payload?.larga) || 0);
                                             const pct = total > 0 ? ((val / total) * 100).toFixed(0) : 0;
                                             return [`${val} pacientes (${pct}%)`, name];
                                         }}
-                                        contentStyle={{ borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.8rem' }}
+                                        contentStyle={{ borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.8rem' }} 
                                     />
                                     <Legend wrapperStyle={{ fontSize: '0.72rem', paddingTop: '6px' }} />
                                     <Bar dataKey="corta" stackId="s" fill={COLORS_ESTANCIA.corta} name="1-2 días" />
@@ -2254,7 +2254,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                         isDragging={draggedChartId === chartId}
                         isDropTarget={dragOverChartId === chartId}
                         actions={
-                            <button
+                            <button 
                                 onClick={() => setInspectDataIndicator({ id: 'chart_procedencia', label: 'Procedencia de Ingreso', sector: activeSectorConfig.label, chartData: metrics.dataProcedencia, dataType: 'admisiones' })}
                                 style={{ background: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: '6px', padding: '3px 8px', fontSize: '0.72rem', fontWeight: 600, color: '#1E40AF', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
                                 title="Expandir gráfico y exportar a Excel"
@@ -2269,16 +2269,16 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                     <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" horizontal={false} />
                                     <XAxis type="number" stroke="#64748B" fontSize={10} />
                                     <YAxis type="category" dataKey="label" stroke="#64748B" fontSize={10} width={90} />
-                                    <Tooltip
+                                    <Tooltip 
                                         formatter={(val, name, entry) => [`${val} pacientes (${entry?.payload?.pct || 0}%)`, name]}
-                                        contentStyle={{ borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.8rem' }}
+                                        contentStyle={{ borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.8rem' }} 
                                     />
                                     <Bar dataKey="value" fill="#3B82F6" radius={[0, 4, 4, 0]} name="Pacientes">
-                                        <LabelList
-                                            dataKey="pct"
-                                            position="right"
-                                            formatter={(val) => val && Number(val) > 0 ? `${val}%` : ''}
-                                            style={{ fill: '#334155', fontSize: '0.72rem', fontWeight: 700 }}
+                                        <LabelList 
+                                            dataKey="pct" 
+                                            position="right" 
+                                            formatter={(val) => val && Number(val) > 0 ? `${val}%` : ''} 
+                                            style={{ fill: '#334155', fontSize: '0.72rem', fontWeight: 700 }} 
                                         />
                                     </Bar>
                                 </BarChart>
@@ -2308,7 +2308,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                         isDragging={draggedChartId === chartId}
                         isDropTarget={dragOverChartId === chartId}
                         actions={
-                            <button
+                            <button 
                                 onClick={() => setInspectDataIndicator({ id: 'chart_clientes', label: 'Financiadores y Clientes', sector: activeSectorConfig.label, chartData: metrics.dataClientes, dataType: 'admisiones' })}
                                 style={{ background: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: '6px', padding: '3px 8px', fontSize: '0.72rem', fontWeight: 600, color: '#1E40AF', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
                                 title="Expandir gráfico y exportar a Excel"
@@ -2323,16 +2323,16 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                     <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" horizontal={false} />
                                     <XAxis type="number" stroke="#64748B" fontSize={10} />
                                     <YAxis type="category" dataKey="label" stroke="#64748B" fontSize={10} width={90} />
-                                    <Tooltip
+                                    <Tooltip 
                                         formatter={(val, name, entry) => [`${val} pacientes (${entry?.payload?.pct || 0}%)`, name]}
-                                        contentStyle={{ borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.8rem' }}
+                                        contentStyle={{ borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.8rem' }} 
                                     />
                                     <Bar dataKey="value" fill="#10B981" radius={[0, 4, 4, 0]} name="Pacientes">
-                                        <LabelList
-                                            dataKey="pct"
-                                            position="right"
-                                            formatter={(val) => val && Number(val) > 0 ? `${val}%` : ''}
-                                            style={{ fill: '#334155', fontSize: '0.72rem', fontWeight: 700 }}
+                                        <LabelList 
+                                            dataKey="pct" 
+                                            position="right" 
+                                            formatter={(val) => val && Number(val) > 0 ? `${val}%` : ''} 
+                                            style={{ fill: '#334155', fontSize: '0.72rem', fontWeight: 700 }} 
                                         />
                                     </Bar>
                                 </BarChart>
@@ -2363,7 +2363,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                         isDragging={draggedChartId === chartId}
                         isDropTarget={dragOverChartId === chartId}
                         actions={
-                            <button
+                            <button 
                                 onClick={() => setInspectDataIndicator({
                                     id: 'chart_produccion_origen',
                                     label: 'Composición Diagnóstica en UCI',
@@ -2420,8 +2420,8 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                                 const modCount = Number(m.count ?? m.value ?? 0);
                                                 const modPct = m.porcentaje ?? m.pct ?? '0.0';
                                                 return (
-                                                    <div
-                                                        key={idx}
+                                                    <div 
+                                                        key={idx} 
                                                         onClick={() => setModalidadFiltro(modName)}
                                                         style={{
                                                             display: 'flex',
@@ -2481,7 +2481,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                         isDragging={draggedChartId === chartId}
                         isDropTarget={dragOverChartId === chartId}
                         actions={
-                            <button
+                            <button 
                                 onClick={() => setInspectDataIndicator({
                                     id: 'chart_estudios_por_box',
                                     label: 'Distribución de Estudios por Box / Cama en UCI',
@@ -2531,11 +2531,11 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                             cursor="pointer"
                                             onClick={(entry) => setBoxFiltro(entry.box)}
                                         >
-                                            <LabelList
-                                                dataKey="porcentaje"
-                                                position="top"
-                                                formatter={(val) => val && Number(val) > 0 ? `${val}%` : ''}
-                                                style={{ fill: '#1E40AF', fontSize: '0.72rem', fontWeight: 700 }}
+                                            <LabelList 
+                                                dataKey="porcentaje" 
+                                                position="top" 
+                                                formatter={(val) => val && Number(val) > 0 ? `${val}%` : ''} 
+                                                style={{ fill: '#1E40AF', fontSize: '0.72rem', fontWeight: 700 }} 
                                             />
                                             {metrics.dataEstudiosPorBox.slice(0, 10).map((entry, index) => (
                                                 <Cell
@@ -2573,7 +2573,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                         isDragging={draggedChartId === chartId}
                         isDropTarget={dragOverChartId === chartId}
                         actions={
-                            <button
+                            <button 
                                 onClick={() => setInspectDataIndicator({
                                     id: 'chart_top_estudios_uci',
                                     label: 'Top Estudios Solicitados en UCI',
@@ -2619,11 +2619,11 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                             contentStyle={{ borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.8rem' }}
                                         />
                                         <Bar dataKey="value" fill="#2563EB" radius={[0, 4, 4, 0]} name="Solicitudes">
-                                            <LabelList
-                                                dataKey="pct"
-                                                position="right"
-                                                formatter={(val) => val && Number(val) > 0 ? `${val}%` : ''}
-                                                style={{ fill: '#334155', fontSize: '0.72rem', fontWeight: 700 }}
+                                            <LabelList 
+                                                dataKey="pct" 
+                                                position="right" 
+                                                formatter={(val) => val && Number(val) > 0 ? `${val}%` : ''} 
+                                                style={{ fill: '#334155', fontSize: '0.72rem', fontWeight: 700 }} 
                                             />
                                         </Bar>
                                     </BarChart>
@@ -2655,7 +2655,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                         isDragging={draggedChartId === chartId}
                         isDropTarget={dragOverChartId === chartId}
                         actions={
-                            <button
+                            <button 
                                 onClick={() => setInspectDataIndicator({
                                     id: 'chart_solicitantes_uci',
                                     label: 'Médicos Solicitantes Más Activos en UCI',
@@ -2701,11 +2701,11 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                             contentStyle={{ borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '0.8rem' }}
                                         />
                                         <Bar dataKey="value" fill="#8B5CF6" radius={[0, 4, 4, 0]} name="Solicitudes">
-                                            <LabelList
-                                                dataKey="pct"
-                                                position="right"
-                                                formatter={(val) => val && Number(val) > 0 ? `${val}%` : ''}
-                                                style={{ fill: '#334155', fontSize: '0.72rem', fontWeight: 700 }}
+                                            <LabelList 
+                                                dataKey="pct" 
+                                                position="right" 
+                                                formatter={(val) => val && Number(val) > 0 ? `${val}%` : ''} 
+                                                style={{ fill: '#334155', fontSize: '0.72rem', fontWeight: 700 }} 
                                             />
                                         </Bar>
                                     </BarChart>
@@ -2737,7 +2737,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                         isDragging={draggedChartId === chartId}
                         isDropTarget={dragOverChartId === chartId}
                         actions={
-                            <button
+                            <button 
                                 onClick={() => setInspectDataIndicator({
                                     id: 'table_peticiones_detalle',
                                     label: 'Auditoría Completa de Peticiones y Pruebas en UCI',
@@ -2829,7 +2829,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
             background: '#F8FAFC',
             fontFamily: "'Inter', sans-serif"
         }}>
-
+            
             {/* ─── BARRA SUPERIOR UNIFICADA ─── */}
             <div style={{
                 background: '#FFFFFF',
@@ -3060,7 +3060,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                 }}>
                     {/* Filtros Paramétricos Centrales */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-
+                        
                         {/* Botón Catálogo de Indicadores - Removido ya que se encuentra integrado en el sidebar */}
 
                         {/* Botones Fórmulas & SQL e Indicadores - Ocultados a solicitud */}
@@ -3090,12 +3090,12 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                         <Filter size={13} color={selectedEspecialidades === null ? '#64748B' : '#1E40AF'} />
                                         <span>Especialidad:</span>
                                         <strong style={{ maxWidth: '140px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                            {selectedEspecialidades === null
-                                                ? '(Todas)'
-                                                : selectedEspecialidades.length === 0
-                                                    ? 'Ninguna'
-                                                    : selectedEspecialidades.length === 1
-                                                        ? selectedEspecialidades[0]
+                                            {selectedEspecialidades === null 
+                                                ? '(Todas)' 
+                                                : selectedEspecialidades.length === 0 
+                                                    ? 'Ninguna' 
+                                                    : selectedEspecialidades.length === 1 
+                                                        ? selectedEspecialidades[0] 
                                                         : `${selectedEspecialidades.length} selecc.`}
                                         </strong>
                                         <ChevronDown size={14} color="#64748B" />
@@ -3183,7 +3183,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                                                 <input
                                                                     type="checkbox"
                                                                     checked={isChecked}
-                                                                    onChange={() => { }}
+                                                                    onChange={() => {}}
                                                                     style={{ accentColor: '#2563EB', cursor: 'pointer' }}
                                                                 />
                                                                 <span style={{
@@ -3394,7 +3394,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
 
             {/* ─── CUERPO UNIFICADO: SIDEBAR DE SECTORES + LIENZO MODULAR DEL TELAR ─── */}
             <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
-
+                
                 {/* PESTAÑA LATERAL MINIFICADA CUANDO ESTÁ COLAPSADO */}
                 {!sidebarOpen && (
                     <button
@@ -3493,7 +3493,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
 
                         {/* CONTENEDOR DE SERVICIOS (ACORDEÓN MODULAR) */}
                         <div style={{ padding: '12px', display: 'flex', flexDirection: 'column', gap: '10px', flex: 1 }}>
-
+                            
                             {/* 🏥 SERVICIO: UCI */}
                             <div style={{
                                 borderRadius: '8px',
@@ -3893,455 +3893,419 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                             </span>
                         </div>
                     }>
-                        {sectorSubModulo === 'reuniones' ? (
-                            <ReunionesServicioPanel
-                                sectorId={sectorId}
-                                addToast={addToast}
-                            />
-                        ) : sectorId === 'CHEQUEO' ? (
-                            <ChequeoGobernanzaDashboard
-                                fechaDesdeTelar={fechaDesde}
-                                fechaHastaTelar={fechaHasta}
-                                currentTab={sectorId === 'CHEQUEO' ? routeTabId : null}
-                                onTabChange={(tab) => navigateToRoute('CHEQUEO', tab)}
-                            />
-                        ) : sectorId === 'GUARDIA_GGO' ? (
-                            <GuardiaGgoDashboard
-                                fechaDesde={fechaDesde}
-                                fechaHasta={fechaHasta}
-                                datePresetMode={datePresetMode}
-                                currentTab={sectorId === 'GUARDIA_GGO' ? routeTabId : null}
-                                onTabChange={(tab) => navigateToRoute('GUARDIA_GGO', tab)}
-                                addToast={addToast}
-                            />
-                        ) : sectorId === 'COMPRAS_STOCK' ? (
-                            <ComprasConsumoStockDashboard
-                                fechaDesde={fechaDesde}
-                                fechaHasta={fechaHasta}
-                                datePresetMode={datePresetMode}
-                                currentTab={sectorId === 'COMPRAS_STOCK' ? routeTabId : null}
-                                onTabChange={(tab) => navigateToRoute('COMPRAS_STOCK', tab)}
-                                addToast={addToast}
-                            />
-                        ) : sectorId === 'INTERNACION' ? (
-                            <InternacionDashboard
-                                fechaDesde={fechaDesde}
-                                fechaHasta={fechaHasta}
-                                datePresetMode={datePresetMode}
-                                currentTab={sectorId === 'INTERNACION' ? routeTabId : null}
-                                onTabChange={(tab) => navigateToRoute('INTERNACION', tab)}
-                                addToast={addToast}
-                            />
-                        ) : sectorId === 'EPIDEMIOLOGIA' ? (
-                            <EpidemiologiaDashboard
-                                selectedCenter="TODOS"
-                                dateRange={{ fechaDesde, fechaHasta }}
-                                fechaDesde={fechaDesde}
-                                fechaHasta={fechaHasta}
-                                datePresetMode={datePresetMode}
-                                activeIndicatorIds={activeEpidemiologiaIds}
-                                addToast={addToast}
-                            />
-                        ) : sectorId === 'DXI' ? (
-                            <DiagnosticoImagenesDashboard
-                                fechaDesde={fechaDesde}
-                                fechaHasta={fechaHasta}
-                                datePresetMode={datePresetMode}
-                                currentTab={sectorId === 'DXI' ? routeTabId : null}
-                                onTabChange={(tab) => navigateToRoute('DXI', tab)}
-                                onDatePresetChange={handleSetDatePreset}
-                                onCustomDateChange={(d, h) => {
-                                    setFechaDesde(d);
-                                    setFechaHasta(h);
-                                    setDatePresetMode('personalizado');
-                                }}
-                                addToast={addToast}
-                            />
-                        ) : sectorId === 'GUARDIA' ? (
-                            <GuardiaClinicaDashboard
-                                onOpenDocModal={() => {
-                                    setDocModalTab('GUARDIA');
-                                    setShowDocModal(true);
-                                }}
-                                activeIndicatorIds={activeGuardiaIds}
-                                onToggleIndicator={handleToggleGuardiaIndicator}
-                                addToast={addToast}
-                                fechaDesde={fechaDesde}
-                                fechaHasta={fechaHasta}
-                                datePresetMode={datePresetMode}
-                                currentTab={sectorId === 'GUARDIA' ? routeTabId : null}
-                                currentSubTab={sectorId === 'GUARDIA' ? routeSubTabId : null}
-                                onTabChange={(tab, subtab) => navigateToRoute('GUARDIA', tab, subtab)}
-                                onDatePresetChange={handleSetDatePreset}
-                                onCustomDateChange={(d, h) => {
-                                    setFechaDesde(d);
-                                    setFechaHasta(h);
-                                    setDatePresetMode('personalizado');
-                                }}
-                            />
-                        ) : sectorId === 'QUIROFANO' ? (
-                            <QuirofanoDashboard
-                                onOpenDocModal={() => {
-                                    setDocModalTab('QUIROFANO');
-                                    setShowDocModal(true);
-                                }}
-                                activeIndicatorIds={activeQuirofanoIds}
-                                onToggleIndicator={handleToggleQuirofanoIndicator}
-                                addToast={addToast}
-                                fechaDesde={fechaDesde}
-                                fechaHasta={fechaHasta}
-                                datePresetMode={datePresetMode}
-                                currentTab={sectorId === 'QUIROFANO' ? routeTabId : null}
-                                onTabChange={(tab) => navigateToRoute('QUIROFANO', tab)}
-                                onDatePresetChange={handleSetDatePreset}
-                                onCustomDateChange={(d, h) => {
-                                    setFechaDesde(d);
-                                    setFechaHasta(h);
-                                    setDatePresetMode('personalizado');
-                                }}
-                            />
-                        ) : loading ? (
-                            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '350px', flexDirection: 'column', gap: '12px' }}>
-                                <RefreshCw className="animate-spin" size={36} color="#2563EB" />
-                                <span style={{ color: '#64748B', fontSize: '0.9rem', fontWeight: 600 }}>
-                                    Cargando indicadores del sector {activeSectorConfig.label}...
-                                </span>
+                    {sectorSubModulo === 'reuniones' ? (
+                        <ReunionesServicioPanel
+                            sectorId={sectorId}
+                            addToast={addToast}
+                        />
+                    ) : sectorId === 'CHEQUEO' ? (
+                        <ChequeoGobernanzaDashboard
+                            fechaDesdeTelar={fechaDesde}
+                            fechaHastaTelar={fechaHasta}
+                            currentTab={sectorId === 'CHEQUEO' ? routeTabId : null}
+                            onTabChange={(tab) => navigateToRoute('CHEQUEO', tab)}
+                        />
+                    ) : sectorId === 'GUARDIA_GGO' ? (
+                        <GuardiaGgoDashboard
+                            fechaDesde={fechaDesde}
+                            fechaHasta={fechaHasta}
+                            datePresetMode={datePresetMode}
+                            currentTab={sectorId === 'GUARDIA_GGO' ? routeTabId : null}
+                            onTabChange={(tab) => navigateToRoute('GUARDIA_GGO', tab)}
+                            addToast={addToast}
+                        />
+                    ) : sectorId === 'COMPRAS_STOCK' ? (
+                        <ComprasConsumoStockDashboard
+                            fechaDesde={fechaDesde}
+                            fechaHasta={fechaHasta}
+                            datePresetMode={datePresetMode}
+                            currentTab={sectorId === 'COMPRAS_STOCK' ? routeTabId : null}
+                            onTabChange={(tab) => navigateToRoute('COMPRAS_STOCK', tab)}
+                            addToast={addToast}
+                        />
+                    ) : sectorId === 'INTERNACION' ? (
+                        <InternacionDashboard
+                            fechaDesde={fechaDesde}
+                            fechaHasta={fechaHasta}
+                            datePresetMode={datePresetMode}
+                            currentTab={sectorId === 'INTERNACION' ? routeTabId : null}
+                            onTabChange={(tab) => navigateToRoute('INTERNACION', tab)}
+                            addToast={addToast}
+                        />
+                    ) : sectorId === 'EPIDEMIOLOGIA' ? (
+                        <EpidemiologiaDashboard 
+                            selectedCenter="TODOS"
+                            dateRange={{ fechaDesde, fechaHasta }}
+                            fechaDesde={fechaDesde}
+                            fechaHasta={fechaHasta}
+                            datePresetMode={datePresetMode}
+                            activeIndicatorIds={activeEpidemiologiaIds}
+                            addToast={addToast}
+                        />
+                    ) : sectorId === 'DXI' ? (
+                        <DiagnosticoImagenesDashboard 
+                            fechaDesde={fechaDesde}
+                            fechaHasta={fechaHasta}
+                            datePresetMode={datePresetMode}
+                            currentTab={sectorId === 'DXI' ? routeTabId : null}
+                            onTabChange={(tab) => navigateToRoute('DXI', tab)}
+                            onDatePresetChange={handleSetDatePreset}
+                            onCustomDateChange={(d, h) => {
+                                setFechaDesde(d);
+                                setFechaHasta(h);
+                                setDatePresetMode('personalizado');
+                            }}
+                            addToast={addToast}
+                        />
+                    ) : sectorId === 'GUARDIA' ? (
+                        <GuardiaClinicaDashboard 
+                            onOpenDocModal={() => {
+                                setDocModalTab('GUARDIA');
+                                setShowDocModal(true);
+                            }}
+                            activeIndicatorIds={activeGuardiaIds}
+                            onToggleIndicator={handleToggleGuardiaIndicator}
+                            addToast={addToast}
+                            fechaDesde={fechaDesde}
+                            fechaHasta={fechaHasta}
+                            datePresetMode={datePresetMode}
+                            currentTab={sectorId === 'GUARDIA' ? routeTabId : null}
+                            currentSubTab={sectorId === 'GUARDIA' ? routeSubTabId : null}
+                            onTabChange={(tab, subtab) => navigateToRoute('GUARDIA', tab, subtab)}
+                            onDatePresetChange={handleSetDatePreset}
+                            onCustomDateChange={(d, h) => {
+                                setFechaDesde(d);
+                                setFechaHasta(h);
+                                setDatePresetMode('personalizado');
+                            }}
+                        />
+                    ) : sectorId === 'QUIROFANO' ? (
+                        <QuirofanoDashboard 
+                            onOpenDocModal={() => {
+                                setDocModalTab('QUIROFANO');
+                                setShowDocModal(true);
+                            }}
+                            activeIndicatorIds={activeQuirofanoIds}
+                            onToggleIndicator={handleToggleQuirofanoIndicator}
+                            addToast={addToast}
+                            fechaDesde={fechaDesde}
+                            fechaHasta={fechaHasta}
+                            datePresetMode={datePresetMode}
+                            currentTab={sectorId === 'QUIROFANO' ? routeTabId : null}
+                            onTabChange={(tab) => navigateToRoute('QUIROFANO', tab)}
+                            onDatePresetChange={handleSetDatePreset}
+                            onCustomDateChange={(d, h) => {
+                                setFechaDesde(d);
+                                setFechaHasta(h);
+                                setDatePresetMode('personalizado');
+                            }}
+                        />
+                    ) : loading ? (
+                        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '350px', flexDirection: 'column', gap: '12px' }}>
+                            <RefreshCw className="animate-spin" size={36} color="#2563EB" />
+                            <span style={{ color: '#64748B', fontSize: '0.9rem', fontWeight: 600 }}>
+                                Cargando indicadores del sector {activeSectorConfig.label}...
+                            </span>
+                        </div>
+                    
+                    ) : sectorId === 'UCI' ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                            {/* ─── PESTAÑAS DE NAVEGACIÓN TÉCNICA (UCI / TERAPIA INTENSIVA) ─── */}
+                            <div style={{
+                                display: 'flex',
+                                background: '#F1F5F9',
+                                padding: '4px',
+                                borderRadius: '12px',
+                                border: '1px solid #E2E8F0',
+                                gap: '4px',
+                                overflowX: 'auto'
+                            }}>
+                                {[
+                                    { id: 'censo', label: 'Tablero General (Censo & Ocupación)', icon: BarChart3 },
+                                    { id: 'camas', label: 'Mapa de Camas & Cronograma (Gantt)', icon: Bed },
+                                    { id: 'demografia', label: 'Demografía, Especialidades & Financiadores', icon: Users },
+                                    { id: 'mortalidad', label: 'Seguridad Clínica & Auditoría de Mortalidad', icon: HeartPulse },
+                                    { id: 'diagnostico', label: 'Soporte Diagnóstico & Trazabilidad', icon: Layers }
+                                ].map(tab => {
+                                    const Icon = tab.icon;
+                                    const isActive = uciActiveTab === tab.id;
+                                    return (
+                                        <button
+                                            key={tab.id}
+                                            type="button"
+                                            onClick={() => {
+                                                handleSelectUciTab(tab.id);
+                                                if (tab.id === 'camas') {
+                                                    setViewMode('gantt');
+                                                } else {
+                                                    setViewMode('dashboard');
+                                                }
+                                            }}
+                                            style={{
+                                                padding: '8px 16px',
+                                                borderRadius: '9px',
+                                                border: 'none',
+                                                background: isActive ? '#FFFFFF' : 'transparent',
+                                                color: isActive ? '#0F172A' : '#64748B',
+                                                fontWeight: isActive ? 800 : 600,
+                                                fontSize: '0.82rem',
+                                                cursor: 'pointer',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '8px',
+                                                boxShadow: isActive ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+                                                whiteSpace: 'nowrap',
+                                                transition: 'all 0.15s ease'
+                                            }}
+                                        >
+                                            <Icon size={15} color={isActive ? '#0284C7' : '#94A3B8'} />
+                                            {tab.label}
+                                        </button>
+                                    );
+                                })}
                             </div>
 
                             {/* ─── PESTAÑA 1: CENSO & OCUPACIÓN (TABLERO GENERAL) ─── */}
-                            {uciActiveTab === 'censo' && (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                                    {/* ─── BLOQUE 1: BARRA DE PULSO ANIMADA UCI (ESTÁNDAR DXI) ─── */}
-                                    <GobernanzaBarraPulso
-                                        items={[
-                                            ...(isIndicatorActive('kpi_dias_ocupados') || isIndicatorActive('kpi_dias_disponibles') ? [{
-                                                key: 'dias_ocupados',
-                                                label: 'Días Camas Ocupados',
-                                                value: Number(metrics.diasOcupados || 0),
-                                                sub: `de ${Number(metrics.camasDisponibles || 0).toLocaleString('es-AR')} disp. (${camasTotales} camas)`,
-                                                actionLabel: 'Ver datos',
-                                                onAction: () => setInspectDataIndicator({ id: 'kpi_dias_ocupados', label: 'Días Camas Ocupados', sector: activeSectorConfig.label }),
-                                            }] : []),
-                                            ...(isIndicatorActive('kpi_porc_ocupacion') ? [{
-                                                key: 'ocupacion',
-                                                label: '% de Ocupación',
-                                                value: Number(metrics.porcOcupacion || 0),
-                                                decimals: 1,
-                                                suffix: '%',
-                                                barPct: Number(metrics.porcOcupacion || 0),
-                                                barLeftLabel: Number(metrics.porcOcupacion) > 95 ? 'Alta saturación' : 'Operativa normal',
-                                                barRightLabel: `${camasTotales} camas`,
-                                                accentColor: Number(metrics.porcOcupacion) > 95 ? '#DC2626' : Number(metrics.porcOcupacion) > 85 ? '#D97706' : '#003B73',
-                                            }] : []),
-                                            ...(isIndicatorActive('kpi_alos') || isIndicatorActive('kpi_intensidad_diagnostica') ? [{
-                                                key: 'alos',
-                                                label: 'Estancia Media (ALOS)',
-                                                value: Number(metrics.alos || 0),
-                                                decimals: 1,
-                                                suffix: ' d',
-                                                sub: isIndicatorActive('kpi_intensidad_diagnostica')
-                                                    ? `Intensidad: ${metrics.intensidadCamaDia} est/cama-día (${Number(metrics.totalEstudiosPeriodo || 0).toLocaleString('es-AR')} est.)`
-                                                    : 'Rotación media por paciente',
-                                            }] : []),
-                                            ...(isIndicatorActive('kpi_porc_defuncion') ? [{
-                                                key: 'defuncion',
-                                                label: '% de Defunción',
-                                                value: Number(metrics.porcDefuncion || 0),
-                                                decimals: 1,
-                                                suffix: '%',
-                                                accentColor: '#DC2626',
-                                                sub: `${metrics.defunciones} de ${metrics.totalAdmisiones} adm.`,
-                                                actionLabel: 'Auditar',
-                                                onAction: () => setIsMortalidadAuditOpen(true),
-                                            }] : []),
+                        {uciActiveTab === 'censo' && (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                                {/* ─── BLOQUE 1: BARRA DE PULSO ANIMADA UCI (ESTÁNDAR DXI) ─── */}
+                                <GobernanzaBarraPulso
+                                    items={[
+                                        ...(isIndicatorActive('kpi_dias_ocupados') || isIndicatorActive('kpi_dias_disponibles') ? [{
+                                            key: 'dias_ocupados',
+                                            label: 'Días Camas Ocupados',
+                                            value: Number(metrics.diasOcupados || 0),
+                                            sub: `de ${Number(metrics.camasDisponibles || 0).toLocaleString('es-AR')} disp. (${camasTotales} camas)`,
+                                            actionLabel: 'Ver datos',
+                                            onAction: () => setInspectDataIndicator({ id: 'kpi_dias_ocupados', label: 'Días Camas Ocupados', sector: activeSectorConfig.label }),
+                                        }] : []),
+                                        ...(isIndicatorActive('kpi_porc_ocupacion') ? [{
+                                            key: 'ocupacion',
+                                            label: '% de Ocupación',
+                                            value: Number(metrics.porcOcupacion || 0),
+                                            decimals: 1,
+                                            suffix: '%',
+                                            barPct: Number(metrics.porcOcupacion || 0),
+                                            barLeftLabel: Number(metrics.porcOcupacion) > 95 ? 'Alta saturación' : 'Operativa normal',
+                                            barRightLabel: `${camasTotales} camas`,
+                                            accentColor: Number(metrics.porcOcupacion) > 95 ? '#DC2626' : Number(metrics.porcOcupacion) > 85 ? '#D97706' : '#003B73',
+                                        }] : []),
+                                        ...(isIndicatorActive('kpi_alos') || isIndicatorActive('kpi_intensidad_diagnostica') ? [{
+                                            key: 'alos',
+                                            label: 'Estancia Media (ALOS)',
+                                            value: Number(metrics.alos || 0),
+                                            decimals: 1,
+                                            suffix: ' d',
+                                            sub: isIndicatorActive('kpi_intensidad_diagnostica')
+                                                ? `Intensidad: ${metrics.intensidadCamaDia} est/cama-día (${Number(metrics.totalEstudiosPeriodo || 0).toLocaleString('es-AR')} est.)`
+                                                : 'Rotación media por paciente',
+                                        }] : []),
+                                        ...(isIndicatorActive('kpi_porc_defuncion') ? [{
+                                            key: 'defuncion',
+                                            label: '% de Defunción',
+                                            value: Number(metrics.porcDefuncion || 0),
+                                            decimals: 1,
+                                            suffix: '%',
+                                            accentColor: '#DC2626',
+                                            sub: `${metrics.defunciones} de ${metrics.totalAdmisiones} adm.`,
+                                            actionLabel: 'Auditar',
+                                            onAction: () => setIsMortalidadAuditOpen(true),
+                                        }] : []),
+                                    ]}
+                                />
+
+                                {/* ─── FLUJO ANIMADO DE CAPACIDAD Y EGRESOS UCI ─── */}
+                                {Number(metrics.totalAdmisiones || 0) > 0 && (
+                                    <GobernanzaFlujoAnimado
+                                        title={`Flujo Clínico de Admisiones · ${activeSectorConfig.shortLabel}`}
+                                        originLabel="ADMISIONES"
+                                        originValue={Number(metrics.totalAdmisiones || 0)}
+                                        onSelect={(k) => {
+                                            if (k === 'DEFUNCION') setIsMortalidadAuditOpen(true);
+                                        }}
+                                        branches={[
+                                            {
+                                                key: 'EGRESOS_VIVOS',
+                                                label: 'Altas / Egresos en Evolución',
+                                                count: Math.max(0, Number(metrics.totalAdmisiones || 0) - Number(metrics.defunciones || 0)),
+                                                color: '#003B73',
+                                            },
+                                            {
+                                                key: 'DEFUNCION',
+                                                label: 'Defunciones (clic para auditar)',
+                                                count: Number(metrics.defunciones || 0),
+                                                color: '#DC2626',
+                                            },
                                         ]}
                                     />
+                                )}
 
-                                    {/* ─── FLUJO ANIMADO DE CAPACIDAD Y EGRESOS UCI ─── */}
-                                    {Number(metrics.totalAdmisiones || 0) > 0 && (
-                                        <GobernanzaFlujoAnimado
-                                            title={`Flujo Clínico de Admisiones · ${activeSectorConfig.shortLabel}`}
-                                            originLabel="ADMISIONES"
-                                            originValue={Number(metrics.totalAdmisiones || 0)}
-                                            onSelect={(k) => {
-                                                if (k === 'DEFUNCION') setIsMortalidadAuditOpen(true);
-                                            }}
-                                            branches={[
-                                                {
-                                                    key: 'EGRESOS_VIVOS',
-                                                    label: 'Altas / Egresos en Evolución',
-                                                    count: Math.max(0, Number(metrics.totalAdmisiones || 0) - Number(metrics.defunciones || 0)),
-                                                    color: '#003B73',
-                                                },
-                                                {
-                                                    key: 'DEFUNCION',
-                                                    label: 'Defunciones (clic para auditar)',
-                                                    count: Number(metrics.defunciones || 0),
-                                                    color: '#DC2626',
-                                                },
-                                            ]}
-                                        />
-                                    )}
-
-                                {/* Banner de acceso rápido al Gantt de Camas */}
-                                {sectorId === 'UCI' && (
+                            
                                     <div style={{
-                                        background: 'linear-gradient(135deg, #0F172A 0%, #1E3A8A 100%)',
+                                        display: 'flex',
+                                        flexWrap: 'wrap',
+                                        gap: '20px',
+                                        alignItems: 'stretch'
+                                    }}>
+                                        {renderChartCard('chart_admisiones_totales', 0)}
+                                        {renderChartCard('chart_estancias', 1)}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* ─── PESTAÑA 2: CRONOGRAMA GANTT DE CAMAS ─── */}
+                            {uciActiveTab === 'camas' && (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                                    <UciGanttChart 
+                                        rawData={rows}
+                                        historialCamas={camasHistorialRows}
+                                        fechaDesde={fechaDesde}
+                                        fechaHasta={fechaHasta}
+                                        datePresetMode={datePresetMode}
+                                        onDatePresetChange={handleSetDatePreset}
+                                        onCustomDateChange={(d, h) => {
+                                            setFechaDesde(d);
+                                            setFechaHasta(h);
+                                            setDatePresetMode('personalizado');
+                                        }}
+                                        onOpenMortalidadAudit={(patient) => {
+                                            setMortalidadAuditTargetPatient(patient);
+                                            setIsMortalidadAuditOpen(true);
+                                        }}
+                                        onClose={() => setUciActiveTab('censo')}
+                                    />
+                                </div>
+                            )}
+
+                            {/* ─── PESTAÑA 3: DEMOGRAFÍA & ESPECIALIDADES ─── */}
+                            {uciActiveTab === 'demografia' && (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                                    <div style={{
+                                        display: 'flex',
+                                        flexWrap: 'wrap',
+                                        gap: '20px',
+                                        alignItems: 'stretch'
+                                    }}>
+                                        {renderChartCard('chart_especialidades', 0)}
+                                        {renderChartCard('chart_sexo_demografia', 1)}
+                                        {renderChartCard('chart_rango_etario', 2)}
+                                        {renderChartCard('chart_procedencia', 3)}
+                                        {renderChartCard('chart_clientes', 4)}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* ─── PESTAÑA 4: SEGURIDAD CLÍNICA & AUDITORÍA DE MORTALIDAD ─── */}
+                            {uciActiveTab === 'mortalidad' && (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                                    <div style={{
+                                        background: '#FFFFFF',
+                                        border: '1.5px solid #FEE2E2',
                                         borderRadius: '12px',
-                                        padding: '14px 20px',
+                                        padding: '18px 24px',
                                         display: 'flex',
                                         alignItems: 'center',
                                         justifyContent: 'space-between',
-                                        color: '#FFFFFF',
-                                        boxShadow: '0 4px 12px rgba(15, 23, 42, 0.1)',
                                         flexWrap: 'wrap',
-                                        gap: '12px'
+                                        gap: '16px',
+                                        boxShadow: '0 2px 8px -2px rgba(239, 68, 68, 0.08)'
                                     }}>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                            <div style={{ background: '#2563EB', padding: '8px', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                                <Bed size={20} color="#FFFFFF" />
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                                            <div style={{
+                                                width: '46px',
+                                                height: '46px',
+                                                borderRadius: '10px',
+                                                background: '#FEE2E2',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                color: '#DC2626'
+                                            }}>
+                                                <HeartPulse size={24} />
                                             </div>
                                             <div>
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                    <span style={{ fontSize: '0.95rem', fontWeight: 800 }}>
-                                                        Cronograma Gantt de Ocupación por Cama
+                                                    <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#991B1B', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                                        Auditoría Médica de Cuidados Críticos
                                                     </span>
-                                                    <span style={{ background: '#3B82F6', fontSize: '0.68rem', padding: '2px 8px', borderRadius: '10px', fontWeight: 700 }}>
-                                                        16 Camas en Tiempo Real
+                                                    <span style={{ fontSize: '0.68rem', fontWeight: 700, background: '#DC2626', color: '#FFFFFF', padding: '1px 6px', borderRadius: '4px' }}>
+                                                        SEGURIDAD PACIENTE
                                                     </span>
                                                 </div>
-                                                <span style={{ fontSize: '0.74rem', opacity: 0.85 }}>
-                                                    Línea de tiempo longitudinal con las 16 camas en el eje Y y desplazamiento horizontal de pacientes.
+                                                <h3 style={{ margin: '3px 0 2px 0', fontSize: '1.25rem', fontWeight: 800, color: '#1E293B' }}>
+                                                    Tasa de Defunción en UCI: <span style={{ color: '#DC2626' }}>{metrics.porcDefuncion}%</span>
+                                                </h3>
+                                                <span style={{ fontSize: '0.78rem', color: '#64748B' }}>
+                                                    {metrics.defunciones} fallecimientos registrados de un total de {metrics.totalAdmisiones} admisiones en el período seleccionado
                                                 </span>
                                             </div>
                                         </div>
+
                                         <button
-                                            onClick={() => setViewMode('gantt')}
+                                            type="button"
+                                            onClick={() => setIsMortalidadAuditOpen(true)}
                                             style={{
-                                                background: '#FFFFFF',
-                                                color: '#1E40AF',
+                                                background: '#DC2626',
+                                                color: '#FFFFFF',
                                                 border: 'none',
                                                 borderRadius: '8px',
-                                                padding: '8px 16px',
-                                                fontSize: '0.8rem',
+                                                padding: '10px 18px',
+                                                fontSize: '0.85rem',
                                                 fontWeight: 800,
                                                 cursor: 'pointer',
                                                 display: 'flex',
                                                 alignItems: 'center',
-                                                gap: '6px',
-                                                boxShadow: '0 2px 6px rgba(0,0,0,0.1)'
+                                                gap: '8px',
+                                                boxShadow: '0 2px 6px rgba(220, 38, 38, 0.25)',
+                                                transition: 'all 0.15s ease'
                                             }}
                                         >
-                                            <span>Abrir Diagrama de Gantt</span>
-                                            <ChevronRight size={16} />
+                                            <Eye size={16} />
+                                            <span>Abrir Auditoría Nominal Completa</span>
                                         </button>
                                     </div>
-                                )}
 
-                                {/* ─── BLOQUE 1: SCORECARDS EJECUTIVOS ─── */}
-                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
-
-                                    {/* 1. Días Camas Ocupados */}
-                                    {isIndicatorActive('kpi_dias_ocupados') && (
-                                        <div style={{
-                                            background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '12px',
-                                            padding: '18px 20px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
-                                            boxShadow: '0 2px 4px rgba(0,0,0,0.02)', position: 'relative'
-                                        }}>
-                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                                                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>
-                                                    Días Camas Ocupados
-                                                </span>
-                                                <button
-                                                    onClick={() => setInspectDataIndicator({ id: 'kpi_dias_ocupados', label: 'Días Camas Ocupados', sector: activeSectorConfig.label })}
-                                                    title="Ver datos tabulados"
-                                                    style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#94A3B8' }}
-                                                >
-                                                    <Eye size={15} />
-                                                </button>
-                                            </div>
-                                            <div style={{ fontSize: '2.2rem', fontWeight: 800, color: '#1E293B', margin: '8px 0' }}>
-                                                {Number(metrics.diasOcupados || 0).toLocaleString('es-AR')}
-                                            </div>
-                                            <span style={{ fontSize: '0.75rem', color: '#10B981', fontWeight: 600 }}>
-                                                ✓ Total pernoctadas / camas consumidas
-                                            </span>
-                                        </div>
-                                    )}
-
-                                    {/* 2. Días Camas Disponibles */}
-                                    {isIndicatorActive('kpi_dias_disponibles') && (
-                                        <div style={{
-                                            background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '12px',
-                                            padding: '18px 20px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
-                                            boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
-                                        }}>
-                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                                                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>
-                                                    Días Camas Disponibles
-                                                </span>
-                                                <span style={{ fontSize: '0.75rem', color: '#94A3B8' }}>{camasTotales} camas</span>
-                                            </div>
-                                            <div style={{ fontSize: '2.2rem', fontWeight: 800, color: '#1E293B', margin: '8px 0' }}>
-                                                {Number(metrics.camasDisponibles || 0).toLocaleString('es-AR')}
-                                            </div>
-                                            <span style={{ fontSize: '0.75rem', color: '#64748B' }}>
-                                                Capacidad instalada del sector
-                                            </span>
-                                        </div>
-                                    )}
-
-                                    {/* 3. % de Ocupación */}
-                                    {isIndicatorActive('kpi_porc_ocupacion') && (
-                                        <div style={{
-                                            background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '12px',
-                                            padding: '18px 20px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
-                                            boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
-                                        }}>
-                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                                                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>
-                                                    % de Ocupación
-                                                </span>
-                                                <span style={{
-                                                    width: '10px', height: '10px', borderRadius: '50%',
-                                                    background: Number(metrics.porcOcupacion) > 95 ? '#EF4444' : Number(metrics.porcOcupacion) > 85 ? '#F59E0B' : '#10B981'
-                                                }} />
-                                            </div>
-                                            <div style={{
-                                                fontSize: '2.2rem', fontWeight: 800, margin: '8px 0',
-                                                color: Number(metrics.porcOcupacion) > 95 ? '#EF4444' : Number(metrics.porcOcupacion) > 85 ? '#D97706' : '#10B981'
-                                            }}>
-                                                {metrics.porcOcupacion}%
-                                            </div>
-                                            <span style={{ fontSize: '0.75rem', color: '#64748B' }}>
-                                                {Number(metrics.porcOcupacion) > 95 ? '⚠️ Alta Saturación' : 'Normal operativa'}
-                                            </span>
-                                        </div>
-                                    )}
-
-                                    {/* 4. % de Defunción */}
-                                    {isIndicatorActive('kpi_porc_defuncion') && (
-                                        <div
-                                            onClick={() => setIsMortalidadAuditOpen(true)}
-                                            title="Ver Auditoría Clínica de Mortalidad y Motivos de Defunción"
-                                            style={{
-                                                background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '12px',
-                                                padding: '18px 20px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
-                                                boxShadow: '0 2px 4px rgba(0,0,0,0.02)', cursor: 'pointer', transition: 'border-color 0.15s'
-                                            }}
-                                        >
-                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                                                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>
-                                                    % de Defunción
-                                                </span>
-                                                <button
-                                                    onClick={(e) => { e.stopPropagation(); setIsMortalidadAuditOpen(true); }}
-                                                    title="Auditoría Clínica de Mortalidad"
-                                                    style={{
-                                                        background: '#FEE2E2', border: 'none', cursor: 'pointer', color: '#DC2626',
-                                                        padding: '4px 8px', borderRadius: '6px', display: 'flex', alignItems: 'center',
-                                                        gap: '4px', fontSize: '0.72rem', fontWeight: 700
-                                                    }}
-                                                >
-                                                    <Eye size={13} />
-                                                    Auditar
-                                                </button>
-                                            </div>
-                                            <div style={{ fontSize: '2.2rem', fontWeight: 800, color: '#EF4444', margin: '8px 0' }}>
-                                                {metrics.porcDefuncion}%
-                                            </div>
-                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                <span style={{ fontSize: '0.75rem', color: '#64748B' }}>
-                                                    {metrics.defunciones} de {metrics.totalAdmisiones} admisiones
-                                                </span>
-                                                <span style={{ fontSize: '0.7rem', color: '#DC2626', fontWeight: 700 }}>
-                                                    Ver motivos →
-                                                </span>
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {/* 5. Promedio de Estancia (ALOS) - Activado o desde catálogo */}
-                                    {isIndicatorActive('kpi_alos') && (
-                                        <div style={{
-                                            background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '12px',
-                                            padding: '18px 20px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
-                                            boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
-                                        }}>
-                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                                                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>
-                                                    Promedio de Estancia
-                                                </span>
-                                                <Clock size={16} color="#2563EB" />
-                                            </div>
-                                            <div style={{ fontSize: '2.2rem', fontWeight: 800, color: '#2563EB', margin: '8px 0' }}>
-                                                {metrics.alos} <span style={{ fontSize: '1rem', fontWeight: 600 }}>días</span>
-                                            </div>
-                                            <span style={{ fontSize: '0.75rem', color: '#64748B' }}>
-                                                Rotación media por paciente
-                                            </span>
-                                        </div>
-                                    )}
-
-                                    {/* 6. Intensidad Diagnóstica (Estudios / Cama-Día) */}
-                                    {isIndicatorActive('kpi_intensidad_diagnostica') && (
-                                        <div style={{
-                                            background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '12px',
-                                            padding: '18px 20px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
-                                            boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
-                                        }}>
-                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                                                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>
-                                                    Intensidad Diagnóstica
-                                                </span>
-                                                <span style={{
-                                                    fontSize: '0.7rem', fontWeight: 700, color: '#1E40AF', background: '#EFF6FF',
-                                                    padding: '2px 6px', borderRadius: '6px'
-                                                }}>
-                                                    VLISE
-                                                </span>
-                                            </div>
-                                            <div style={{ fontSize: '2.2rem', fontWeight: 800, color: '#0F172A', margin: '8px 0' }}>
-                                                {metrics.intensidadCamaDia} <span style={{ fontSize: '0.85rem', fontWeight: 600, color: '#64748B' }}>estudios/cama-día</span>
-                                            </div>
-                                            <span style={{ fontSize: '0.75rem', color: '#64748B' }}>
-                                                {Number(metrics.totalEstudiosPeriodo || 0).toLocaleString('es-AR')} estudios en {activeSectorConfig.shortLabel} (~{metrics.estudiosPorAdmision || 0}/paciente)
-                                            </span>
-                                        </div>
-                                    )}
-
-                                </div>
-
-                                {/* ─── BARRA DE CONTROL DEL LIENZO DE GRÁFICOS (REORDENABLES Y REDIMENSIONABLES) ─── */}
-                                <div style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'space-between',
-                                    padding: '10px 16px',
-                                    background: '#FFFFFF',
-                                    border: '1px solid #E2E8F0',
-                                    borderRadius: '10px',
-                                    flexWrap: 'wrap',
-                                    gap: '10px'
-                                }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                        <div style={{ background: '#EFF6FF', color: '#1E40AF', padding: '6px', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                            <Move size={15} />
-                                        </div>
-                                        <div>
-                                            <div style={{ fontSize: '0.82rem', fontWeight: 800, color: '#1E293B' }}>
-                                                Lienzo Dinámico de Gráficos & Auditoría
-                                            </div>
-                                            <span style={{ fontSize: '0.7rem', color: '#64748B' }}>
-                                                Arrastra los gráficos desde el tirador ⠿ para reordenar libremente · Redimensiona alto y ancho desde la esquina ⤡ o con botones 50%/100%.
-                                            </span>
-                                        </div>
+                                    <div style={{
+                                        display: 'flex',
+                                        flexWrap: 'wrap',
+                                        gap: '20px',
+                                        alignItems: 'stretch'
+                                    }}>
+                                        {renderChartCard('chart_motivos_alta', 0)}
                                     </div>
+                                </div>
+                            )}
 
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                        {/* Filtro Rápido de Modalidad Diagnóstica (VLISE) */}
+                            {/* ─── PESTAÑA 5: SOPORTE DIAGNÓSTICO & TRAZABILIDAD (VLISE) ─── */}
+                            {uciActiveTab === 'diagnostico' && (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                                    <div style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'space-between',
+                                        padding: '10px 16px',
+                                        background: '#FFFFFF',
+                                        border: '1px solid #E2E8F0',
+                                        borderRadius: '10px',
+                                        flexWrap: 'wrap',
+                                        gap: '10px'
+                                    }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                            <div style={{ background: '#EFF6FF', color: '#1E40AF', padding: '6px', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                                <Layers size={15} />
+                                            </div>
+                                            <div>
+                                                <div style={{ fontSize: '0.82rem', fontWeight: 800, color: '#1E293B' }}>
+                                                    Soporte Diagnóstico VLISE (Laboratorio & Radiología)
+                                                </div>
+                                                <span style={{ fontSize: '0.7rem', color: '#64748B' }}>
+                                                    Intensidad diagnóstica: <strong>{metrics.intensidadCamaDia}</strong> estudios/cama-día ({Number(metrics.totalEstudiosPeriodo || 0).toLocaleString('es-AR')} estudios totales)
+                                                </span>
+                                            </div>
+                                        </div>
+
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: '#F8FAFC', padding: '3px 6px', borderRadius: '6px', border: '1px solid #E2E8F0' }}>
-                                            <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#64748B' }}>VLISE:</span>
+                                            <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#64748B' }}>Modalidad:</span>
                                             {[
                                                 { id: 'TODAS', label: 'Todas' },
                                                 { id: 'Laboratorio', label: 'Laboratorio' },
@@ -4355,9 +4319,9 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                                         background: modalidadFiltro === m.id ? '#EFF6FF' : 'transparent',
                                                         border: modalidadFiltro === m.id ? '1px solid #2563EB' : '1px solid transparent',
                                                         color: modalidadFiltro === m.id ? '#1E40AF' : '#475569',
-                                                        padding: '2px 6px',
+                                                        padding: '3px 8px',
                                                         borderRadius: '4px',
-                                                        fontSize: '0.68rem',
+                                                        fontSize: '0.72rem',
                                                         fontWeight: modalidadFiltro === m.id ? 800 : 500,
                                                         cursor: 'pointer'
                                                     }}
@@ -4366,46 +4330,350 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                                 </button>
                                             ))}
                                         </div>
+                                    </div>
 
-                                        <button
-                                            type="button"
-                                            onClick={handleResetChartLayout}
-                                            title="Restablecer orden y tamaños predeterminados"
-                                            style={{
-                                                background: '#F8FAFC',
-                                                border: '1px solid #CBD5E1',
-                                                borderRadius: '6px',
-                                                padding: '4px 10px',
-                                                fontSize: '0.72rem',
-                                                fontWeight: 600,
-                                                color: '#475569',
-                                                cursor: 'pointer',
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                gap: '5px'
-                                            }}
-                                        >
-                                            <RotateCcw size={13} />
-                                            <span>Restablecer Lienzo</span>
-                                        </button>
+                                    <div style={{
+                                        display: 'flex',
+                                        flexWrap: 'wrap',
+                                        gap: '20px',
+                                        alignItems: 'stretch'
+                                    }}>
+                                        {renderChartCard('chart_produccion_origen', 0)}
+                                        {renderChartCard('chart_estudios_por_box', 1)}
+                                        {renderChartCard('chart_top_estudios_uci', 2)}
+                                        {renderChartCard('chart_solicitantes_uci', 3)}
+                                        {renderChartCard('table_peticiones_detalle', 4)}
+                                    </div>
+                                </div>
+                            )}
+
+                        </div>
+                    ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                            
+                            {/* Banner de acceso rápido al Gantt de Camas */}
+                            {sectorId === 'UCI' && (
+                                <div style={{
+                                    background: 'linear-gradient(135deg, #0F172A 0%, #1E3A8A 100%)',
+                                    borderRadius: '12px',
+                                    padding: '14px 20px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between',
+                                    color: '#FFFFFF',
+                                    boxShadow: '0 4px 12px rgba(15, 23, 42, 0.1)',
+                                    flexWrap: 'wrap',
+                                    gap: '12px'
+                                }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                        <div style={{ background: '#2563EB', padding: '8px', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                            <Bed size={20} color="#FFFFFF" />
+                                        </div>
+                                        <div>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                <span style={{ fontSize: '0.95rem', fontWeight: 800 }}>
+                                                    Cronograma Gantt de Ocupación por Cama
+                                                </span>
+                                                <span style={{ background: '#3B82F6', fontSize: '0.68rem', padding: '2px 8px', borderRadius: '10px', fontWeight: 700 }}>
+                                                    16 Camas en Tiempo Real
+                                                </span>
+                                            </div>
+                                            <span style={{ fontSize: '0.74rem', opacity: 0.85 }}>
+                                                Línea de tiempo longitudinal con las 16 camas en el eje Y y desplazamiento horizontal de pacientes.
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <button
+                                        onClick={() => setViewMode('gantt')}
+                                        style={{
+                                            background: '#FFFFFF',
+                                            color: '#1E40AF',
+                                            border: 'none',
+                                            borderRadius: '8px',
+                                            padding: '8px 16px',
+                                            fontSize: '0.8rem',
+                                            fontWeight: 800,
+                                            cursor: 'pointer',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '6px',
+                                            boxShadow: '0 2px 6px rgba(0,0,0,0.1)'
+                                        }}
+                                    >
+                                        <span>Abrir Diagrama de Gantt</span>
+                                        <ChevronRight size={16} />
+                                    </button>
+                                </div>
+                            )}
+
+                            {/* ─── BLOQUE 1: SCORECARDS EJECUTIVOS ─── */}
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
+                                
+                                {/* 1. Días Camas Ocupados */}
+                                {isIndicatorActive('kpi_dias_ocupados') && (
+                                    <div style={{
+                                        background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '12px',
+                                        padding: '18px 20px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
+                                        boxShadow: '0 2px 4px rgba(0,0,0,0.02)', position: 'relative'
+                                    }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>
+                                                Días Camas Ocupados
+                                            </span>
+                                            <button 
+                                                onClick={() => setInspectDataIndicator({ id: 'kpi_dias_ocupados', label: 'Días Camas Ocupados', sector: activeSectorConfig.label })}
+                                                title="Ver datos tabulados"
+                                                style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#94A3B8' }}
+                                            >
+                                                <Eye size={15} />
+                                            </button>
+                                        </div>
+                                        <div style={{ fontSize: '2.2rem', fontWeight: 800, color: '#1E293B', margin: '8px 0' }}>
+                                            {Number(metrics.diasOcupados || 0).toLocaleString('es-AR')}
+                                        </div>
+                                        <span style={{ fontSize: '0.75rem', color: '#10B981', fontWeight: 600 }}>
+                                            ✓ Total pernoctadas / camas consumidas
+                                        </span>
+                                    </div>
+                                )}
+
+                                {/* 2. Días Camas Disponibles */}
+                                {isIndicatorActive('kpi_dias_disponibles') && (
+                                    <div style={{
+                                        background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '12px',
+                                        padding: '18px 20px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
+                                        boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
+                                    }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>
+                                                Días Camas Disponibles
+                                            </span>
+                                            <span style={{ fontSize: '0.75rem', color: '#94A3B8' }}>{camasTotales} camas</span>
+                                        </div>
+                                        <div style={{ fontSize: '2.2rem', fontWeight: 800, color: '#1E293B', margin: '8px 0' }}>
+                                            {Number(metrics.camasDisponibles || 0).toLocaleString('es-AR')}
+                                        </div>
+                                        <span style={{ fontSize: '0.75rem', color: '#64748B' }}>
+                                            Capacidad instalada del sector
+                                        </span>
+                                    </div>
+                                )}
+
+                                {/* 3. % de Ocupación */}
+                                {isIndicatorActive('kpi_porc_ocupacion') && (
+                                    <div style={{
+                                        background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '12px',
+                                        padding: '18px 20px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
+                                        boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
+                                    }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>
+                                                % de Ocupación
+                                            </span>
+                                            <span style={{
+                                                width: '10px', height: '10px', borderRadius: '50%',
+                                                background: Number(metrics.porcOcupacion) > 95 ? '#EF4444' : Number(metrics.porcOcupacion) > 85 ? '#F59E0B' : '#10B981'
+                                            }} />
+                                        </div>
+                                        <div style={{
+                                            fontSize: '2.2rem', fontWeight: 800, margin: '8px 0',
+                                            color: Number(metrics.porcOcupacion) > 95 ? '#EF4444' : Number(metrics.porcOcupacion) > 85 ? '#D97706' : '#10B981'
+                                        }}>
+                                            {metrics.porcOcupacion}%
+                                        </div>
+                                        <span style={{ fontSize: '0.75rem', color: '#64748B' }}>
+                                            {Number(metrics.porcOcupacion) > 95 ? '⚠️ Alta Saturación' : 'Normal operativa'}
+                                        </span>
+                                    </div>
+                                )}
+
+                                {/* 4. % de Defunción */}
+                                {isIndicatorActive('kpi_porc_defuncion') && (
+                                    <div 
+                                        onClick={() => setIsMortalidadAuditOpen(true)}
+                                        title="Ver Auditoría Clínica de Mortalidad y Motivos de Defunción"
+                                        style={{
+                                            background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '12px',
+                                            padding: '18px 20px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
+                                            boxShadow: '0 2px 4px rgba(0,0,0,0.02)', cursor: 'pointer', transition: 'border-color 0.15s'
+                                        }}
+                                    >
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>
+                                                % de Defunción
+                                            </span>
+                                            <button 
+                                                onClick={(e) => { e.stopPropagation(); setIsMortalidadAuditOpen(true); }}
+                                                title="Auditoría Clínica de Mortalidad"
+                                                style={{ 
+                                                    background: '#FEE2E2', border: 'none', cursor: 'pointer', color: '#DC2626', 
+                                                    padding: '4px 8px', borderRadius: '6px', display: 'flex', alignItems: 'center', 
+                                                    gap: '4px', fontSize: '0.72rem', fontWeight: 700 
+                                                }}
+                                            >
+                                                <Eye size={13} />
+                                                Auditar
+                                            </button>
+                                        </div>
+                                        <div style={{ fontSize: '2.2rem', fontWeight: 800, color: '#EF4444', margin: '8px 0' }}>
+                                            {metrics.porcDefuncion}%
+                                        </div>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                            <span style={{ fontSize: '0.75rem', color: '#64748B' }}>
+                                                {metrics.defunciones} de {metrics.totalAdmisiones} admisiones
+                                            </span>
+                                            <span style={{ fontSize: '0.7rem', color: '#DC2626', fontWeight: 700 }}>
+                                                Ver motivos →
+                                            </span>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* 5. Promedio de Estancia (ALOS) - Activado o desde catálogo */}
+                                {isIndicatorActive('kpi_alos') && (
+                                    <div style={{
+                                        background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '12px',
+                                        padding: '18px 20px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
+                                        boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
+                                    }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>
+                                                Promedio de Estancia
+                                            </span>
+                                            <Clock size={16} color="#2563EB" />
+                                        </div>
+                                        <div style={{ fontSize: '2.2rem', fontWeight: 800, color: '#2563EB', margin: '8px 0' }}>
+                                            {metrics.alos} <span style={{ fontSize: '1rem', fontWeight: 600 }}>días</span>
+                                        </div>
+                                        <span style={{ fontSize: '0.75rem', color: '#64748B' }}>
+                                            Rotación media por paciente
+                                        </span>
+                                    </div>
+                                )}
+
+                                {/* 6. Intensidad Diagnóstica (Estudios / Cama-Día) */}
+                                {isIndicatorActive('kpi_intensidad_diagnostica') && (
+                                    <div style={{
+                                        background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '12px',
+                                        padding: '18px 20px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
+                                        boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
+                                    }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>
+                                                Intensidad Diagnóstica
+                                            </span>
+                                            <span style={{
+                                                fontSize: '0.7rem', fontWeight: 700, color: '#1E40AF', background: '#EFF6FF',
+                                                padding: '2px 6px', borderRadius: '6px'
+                                            }}>
+                                                VLISE
+                                            </span>
+                                        </div>
+                                        <div style={{ fontSize: '2.2rem', fontWeight: 800, color: '#0F172A', margin: '8px 0' }}>
+                                            {metrics.intensidadCamaDia} <span style={{ fontSize: '0.85rem', fontWeight: 600, color: '#64748B' }}>estudios/cama-día</span>
+                                        </div>
+                                        <span style={{ fontSize: '0.75rem', color: '#64748B' }}>
+                                            {Number(metrics.totalEstudiosPeriodo || 0).toLocaleString('es-AR')} estudios en {activeSectorConfig.shortLabel} (~{metrics.estudiosPorAdmision || 0}/paciente)
+                                        </span>
+                                    </div>
+                                )}
+
+                            </div>
+
+                            {/* ─── BARRA DE CONTROL DEL LIENZO DE GRÁFICOS (REORDENABLES Y REDIMENSIONABLES) ─── */}
+                            <div style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                padding: '10px 16px',
+                                background: '#FFFFFF',
+                                border: '1px solid #E2E8F0',
+                                borderRadius: '10px',
+                                flexWrap: 'wrap',
+                                gap: '10px'
+                            }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <div style={{ background: '#EFF6FF', color: '#1E40AF', padding: '6px', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                        <Move size={15} />
+                                    </div>
+                                    <div>
+                                        <div style={{ fontSize: '0.82rem', fontWeight: 800, color: '#1E293B' }}>
+                                            Lienzo Dinámico de Gráficos & Auditoría
+                                        </div>
+                                        <span style={{ fontSize: '0.7rem', color: '#64748B' }}>
+                                            Arrastra los gráficos desde el tirador ⠿ para reordenar libremente · Redimensiona alto y ancho desde la esquina ⤡ o con botones 50%/100%.
+                                        </span>
                                     </div>
                                 </div>
 
-                                {/* ─── CONTENEDOR FLEXIBLE DE GRÁFICOS REORDENABLES Y REDIMENSIONABLES ─── */}
-                                <div style={{
-                                    display: 'flex',
-                                    flexWrap: 'wrap',
-                                    gap: '20px',
-                                    alignItems: 'stretch'
-                                }}>
-                                    {chartOrder.map((chartId, index) => {
-                                        if (!isIndicatorActive(chartId)) return null;
-                                        return renderChartCard(chartId, index);
-                                    })}
-                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                    {/* Filtro Rápido de Modalidad Diagnóstica (VLISE) */}
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: '#F8FAFC', padding: '3px 6px', borderRadius: '6px', border: '1px solid #E2E8F0' }}>
+                                        <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#64748B' }}>VLISE:</span>
+                                        {[
+                                            { id: 'TODAS', label: 'Todas' },
+                                            { id: 'Laboratorio', label: 'Laboratorio' },
+                                            { id: 'Imágenes', label: 'Radiología (RX)' }
+                                        ].map(m => (
+                                            <button
+                                                key={m.id}
+                                                type="button"
+                                                onClick={() => setModalidadFiltro(m.id)}
+                                                style={{
+                                                    background: modalidadFiltro === m.id ? '#EFF6FF' : 'transparent',
+                                                    border: modalidadFiltro === m.id ? '1px solid #2563EB' : '1px solid transparent',
+                                                    color: modalidadFiltro === m.id ? '#1E40AF' : '#475569',
+                                                    padding: '2px 6px',
+                                                    borderRadius: '4px',
+                                                    fontSize: '0.68rem',
+                                                    fontWeight: modalidadFiltro === m.id ? 800 : 500,
+                                                    cursor: 'pointer'
+                                                }}
+                                            >
+                                                {m.label}
+                                            </button>
+                                        ))}
+                                    </div>
 
+                                    <button
+                                        type="button"
+                                        onClick={handleResetChartLayout}
+                                        title="Restablecer orden y tamaños predeterminados"
+                                        style={{
+                                            background: '#F8FAFC',
+                                            border: '1px solid #CBD5E1',
+                                            borderRadius: '6px',
+                                            padding: '4px 10px',
+                                            fontSize: '0.72rem',
+                                            fontWeight: 600,
+                                            color: '#475569',
+                                            cursor: 'pointer',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '5px'
+                                        }}
+                                    >
+                                        <RotateCcw size={13} />
+                                        <span>Restablecer Lienzo</span>
+                                    </button>
+                                </div>
                             </div>
-                        )}
+
+                            {/* ─── CONTENEDOR FLEXIBLE DE GRÁFICOS REORDENABLES Y REDIMENSIONABLES ─── */}
+                            <div style={{
+                                display: 'flex',
+                                flexWrap: 'wrap',
+                                gap: '20px',
+                                alignItems: 'stretch'
+                            }}>
+                                {chartOrder.map((chartId, index) => {
+                                    if (!isIndicatorActive(chartId)) return null;
+                                    return renderChartCard(chartId, index);
+                                })}
+                            </div>
+
+                        </div>
+                    )}
                     </Suspense>
                 </div>
 
@@ -4424,8 +4692,8 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                         modalidadFiltro: modalidadFiltro !== 'TODAS' ? modalidadFiltro : null
                     }}
                     rawData={
-                        inspectDataIndicator.dataType === 'peticiones'
-                            ? (inspectDataIndicator.rawData || metrics.peticionesFiltradas)
+                        inspectDataIndicator.dataType === 'peticiones' 
+                            ? (inspectDataIndicator.rawData || metrics.peticionesFiltradas) 
                             : inspectDataIndicator.id === 'kpi_dias_ocupados'
                                 ? filteredRows
                                 : (metrics.admisionesUnicas || filteredRows)

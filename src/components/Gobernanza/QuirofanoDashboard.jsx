@@ -1771,11 +1771,21 @@ export default function QuirofanoDashboard({
     currentTab,
     onTabChange
 }) {
-    const [activeTab, setActiveTab] = useState(() => currentTab || 'resumen');
+    const VALID_TABS = ['resumen', 'hospitalDeDia', 'demografia', 'urgencias', 'suspensiones', 'bloques', 'equipos', 'interanual'];
+    const normalizeTab = (t) => {
+        if (!t) return 'resumen';
+        const lower = String(t).toLowerCase();
+        return VALID_TABS.find(v => v.toLowerCase() === lower) || 'resumen';
+    };
+
+    const [activeTab, setActiveTab] = useState(() => normalizeTab(currentTab));
 
     useEffect(() => {
-        if (currentTab && currentTab !== activeTab) {
-            setActiveTab(currentTab);
+        if (currentTab) {
+            const resolved = normalizeTab(currentTab);
+            if (resolved !== activeTab) {
+                setActiveTab(resolved);
+            }
         }
     }, [currentTab]);
 
