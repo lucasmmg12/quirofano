@@ -1497,46 +1497,75 @@ export default function ReunionesServicioPanel({ sectorId = 'DXI', addToast }) {
                         <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#0F172A' }}>
                             Planificación y Seguimiento Accionable — Ejercicio 2027 ({sectorMeta.nombre})
                         </div>
-                        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                            <button
-                                type="button"
-                                onClick={() => setShowGuiaObjetivos(p => !p)}
-                                style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '7px 12px', borderRadius: '8px', border: '1px solid #CBD5E1', background: '#FFFFFF', color: '#334155', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer' }}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                            {/* Guía Oficial: solo '?' con descripción al pasar el mouse */}
+                            <div
+                                style={{ position: 'relative', display: 'inline-flex' }}
+                                onMouseEnter={() => setShowGuiaObjetivos(true)}
+                                onMouseLeave={() => setShowGuiaObjetivos(false)}
                             >
-                                <BookOpen size={14} /> {showGuiaObjetivos ? 'Ocultar Guía Oficial' : 'Guía Oficial Dirección'}
-                            </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setShowGuiaObjetivos(p => !p)}
+                                    aria-label="Guía Oficial Dirección"
+                                    style={{
+                                        width: '34px', height: '34px', borderRadius: '8px',
+                                        border: '1px solid #CBD5E1', background: showGuiaObjetivos ? '#EFF6FF' : '#FFFFFF',
+                                        color: COLOR_NAVY, fontSize: '0.9rem', fontWeight: 800,
+                                        cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center'
+                                    }}
+                                >
+                                    ?
+                                </button>
+                                {showGuiaObjetivos && (
+                                    <div style={{
+                                        position: 'absolute', top: 'calc(100% + 8px)', right: 0, zIndex: 80,
+                                        width: '440px', maxWidth: '88vw', background: '#FFFFFF',
+                                        border: '1px solid #CBD5E1', borderRadius: '10px',
+                                        boxShadow: '0 12px 28px rgba(15, 23, 42, 0.14)', padding: '14px 16px'
+                                    }}>
+                                        <div style={{ fontSize: '0.78rem', fontWeight: 800, color: COLOR_NAVY, marginBottom: '8px', paddingBottom: '6px', borderBottom: '1px solid #F1F5F9' }}>
+                                            Guía Oficial — Propuesta de Objetivos 2027
+                                        </div>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '7px', maxHeight: '340px', overflowY: 'auto' }}>
+                                            {GUIA_OBJETIVOS_2027.map((g, i) => (
+                                                <div key={i} style={{ fontSize: '0.73rem', lineHeight: 1.4 }}>
+                                                    <strong style={{ color: COLOR_NAVY }}>{g.campo}:</strong>{' '}
+                                                    <span style={{ color: '#334155' }}>{g.desc}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Exportar Excel: solo icono con tooltip 'Exportar' */}
                             <button
                                 type="button"
+                                title="Exportar"
+                                aria-label="Exportar"
                                 onClick={() => exportObjetivos2027Excel(objetivos, { servicioNombre: sectorMeta.nombre, responsable: sectorMeta.responsableDefault, anio: 2027 })}
                                 disabled={!objetivos.length}
-                                style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '7px 12px', borderRadius: '8px', border: '1px solid #A7F3D0', background: '#ECFDF5', color: '#065F46', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer' }}
+                                style={{
+                                    width: '34px', height: '34px', borderRadius: '8px',
+                                    border: '1px solid #BFDBFE', background: '#EFF6FF', color: COLOR_NAVY,
+                                    cursor: objetivos.length ? 'pointer' : 'not-allowed',
+                                    opacity: objetivos.length ? 1 : 0.45,
+                                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center'
+                                }}
                             >
-                                <FileSpreadsheet size={15} /> Exportar Excel Propuesta 2027
+                                <FileSpreadsheet size={16} />
                             </button>
+
                             <button
                                 type="button"
                                 onClick={handleAddNuevoObjetivo}
-                                style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '7px 14px', borderRadius: '8px', border: 'none', background: COLOR_NAVY, color: '#FFFFFF', fontSize: '0.76rem', fontWeight: 800, cursor: 'pointer' }}
+                                style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '7px 14px', borderRadius: '8px', border: 'none', background: COLOR_NAVY, color: '#FFFFFF', fontSize: '0.76rem', fontWeight: 800, cursor: 'pointer', height: '34px' }}
                             >
                                 <Plus size={15} /> Nuevo Objetivo 2027
                             </button>
                         </div>
                     </div>
-
-                    {/* Guía Oficial Desplegable */}
-                    {showGuiaObjetivos && (
-                        <CardBlock title="Guía Institucional — ¿Cómo completar la Propuesta de Objetivos 2027?" subtitle="Criterios metodológicos exigidos por Dirección para todos los servicios">
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '10px' }}>
-                                {GUIA_OBJETIVOS_2027.map((g, i) => (
-                                    <div key={i} style={{ padding: '10px 12px', borderRadius: '8px', background: '#F8FAFC', border: '1px solid #E2E8F0', fontSize: '0.76rem' }}>
-                                        <div style={{ fontWeight: 800, color: COLOR_NAVY, marginBottom: '3px' }}>{g.campo}</div>
-                                        <div style={{ color: '#334155', marginBottom: '4px' }}>{g.desc}</div>
-                                        <div style={{ color: '#0369A1', fontStyle: 'italic' }}>Ej.: "{g.ej}"</div>
-                                    </div>
-                                ))}
-                            </div>
-                        </CardBlock>
-                    )}
 
                     {/* Tarjetas Accionables de Objetivos (Estética Calidad-QOAG · Paleta Institucional) */}
                     {objetivos.map((obj) => {
