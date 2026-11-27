@@ -1538,88 +1538,100 @@ export default function ReunionesServicioPanel({ sectorId = 'DXI', addToast }) {
                         </CardBlock>
                     )}
 
-                    {/* Tarjetas Accionables de Objetivos */}
+                    {/* Tarjetas Accionables de Objetivos (Estética Calidad-QOAG · Paleta Institucional) */}
                     {objetivos.map((obj) => {
                         const isEditing = editingObjId === obj.id;
+                        const acciones = obj.acciones_principales || [];
+                        const completadasCount = acciones.filter(a => a.completada).length;
+                        const pct = obj.progreso_pct || 0;
                         return (
                             <div key={obj.id} style={{
-                                background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '12px',
-                                padding: '18px 20px', boxShadow: '0 1px 3px rgba(15, 23, 42, 0.03)',
-                                display: 'flex', flexDirection: 'column', gap: '14px'
+                                background: '#FFFFFF',
+                                border: '1px solid #E2E8F0',
+                                borderLeft: `4px solid ${COLOR_NAVY}`,
+                                borderRadius: '10px',
+                                padding: '18px 20px',
+                                boxShadow: '0 1px 3px rgba(15, 23, 42, 0.04)',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                gap: '14px'
                             }}>
                                 {/* Cabecera del Objetivo */}
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px', flexWrap: 'wrap' }}>
-                                    <div style={{ flex: '1 1 520px' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '16px', flexWrap: 'wrap', paddingBottom: '12px', borderBottom: '1px solid #F1F5F9' }}>
+                                    <div style={{ flex: '1 1 480px', minWidth: 0 }}>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px', flexWrap: 'wrap' }}>
-                                            <span style={{ padding: '3px 9px', borderRadius: '6px', background: COLOR_NAVY, color: '#FFFFFF', fontSize: '0.72rem', fontWeight: 800 }}>
+                                            <span style={{ padding: '2px 8px', borderRadius: '6px', background: COLOR_NAVY, color: '#FFFFFF', fontSize: '0.7rem', fontWeight: 800, letterSpacing: '0.03em' }}>
                                                 OBJ-0{obj.orden}
                                             </span>
-                                            <StatusBadge value={obj.estado} />
+                                            <span style={{ padding: '2px 8px', borderRadius: '6px', background: '#EFF6FF', border: '1px solid #BFDBFE', color: COLOR_NAVY, fontSize: '0.7rem', fontWeight: 700 }}>
+                                                {obj.estado || 'En ejecución'}
+                                            </span>
                                             {obj.plazo && (
-                                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '0.73rem', fontWeight: 700, color: '#475569' }}>
-                                                    <Calendar size={13} /> Plazo: {obj.plazo}
+                                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '0.73rem', fontWeight: 600, color: '#475569' }}>
+                                                    <Calendar size={12} color="#64748B" /> {obj.plazo}
                                                 </span>
                                             )}
                                             {obj.responsable && (
                                                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '0.73rem', color: '#64748B' }}>
-                                                    <Users size={13} /> {obj.responsable}
+                                                    <Users size={12} color="#64748B" /> {obj.responsable}
                                                 </span>
                                             )}
                                         </div>
                                         {isEditing ? (
                                             <input
-                                                style={{ ...inputStyle, fontWeight: 800, fontSize: '0.92rem' }}
+                                                style={{ ...inputStyle, fontWeight: 800, fontSize: '0.94rem' }}
                                                 value={obj.objetivo || ''}
                                                 onChange={e => setObjetivos(prev => prev.map(o => (o.id === obj.id ? { ...o, objetivo: e.target.value } : o)))}
                                             />
                                         ) : (
-                                            <h4 style={{ margin: 0, fontSize: '0.98rem', fontWeight: 800, color: '#0F172A', lineHeight: 1.35 }}>
+                                            <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: '#0F172A', lineHeight: 1.35 }}>
                                                 {obj.objetivo}
                                             </h4>
                                         )}
                                     </div>
 
-                                    {/* Barra de Avance + Acciones */}
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                        <div style={{ minWidth: '130px' }}>
-                                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', fontWeight: 800, color: COLOR_NAVY, marginBottom: '3px' }}>
-                                                <span>Avance</span>
-                                                <span>{obj.progreso_pct || 0}%</span>
+                                    {/* Avance Institucional + Acciones */}
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
+                                        <div style={{ minWidth: '132px', background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: '8px', padding: '6px 10px' }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '4px' }}>
+                                                <span style={{ fontSize: '0.67rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>Avance</span>
+                                                <span style={{ fontSize: '0.82rem', fontWeight: 800, color: COLOR_NAVY }}>{pct}%</span>
                                             </div>
-                                            <div style={{ width: '100%', height: '8px', background: '#E2E8F0', borderRadius: '999px', overflow: 'hidden' }}>
-                                                <div style={{ width: `${obj.progreso_pct || 0}%`, height: '100%', background: (obj.progreso_pct || 0) === 100 ? '#10B981' : '#0284C7', transition: 'width 0.25s ease' }} />
+                                            <div style={{ width: '100%', height: '6px', background: '#E2E8F0', borderRadius: '999px', overflow: 'hidden' }}>
+                                                <div style={{ width: `${pct}%`, height: '100%', background: COLOR_NAVY, borderRadius: '999px', transition: 'width 0.25s ease' }} />
                                             </div>
                                         </div>
                                         {isEditing ? (
                                             <button
                                                 type="button"
                                                 onClick={() => handleSaveObjetivoEdit(obj)}
-                                                style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '6px 12px', borderRadius: '8px', border: 'none', background: '#059669', color: '#FFFFFF', fontSize: '0.75rem', fontWeight: 800, cursor: 'pointer' }}
+                                                style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '7px 12px', borderRadius: '8px', border: 'none', background: COLOR_NAVY, color: '#FFFFFF', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer' }}
                                             >
-                                                <Save size={14} /> Guardar
+                                                <Save size={13} /> Guardar
                                             </button>
                                         ) : (
                                             <button
                                                 type="button"
                                                 onClick={() => setEditingObjId(obj.id)}
-                                                style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '6px 10px', borderRadius: '8px', border: '1px solid #CBD5E1', background: '#FFFFFF', color: '#334155', fontSize: '0.74rem', fontWeight: 700, cursor: 'pointer' }}
+                                                style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '7px 11px', borderRadius: '8px', border: '1px solid #CBD5E1', background: '#FFFFFF', color: '#334155', fontSize: '0.74rem', fontWeight: 700, cursor: 'pointer' }}
                                             >
-                                                <Edit3 size={13} /> Editar ficha
+                                                <Edit3 size={13} /> Editar
                                             </button>
                                         )}
                                         <button
                                             type="button"
+                                            title="Eliminar objetivo"
                                             onClick={() => handleDeleteObjetivo(obj)}
-                                            style={{ border: 'none', background: '#FEE2E2', color: '#991B1B', borderRadius: '8px', padding: '7px', cursor: 'pointer' }}
+                                            style={{ border: '1px solid #E2E8F0', background: '#FFFFFF', color: '#64748B', borderRadius: '8px', padding: '7px', cursor: 'pointer' }}
                                         >
                                             <Trash2 size={14} />
                                         </button>
                                     </div>
                                 </div>
 
-                                {/* Ficha Técnica del Objetivo */}
+                                {/* Cuerpo: Edición o Vista 2 Columnas (Ficha Técnica | Plan de Acción) */}
                                 {isEditing ? (
-                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '10px', background: '#F8FAFC', padding: '12px', borderRadius: '8px' }}>
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '10px', background: '#F8FAFC', padding: '12px', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
                                         <div>
                                             <label style={{ fontSize: '0.7rem', fontWeight: 700, color: '#475569' }}>Situación de partida / Línea de base</label>
                                             <textarea rows={2} style={inputStyle} value={obj.linea_base || ''} onChange={e => setObjetivos(prev => prev.map(o => (o.id === obj.id ? { ...o, linea_base: e.target.value } : o)))} />
@@ -1665,58 +1677,97 @@ export default function ReunionesServicioPanel({ sectorId = 'DXI', addToast }) {
                                         </div>
                                     </div>
                                 ) : (
-                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '10px', background: '#F8FAFC', padding: '12px 14px', borderRadius: '8px', border: '1px solid #F1F5F9', fontSize: '0.78rem' }}>
-                                        <div><strong style={{ color: COLOR_NAVY }}>Línea de base:</strong> <span style={{ color: '#334155' }}>{obj.linea_base || '—'}</span></div>
-                                        <div><strong style={{ color: COLOR_NAVY }}>Indicador y Fórmula:</strong> <span style={{ color: '#334155' }}>{obj.indicador || '—'} {obj.formula_medicion ? `(${obj.formula_medicion})` : ''}</span></div>
-                                        <div><strong style={{ color: '#065F46' }}>Meta 2027:</strong> <span style={{ color: '#0F172A', fontWeight: 700 }}>{obj.meta || '—'}</span></div>
-                                        <div><strong style={{ color: '#92400E' }}>Apoyo / Inversión requerida:</strong> <span style={{ color: '#334155' }}>{obj.necesidades_apoyo || 'No requiere'}</span></div>
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '16px', alignItems: 'start' }}>
+                                        {/* Columna Izquierda: Ficha Técnica */}
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                            <div style={{ padding: '10px 12px', borderRadius: '8px', background: '#EFF6FF', border: '1px solid #BFDBFE' }}>
+                                                <div style={{ fontSize: '0.67rem', fontWeight: 800, color: COLOR_NAVY, textTransform: 'uppercase', letterSpacing: '0.03em', marginBottom: '2px' }}>
+                                                    Meta 2027
+                                                </div>
+                                                <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#0F172A', lineHeight: 1.4 }}>
+                                                    {obj.meta || '—'}
+                                                </div>
+                                            </div>
+                                            <div style={{ padding: '9px 12px', borderRadius: '8px', background: '#F8FAFC', border: '1px solid #E2E8F0' }}>
+                                                <div style={{ fontSize: '0.67rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase', marginBottom: '2px' }}>
+                                                    Indicador y Fórmula
+                                                </div>
+                                                <div style={{ fontSize: '0.78rem', color: '#334155', lineHeight: 1.4 }}>
+                                                    {obj.indicador || '—'} {obj.formula_medicion ? `(${obj.formula_medicion})` : ''}
+                                                </div>
+                                            </div>
+                                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                                                <div style={{ padding: '9px 12px', borderRadius: '8px', background: '#F8FAFC', border: '1px solid #E2E8F0' }}>
+                                                    <div style={{ fontSize: '0.67rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase', marginBottom: '2px' }}>
+                                                        Línea de base
+                                                    </div>
+                                                    <div style={{ fontSize: '0.76rem', color: '#334155', lineHeight: 1.4 }}>
+                                                        {obj.linea_base || '—'}
+                                                    </div>
+                                                </div>
+                                                <div style={{ padding: '9px 12px', borderRadius: '8px', background: '#F8FAFC', border: '1px solid #E2E8F0' }}>
+                                                    <div style={{ fontSize: '0.67rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase', marginBottom: '2px' }}>
+                                                        Apoyo / Inversión
+                                                    </div>
+                                                    <div style={{ fontSize: '0.76rem', color: '#334155', lineHeight: 1.4 }}>
+                                                        {obj.necesidades_apoyo || 'No requiere'}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Columna Derecha: Plan de Acción Operativo */}
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '2px' }}>
+                                                <span style={{ fontSize: '0.74rem', fontWeight: 800, color: COLOR_NAVY, display: 'inline-flex', alignItems: 'center', gap: '6px', textTransform: 'uppercase', letterSpacing: '0.02em' }}>
+                                                    <ListChecks size={14} /> Plan de Acción
+                                                </span>
+                                                <span style={{ fontSize: '0.7rem', fontWeight: 700, color: COLOR_NAVY, background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: '6px', padding: '1px 7px' }}>
+                                                    {completadasCount}/{acciones.length}
+                                                </span>
+                                            </div>
+                                            {acciones.map((acc, aIdx) => (
+                                                <label
+                                                    key={acc.id || aIdx}
+                                                    style={{
+                                                        display: 'flex', alignItems: 'center', gap: '9px',
+                                                        padding: '8px 11px', borderRadius: '8px',
+                                                        background: acc.completada ? '#EFF6FF' : '#FFFFFF',
+                                                        border: acc.completada ? '1px solid #BFDBFE' : '1px solid #E2E8F0',
+                                                        cursor: 'pointer', fontSize: '0.79rem',
+                                                        color: acc.completada ? '#475569' : '#0F172A',
+                                                        textDecoration: acc.completada ? 'line-through' : 'none',
+                                                        transition: 'all 0.15s ease'
+                                                    }}
+                                                >
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={Boolean(acc.completada)}
+                                                        onChange={() => handleToggleAccionObjetivo(obj, aIdx)}
+                                                        style={{ accentColor: COLOR_NAVY, width: '15px', height: '15px', cursor: 'pointer', flexShrink: 0 }}
+                                                    />
+                                                    <span style={{ flex: 1, fontWeight: acc.completada ? 500 : 600, lineHeight: 1.35 }}>{acc.texto}</span>
+                                                </label>
+                                            ))}
+                                            <div style={{ display: 'flex', gap: '6px', marginTop: '4px' }}>
+                                                <input
+                                                    style={{ ...inputStyle, flex: 1 }}
+                                                    value={newAccionText[obj.id] || ''}
+                                                    onChange={e => setNewAccionText(prev => ({ ...prev, [obj.id]: e.target.value }))}
+                                                    onKeyDown={e => { if (e.key === 'Enter') handleAddAccionToObjetivo(obj); }}
+                                                    placeholder="Agregar acción..."
+                                                />
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleAddAccionToObjetivo(obj)}
+                                                    style={{ padding: '6px 12px', borderRadius: '8px', border: '1px solid #BFDBFE', background: '#EFF6FF', color: COLOR_NAVY, fontSize: '0.74rem', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}
+                                                >
+                                                    + Acción
+                                                </button>
+                                            </div>
+                                        </div>
                                     </div>
                                 )}
-
-                                {/* Checklist Accionable de Principales Acciones */}
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                    <div style={{ fontSize: '0.75rem', fontWeight: 800, color: COLOR_NAVY, display: 'flex', alignItems: 'center', gap: '5px' }}>
-                                        <ListChecks size={15} /> Plan de Acción Operativo (Tildá cada hito cumplido para actualizar el avance en tiempo real)
-                                    </div>
-                                    {(obj.acciones_principales || []).map((acc, aIdx) => (
-                                        <label
-                                            key={acc.id || aIdx}
-                                            style={{
-                                                display: 'flex', alignItems: 'center', gap: '9px',
-                                                padding: '8px 11px', borderRadius: '8px',
-                                                background: acc.completada ? '#ECFDF5' : '#FFFFFF',
-                                                border: acc.completada ? '1px solid #A7F3D0' : '1px solid #E2E8F0',
-                                                cursor: 'pointer', fontSize: '0.8rem',
-                                                color: acc.completada ? '#065F46' : '#1E293B',
-                                                textDecoration: acc.completada ? 'line-through' : 'none',
-                                            }}
-                                        >
-                                            <input
-                                                type="checkbox"
-                                                checked={Boolean(acc.completada)}
-                                                onChange={() => handleToggleAccionObjetivo(obj, aIdx)}
-                                                style={{ accentColor: '#059669', width: '15px', height: '15px', cursor: 'pointer' }}
-                                            />
-                                            <span style={{ flex: 1, fontWeight: acc.completada ? 600 : 500 }}>{acc.texto}</span>
-                                        </label>
-                                    ))}
-                                    <div style={{ display: 'flex', gap: '6px', marginTop: '4px' }}>
-                                        <input
-                                            style={{ ...inputStyle, maxWidth: '480px' }}
-                                            value={newAccionText[obj.id] || ''}
-                                            onChange={e => setNewAccionText(prev => ({ ...prev, [obj.id]: e.target.value }))}
-                                            onKeyDown={e => { if (e.key === 'Enter') handleAddAccionToObjetivo(obj); }}
-                                            placeholder="Agregar nueva acción accionable al objetivo..."
-                                        />
-                                        <button
-                                            type="button"
-                                            onClick={() => handleAddAccionToObjetivo(obj)}
-                                            style={{ padding: '6px 12px', borderRadius: '8px', border: '1px solid #CBD5E1', background: '#F8FAFC', color: COLOR_NAVY, fontSize: '0.74rem', fontWeight: 700, cursor: 'pointer' }}
-                                        >
-                                            + Acción
-                                        </button>
-                                    </div>
-                                </div>
                             </div>
                         );
                     })}
