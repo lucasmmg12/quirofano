@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase';
 import { 
     Folder, Plus, LayoutDashboard, Activity, Mic, Target, 
     FileText, ArrowLeft, Loader2, Save, ChevronRight, ListTodo, Calendar, CalendarDays,
-    Download, CheckCircle2, BookOpen, Layers, Sparkles
+    Download, CheckCircle2, BookOpen, Layers, Sparkles, ClipboardCheck
 } from 'lucide-react';
 
 import GobernanzaEntrevistaGrabador from './GobernanzaEntrevistaGrabador';
@@ -12,6 +12,7 @@ import GobernanzaIndicadores from './GobernanzaIndicadores';
 import GobernanzaDocumentos from './GobernanzaDocumentos';
 import GobernanzaTareas from './GobernanzaTareas';
 import GobernanzaGantt from './GobernanzaGantt';
+import ReunionesServicioPanel from './Gobernanza/ReunionesServicioPanel';
 import {
     GOBERNANZA_PROJECTS_DOSSIER_DATA,
     resolveServiceKeyFromProject,
@@ -680,6 +681,7 @@ export default function GobernanzaPanel({ currentUser }) {
                 {[
                     { id: 'memoria', label: '¿Qué hicimos y Cómo lo hicimos? (Dossier)', icon: BookOpen },
                     { id: 'indicadores', label: 'Indicadores, SQL y Tablero', icon: Target },
+                    { id: 'reuniones', label: 'Reuniones de Servicio', icon: ClipboardCheck },
                     { id: 'documentos', label: 'Documentos PDF', icon: FileText },
                     { id: 'muro', label: 'Muro de Actividad', icon: Activity },
                     { id: 'tareas', label: 'Tareas', icon: ListTodo },
@@ -1016,6 +1018,18 @@ export default function GobernanzaPanel({ currentUser }) {
                 {activeTab === 'indicadores' && (
                     <GobernanzaIndicadores proyectoId={selectedProyecto.id} currentUser={currentUser} proyecto={selectedProyecto} />
                 )}
+
+                {activeTab === 'reuniones' && (() => {
+                    const pName = String(selectedProyecto?.nombre || '').toUpperCase();
+                    let mappedSector = activeServiceKey || 'DXI';
+                    if (pName.includes('IMAGEN') || pName.includes('DXI') || pName.includes('ECOGRAF')) mappedSector = 'DXI';
+                    else if (pName.includes('CHEQUEO') || pName.includes('PREVENTIV')) mappedSector = 'CHEQUEO';
+                    else if (pName.includes('INTERNACI') || pName.includes('PISO')) mappedSector = 'INTERNACION';
+                    else if (pName.includes('COMPRA') || pName.includes('STOCK') || pName.includes('FARMACIA')) mappedSector = 'COMPRAS_STOCK';
+                    else if (pName.includes('EPIDEMIOLOG')) mappedSector = 'EPIDEMIOLOGIA';
+                    else if (pName.includes('GINECO') || pName.includes('GGO')) mappedSector = 'GUARDIA_GGO';
+                    return <ReunionesServicioPanel sectorId={mappedSector} />;
+                })()}
 
                 {activeTab === 'documentos' && (
                     <GobernanzaDocumentos proyectoId={selectedProyecto.id} currentUser={currentUser} />

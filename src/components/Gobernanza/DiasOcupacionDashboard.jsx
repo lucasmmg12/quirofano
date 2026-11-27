@@ -9,7 +9,7 @@ import {
     AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, ChevronRight, RotateCcw, 
     X, FileText, Layers, PanelLeftClose, PanelLeftOpen, LayoutDashboard, 
     Sparkles, RefreshCw, Sliders, Table, Eye, Download, Clock, HeartHandshake,
-    Check, Maximize2, CheckSquare, Square, GripVertical, Move
+    Check, Maximize2, CheckSquare, Square, GripVertical, Move, ClipboardCheck
 } from 'lucide-react';
 import SalusSyncButton from '../SalusSyncButton';
 import TelarCatalogoDrawer from './TelarCatalogoDrawer';
@@ -40,6 +40,7 @@ import InternacionDashboard from './InternacionDashboard';
 import ComprasConsumoStockDashboard from './ComprasConsumoStockDashboard';
 import GuardiaGgoDashboard from './GuardiaGgoDashboard';
 import ChequeoGobernanzaDashboard from './ChequeoGobernanzaDashboard';
+import ReunionesServicioPanel from './ReunionesServicioPanel';
 import { useGobernanzaNavigation } from './useGobernanzaNavigation';
 
 const SIDEBAR_INDICATOR_GROUPS = [
@@ -426,6 +427,7 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
     };
 
     const [viewMode, setViewMode] = useState('dashboard'); // 'dashboard' | 'gantt'
+    const [sectorSubModulo, setSectorSubModulo] = useState('tablero'); // 'tablero' | 'reuniones'
     const [selectedEspecialidades, setSelectedEspecialidades] = useState(null); // null = todas activas
     const [especDropdownOpen, setEspecDropdownOpen] = useState(false);
     const especDropdownRef = useRef(null);
@@ -2819,6 +2821,60 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                             </div>
                         </div>
 
+                        {/* Selector Transversal de Submódulo por Sector: Tablero vs Reuniones de Servicio */}
+                        <div style={{
+                            display: 'inline-flex',
+                            background: '#F1F5F9',
+                            padding: '3px',
+                            borderRadius: '10px',
+                            border: '1px solid #CBD5E1',
+                            gap: '3px',
+                            marginLeft: '4px'
+                        }}>
+                            <button
+                                type="button"
+                                onClick={() => setSectorSubModulo('tablero')}
+                                style={{
+                                    background: sectorSubModulo === 'tablero' ? '#003B73' : 'transparent',
+                                    color: sectorSubModulo === 'tablero' ? '#FFFFFF' : '#475569',
+                                    border: 'none',
+                                    borderRadius: '7px',
+                                    padding: '5px 11px',
+                                    fontSize: '0.76rem',
+                                    fontWeight: 700,
+                                    cursor: 'pointer',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '5px',
+                                    transition: 'all 0.15s ease'
+                                }}
+                            >
+                                <BarChart3 size={14} />
+                                <span>Tablero de Indicadores</span>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setSectorSubModulo('reuniones')}
+                                style={{
+                                    background: sectorSubModulo === 'reuniones' ? '#003B73' : 'transparent',
+                                    color: sectorSubModulo === 'reuniones' ? '#FFFFFF' : '#003B73',
+                                    border: 'none',
+                                    borderRadius: '7px',
+                                    padding: '5px 11px',
+                                    fontSize: '0.76rem',
+                                    fontWeight: 700,
+                                    cursor: 'pointer',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '5px',
+                                    transition: 'all 0.15s ease'
+                                }}
+                            >
+                                <ClipboardCheck size={14} />
+                                <span>Reuniones de Servicio</span>
+                            </button>
+                        </div>
+
                         {/* Sub-Selector Tripartito Exclusivo para UCI (Cuidados Críticos) */}
                         {sectorId === 'UCI' && (
                             <div style={{
@@ -4146,6 +4202,41 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
                                             background: '#FFFFFF',
                                             animation: 'fadeIn 0.2s ease-out'
                                         }}>
+                                            {/* Acceso directo al Submódulo Reuniones de Servicio de DxI */}
+                                            <div style={{ padding: '8px 10px', background: '#F8FAFC', borderBottom: '1px solid #DBEAFE', display: 'flex', gap: '4px' }}>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        if (sectorId !== 'DXI') handleSelectSector('DXI');
+                                                        setSectorSubModulo('tablero');
+                                                    }}
+                                                    style={{
+                                                        flex: 1, padding: '6px 8px', borderRadius: '6px', cursor: 'pointer',
+                                                        border: sectorId === 'DXI' && sectorSubModulo === 'tablero' ? '1px solid #1E40AF' : '1px solid #CBD5E1',
+                                                        background: sectorId === 'DXI' && sectorSubModulo === 'tablero' ? '#003B73' : '#FFFFFF',
+                                                        color: sectorId === 'DXI' && sectorSubModulo === 'tablero' ? '#FFFFFF' : '#334155',
+                                                        fontSize: '0.68rem', fontWeight: 700
+                                                    }}
+                                                >
+                                                    📊 Indicadores
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        if (sectorId !== 'DXI') handleSelectSector('DXI');
+                                                        setSectorSubModulo('reuniones');
+                                                    }}
+                                                    style={{
+                                                        flex: 1, padding: '6px 8px', borderRadius: '6px', cursor: 'pointer',
+                                                        border: sectorId === 'DXI' && sectorSubModulo === 'reuniones' ? '1px solid #1E40AF' : '1px solid #93C5FD',
+                                                        background: sectorId === 'DXI' && sectorSubModulo === 'reuniones' ? '#003B73' : '#EFF6FF',
+                                                        color: sectorId === 'DXI' && sectorSubModulo === 'reuniones' ? '#FFFFFF' : '#003B73',
+                                                        fontSize: '0.68rem', fontWeight: 800
+                                                    }}
+                                                >
+                                                    📋 Reuniones
+                                                </button>
+                                            </div>
                                             <div style={{ padding: '10px 12px', background: '#EFF6FF', borderBottom: '1px solid #DBEAFE', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                                 <span style={{ fontSize: '0.7rem', fontWeight: 800, color: '#1D4ED8', textTransform: 'uppercase' }}>
                                                     Indicadores DxI ({activeDxiIds.length})
@@ -4441,7 +4532,12 @@ export default function DiasOcupacionDashboard({ onOpenInfografia, onMetricsUpda
 
                 {/* LIENZO PRINCIPAL DEL TELAR (MODULAR) */}
                 <div style={{ flex: 1, overflowY: 'auto', padding: '24px' }}>
-                    {sectorId === 'CHEQUEO' ? (
+                    {sectorSubModulo === 'reuniones' ? (
+                        <ReunionesServicioPanel
+                            sectorId={sectorId}
+                            addToast={addToast}
+                        />
+                    ) : sectorId === 'CHEQUEO' ? (
                         <ChequeoGobernanzaDashboard
                             fechaDesdeTelar={fechaDesde}
                             fechaHastaTelar={fechaHasta}
