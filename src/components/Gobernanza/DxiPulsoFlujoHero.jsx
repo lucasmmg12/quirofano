@@ -49,7 +49,7 @@ export function DxiBarraPulsoAnimada({
     selectedModalidad,
     onResetModalidad,
     filterFinanciador,
-    onToggleFinanciador,
+    onSelectFinanciador,
     filterAsistencia,
     onToggleAusente,
 }) {
@@ -58,6 +58,8 @@ export function DxiBarraPulsoAnimada({
     const animOsPct = useAnimatedNumber(parseFloat(totals?.pctObraSocial) || 0);
     const animInfPct = useAnimatedNumber(parseFloat(totals?.pctInformados) || 0);
     const animAusPct = useAnimatedNumber(parseFloat(totals?.pctAusente) || 0);
+
+    const hasAnyFilter = selectedModalidad !== 'TODAS' || filterFinanciador !== 'TODOS' || filterAsistencia !== 'TODOS';
 
     // Mini arco SVG para tasa de informes firmados
     const r = 15;
@@ -69,62 +71,81 @@ export function DxiBarraPulsoAnimada({
             background: '#FFFFFF',
             border: '1px solid #E2E8F0',
             borderRadius: '12px',
-            padding: '14px 22px',
+            padding: '14px 20px',
             boxShadow: '0 1px 3px rgba(15, 23, 42, 0.03)',
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(195px, 1fr))',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(185px, 1fr))',
             gap: '16px',
             alignItems: 'center',
         }}>
-            {/* 1. Estudios Efectivos */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', borderRight: '1px solid #F1F5F9', paddingRight: '14px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <span style={{ fontSize: '0.7rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                        Estudios Efectivos
+            {/* 1. Total General de Turnos + Estudios Efectivos */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', borderRight: '1px solid #F1F5F9', paddingRight: '14px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
+                    <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                        Total Turnos · Efectivos
                     </span>
-                    {selectedModalidad !== 'TODAS' && (
+                    {hasAnyFilter && (
                         <button
                             type="button"
-                            onClick={onResetModalidad}
-                            title="Quitar filtro de modalidad"
+                            onClick={() => {
+                                onResetModalidad?.();
+                                onSelectFinanciador?.('TODOS');
+                                if (filterAsistencia !== 'TODOS') onToggleAusente?.('TODOS');
+                            }}
                             style={{
                                 border: '1px solid #BFDBFE', background: '#EFF6FF', color: COLOR_NAVY,
-                                borderRadius: '999px', padding: '1px 7px', fontSize: '0.66rem', fontWeight: 800, cursor: 'pointer'
+                                borderRadius: '999px', padding: '1px 8px', fontSize: '0.65rem', fontWeight: 800, cursor: 'pointer'
                             }}
                         >
-                            {selectedModalidad} ✕
+                            Ver todo ✕
                         </button>
                     )}
                 </div>
-                <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', flexWrap: 'wrap' }}>
                     <span style={{ fontSize: '1.75rem', fontWeight: 900, color: COLOR_NAVY, letterSpacing: '-0.02em', lineHeight: 1.1 }}>
                         {loading ? '…' : Math.round(animRealizados).toLocaleString('es-AR')}
                     </span>
-                    <span style={{ fontSize: '0.72rem', color: '#64748B', fontWeight: 600 }}>
-                        de {Math.round(animTotal).toLocaleString('es-AR')} ({totals?.pctRealizados || 0}%)
+                    <span style={{ fontSize: '0.76rem', color: '#334155', fontWeight: 700 }}>
+                        / {Math.round(animTotal).toLocaleString('es-AR')} totales ({totals?.pctRealizados || 0}%)
                     </span>
                 </div>
+                {selectedModalidad !== 'TODAS' && (
+                    <span style={{ fontSize: '0.68rem', color: COLOR_NAVY, fontWeight: 700 }}>
+                        Filtrado en: {selectedModalidad}
+                    </span>
+                )}
             </div>
 
-            {/* 2. Cobertura Obra Social vs Particular (con barra animada clickeable) */}
-            <div
-                role="button"
-                tabIndex={0}
-                onClick={onToggleFinanciador}
-                onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') onToggleFinanciador?.(); }}
-                title="Clic para alternar filtro Obra Social / Particular"
-                style={{
-                    display: 'flex', flexDirection: 'column', gap: '5px',
-                    borderRight: '1px solid #F1F5F9', paddingRight: '14px', cursor: 'pointer'
-                }}
-            >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontSize: '0.7rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                        Cobertura {filterFinanciador !== 'TODOS' ? `· ${filterFinanciador}` : ''}
+            {/* 2. Cobertura Obra Social vs Particular (selector explícito Todos / OS / Part.) */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', borderRight: '1px solid #F1F5F9', paddingRight: '14px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '6px' }}>
+                    <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                        Cobertura
                     </span>
-                    <span style={{ fontSize: '0.72rem', fontWeight: 800, color: COLOR_NAVY }}>
-                        {animOsPct.toFixed(1)}% OS
-                    </span>
+                    <div style={{ display: 'inline-flex', background: '#F1F5F9', padding: '2px', borderRadius: '6px', gap: '2px' }}>
+                        {[
+                            { id: 'TODOS', label: 'Todos' },
+                            { id: 'Obra Social', label: 'OS' },
+                            { id: 'Particular', label: 'Part.' },
+                        ].map(opt => {
+                            const active = filterFinanciador === opt.id;
+                            return (
+                                <button
+                                    key={opt.id}
+                                    type="button"
+                                    onClick={() => onSelectFinanciador?.(opt.id)}
+                                    style={{
+                                        border: 'none', borderRadius: '4px', padding: '1px 6px',
+                                        fontSize: '0.64rem', fontWeight: 700, cursor: 'pointer',
+                                        background: active ? COLOR_NAVY : 'transparent',
+                                        color: active ? '#FFFFFF' : '#64748B',
+                                    }}
+                                >
+                                    {opt.label}
+                                </button>
+                            );
+                        })}
+                    </div>
                 </div>
                 <div style={{ width: '100%', height: '7px', borderRadius: '999px', background: '#E2E8F0', overflow: 'hidden', display: 'flex' }}>
                     <div style={{
@@ -133,13 +154,13 @@ export function DxiBarraPulsoAnimada({
                         transition: 'width 0.5s cubic-bezier(0.22, 1, 0.36, 1)'
                     }} />
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.69rem', color: '#64748B', fontWeight: 600 }}>
-                    <span>OS: {(totals?.obraSocial || 0).toLocaleString('es-AR')}</span>
-                    <span>Part: {(totals?.particular || 0).toLocaleString('es-AR')} ({totals?.pctParticular || 0}%)</span>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.69rem', color: '#475569', fontWeight: 600 }}>
+                    <span>OS: <strong>{(totals?.obraSocial || 0).toLocaleString('es-AR')}</strong> ({animOsPct.toFixed(1)}%)</span>
+                    <span>Part: <strong>{(totals?.particular || 0).toLocaleString('es-AR')}</strong> ({totals?.pctParticular || 0}%)</span>
                 </div>
             </div>
 
-            {/* 3. Informes Firmados (con mini anillo SVG animado) */}
+            {/* 3. Informes Firmados (solo lectura con mini anillo SVG animado) */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px', borderRight: '1px solid #F1F5F9', paddingRight: '14px' }}>
                 <svg width="38" height="38" viewBox="0 0 38 38" style={{ flexShrink: 0, transform: 'rotate(-90deg)' }}>
                     <circle cx="19" cy="19" r={r} fill="none" stroke="#E2E8F0" strokeWidth="4" />
@@ -152,44 +173,45 @@ export function DxiBarraPulsoAnimada({
                     />
                 </svg>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
-                    <span style={{ fontSize: '0.7rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                    <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                         Informes Firmados
                     </span>
                     <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
                         <span style={{ fontSize: '1.35rem', fontWeight: 900, color: '#0F172A' }}>
-                            {animInfPct.toFixed(1)}%
+                            {(totals?.informados || 0).toLocaleString('es-AR')}
                         </span>
-                        <span style={{ fontSize: '0.71rem', color: '#64748B', fontWeight: 600 }}>
-                            ({(totals?.informados || 0).toLocaleString('es-AR')})
+                        <span style={{ fontSize: '0.73rem', color: COLOR_NAVY, fontWeight: 800 }}>
+                            {animInfPct.toFixed(1)}%
                         </span>
                     </div>
                 </div>
             </div>
 
-            {/* 4. Ausentismo / No-Show */}
-            <div
-                role="button"
-                tabIndex={0}
-                onClick={onToggleAusente}
-                onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') onToggleAusente?.(); }}
-                title="Clic para filtrar casos de Ausentismo"
-                style={{
-                    display: 'flex', flexDirection: 'column', gap: '2px', cursor: 'pointer',
-                    padding: '4px 8px', borderRadius: '8px',
-                    background: filterAsistencia === 'Ausente' ? '#EFF6FF' : 'transparent',
-                    border: filterAsistencia === 'Ausente' ? '1px solid #BFDBFE' : '1px solid transparent',
-                    transition: 'all 0.2s ease'
-                }}
-            >
-                <span style={{ fontSize: '0.7rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                    Ausentismo
-                </span>
+            {/* 4. Ausentismo / No-Show (con estado visual explícito) */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
+                    <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                        Ausentismo
+                    </span>
+                    <button
+                        type="button"
+                        onClick={() => onToggleAusente?.(filterAsistencia === 'Ausente' ? 'TODOS' : 'Ausente')}
+                        style={{
+                            border: filterAsistencia === 'Ausente' ? '1px solid #003B73' : '1px solid #CBD5E1',
+                            background: filterAsistencia === 'Ausente' ? '#003B73' : '#F8FAFC',
+                            color: filterAsistencia === 'Ausente' ? '#FFFFFF' : '#475569',
+                            borderRadius: '6px', padding: '1px 7px', fontSize: '0.64rem', fontWeight: 700, cursor: 'pointer'
+                        }}
+                    >
+                        {filterAsistencia === 'Ausente' ? 'Filtrado ✕' : 'Filtrar'}
+                    </button>
+                </div>
                 <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
                     <span style={{ fontSize: '1.45rem', fontWeight: 900, color: animAusPct >= 10 ? '#B91C1C' : COLOR_BLUE }}>
-                        {animAusPct.toFixed(1)}%
+                        {(totals?.ausente || 0).toLocaleString('es-AR')}
                     </span>
-                    <span style={{ fontSize: '0.72rem', color: '#64748B', fontWeight: 600 }}>
-                        {(totals?.ausente || 0).toLocaleString('es-AR')} no-show · {totals?.cantAgendas || 0} agendas
+                    <span style={{ fontSize: '0.73rem', color: '#64748B', fontWeight: 700 }}>
+                        {animAusPct.toFixed(1)}% · {totals?.cantAgendas || 0} agendas
                     </span>
                 </div>
             </div>

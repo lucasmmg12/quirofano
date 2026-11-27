@@ -1997,13 +1997,9 @@ export default function DiagnosticoImagenesDashboard({
                     setSelectedAgenda('TODAS');
                 }}
                 filterFinanciador={filterFinanciador}
-                onToggleFinanciador={() => {
-                    const order = ['TODOS', 'Obra Social', 'Particular'];
-                    const next = order[(order.indexOf(filterFinanciador) + 1) % order.length];
-                    setFilterFinanciador(next);
-                }}
+                onSelectFinanciador={setFilterFinanciador}
                 filterAsistencia={filterAsistencia}
-                onToggleAusente={() => setFilterAsistencia(filterAsistencia === 'Ausente' ? 'TODOS' : 'Ausente')}
+                onToggleAusente={(nextVal) => setFilterAsistencia(nextVal)}
             />
 
             {/* ─── 2. HERO #1: ANILLO 3D INTERACTIVO CON SEPARACIÓN DE SEGMENTO Y NARRATIVA ─── */}
@@ -2074,9 +2070,9 @@ export default function DiagnosticoImagenesDashboard({
                             return {
                                 label: s.label,
                                 value: s.value,
-                                valueLabel: pctStr,
+                                valueLabel: s.value.toLocaleString('es-AR'),
                                 rgb: s.rgb,
-                                detail: `${s.value.toLocaleString('es-AR')} estudios`,
+                                detail: `${pctStr} del total`,
                                 narrative: `${s.label} ${rankTxt} (${s.value.toLocaleString('es-AR')} estudios efectivos).${sedeTxt}${cobTxt}${agendaTxt}`,
                                 chips,
                                 onViewCases: () => openCasosNominalesModal({ modalidad: s.key }),
