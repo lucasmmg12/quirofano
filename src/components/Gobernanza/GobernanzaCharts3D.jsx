@@ -89,31 +89,27 @@ function CardShell3D({ title, subtitle, badgeRightLabel, badgeRightValue, badgeR
             padding: '16px 18px',
             boxShadow: '0 2px 8px rgba(15, 23, 42, 0.04)',
         }}>
-            <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'flex-start', gap: '10px', marginBottom: '10px' }}>
-                <div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                        <h3 style={{ margin: 0, fontSize: '14px', fontWeight: 800, color: '#0F172A' }}>{title}</h3>
-                        <span style={{
-                            fontSize: '10px', fontWeight: 700, padding: '2px 8px', borderRadius: '999px',
-                            background: '#EFF6FF', color: '#003B73', border: '1px solid #BFDBFE'
-                        }}>
-                            ↻ Arrastrá para girar 360°{onSelectLegendItem ? ' · Tocá una card para ver insights' : ''}
-                        </span>
-                    </div>
-                    {subtitle && <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#64748B' }}>{subtitle}</p>}
+            {(title || subtitle || badgeRightValue) && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'flex-start', gap: '10px', marginBottom: '10px' }}>
+                    {(title || subtitle) && (
+                        <div>
+                            {title && <h3 style={{ margin: 0, fontSize: '14px', fontWeight: 800, color: '#0F172A' }}>{title}</h3>}
+                            {subtitle && <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#64748B' }}>{subtitle}</p>}
+                        </div>
+                    )}
+                    {badgeRightValue && (
+                        <div style={{ textAlign: 'right' }}>
+                            {badgeRightLabel && (
+                                <div style={{ fontSize: '10px', fontWeight: 800, textTransform: 'uppercase', color: '#64748B', letterSpacing: '0.03em' }}>
+                                    {badgeRightLabel}
+                                </div>
+                            )}
+                            <div style={{ fontSize: '20px', fontWeight: 900, color: '#003B73', lineHeight: 1.1 }}>{badgeRightValue}</div>
+                            {badgeRightSub && <div style={{ fontSize: '11px', color: '#475569', fontWeight: 600 }}>{badgeRightSub}</div>}
+                        </div>
+                    )}
                 </div>
-                {badgeRightValue && (
-                    <div style={{ textAlign: 'right' }}>
-                        {badgeRightLabel && (
-                            <div style={{ fontSize: '10px', fontWeight: 800, textTransform: 'uppercase', color: '#64748B', letterSpacing: '0.03em' }}>
-                                {badgeRightLabel}
-                            </div>
-                        )}
-                        <div style={{ fontSize: '20px', fontWeight: 900, color: '#003B73', lineHeight: 1.1 }}>{badgeRightValue}</div>
-                        {badgeRightSub && <div style={{ fontSize: '11px', color: '#475569', fontWeight: 600 }}>{badgeRightSub}</div>}
-                    </div>
-                )}
-            </div>
+            )}
 
             <div style={{
                 position: 'relative',

@@ -2620,8 +2620,6 @@ export default function DiagnosticoImagenesDashboard({
 
                 return (
                     <AnilloToroidal3D
-                        title="Anillo 3D — Mix de Modalidades de Diagnóstico por Imágenes"
-                        subtitle="Distribución volumétrica de estudios realizados por modalidad en el período activo"
                         segments={segs.map((s, idx) => {
                             const pctStr = `${((s.value * 100) / totMod).toFixed(1)}%`;
                             const st = modStats[s.key] || { total: s.value, os: s.value, part: 0, inf: 0, centros: {}, agendas: {} };
