@@ -202,25 +202,41 @@ const HIGH_CONTRAST_COLORS = {
     hospitalizacion: '#7C3AED'
 };
 
+const CROSS_MODALITIES = [
+    { key: 'ECOGRAFIA', label: 'Ecografía', color: '#003B73' },
+    { key: 'RADIOLOGIA', label: 'Radiología', color: '#0284C7' },
+    { key: 'MAMOGRAFIA', label: 'Mamografía', color: '#DB2777' },
+    { key: 'TOMOGRAFIA', label: 'Tomografía', color: '#7C3AED' },
+    { key: 'DENSITOMETRIA', label: 'Densitometría', color: '#059669' },
+    { key: 'ECOCARDIO', label: 'Ecocardio', color: '#E11D48' },
+];
+
+const CROSS_COVERAGES = [
+    { key: 'all', label: 'Todos', color: '#003B73' },
+    { key: 'os', label: 'Obra Social', color: '#0D9488' },
+    { key: 'part', label: 'Particulares', color: '#EA580C' },
+];
+
 export default function DxiSuperficieTopografica3D({
     data = [],
     series = [],
     granularity = 'dia',
-    height = 460
+    height = 460,
+    enableCrossStudio = false,
 }) {
     const wrapRef = useRef(null);
     const glCanvasRef = useRef(null);
     const hudCanvasRef = useRef(null);
 
-    // Modos 3D: 'ribbons' (Crestas 3D independientes), 'bars' (Columnas 3D), 'surface' (Superficie por franjas puras)
-    const [visualMode, setVisualMode] = useState('ribbons');
-    const [scaleMode, setScaleMode] = useState('global'); // 'global' (Escala real) | 'normalized' (Comparativa % por serie)
-    // Multi-selección de series: vacío = mostrar todas; 1 elemento = solo esa con animación cinematográfica; N elementos = esas N juntas
+    const [visualMode] = useState('ribbons');
+    const [scaleMode] = useState('global');
     const [selectedKeys, setSelectedKeys] = useState([]);
+    // Selector combinable 2D: Cobertura (Todos / Obra Social / Particulares) × Estudios (multi-selección)
+    const [selectedCoverages, setSelectedCoverages] = useState(['all']);
+    const [selectedModalities, setSelectedModalities] = useState([]);
     const [flowTrigger, setFlowTrigger] = useState(0);
-    const [showWire, setShowWire] = useState(false);
-    const [autoRotate, setAutoRotate] = useState(false);
-    const [activePreset, setActivePreset] = useState('front');
+    const [showWire] = useState(false);
+    const [autoRotate] = useState(false);
     const [hoverState, setHoverState] = useState(null);
     const [webglError, setWebglError] = useState(false);
 
@@ -233,44 +249,32 @@ export default function DxiSuperficieTopografica3D({
         });
     }, [series]);
 
-    const handleToggleSeriesPill = (key) => {
-        setSelectedKeys(prev => {
-            let next;
-            if (prev.length === 0) {
-                // Primera selección: aísla SOLO esa serie y dispara la animación de flujo individual
-                next = [key];
-            } else if (prev.includes(key)) {
-                // Quitar de la selección (si queda vacío, vuelve a mostrar todas)
-                next = prev.filter(k => k !== key);
-            } else {
-                // Sumar a la selección múltiple (varias juntas)
-                next = [...prev, key];
+    const handleToggleCoverage = (covKey) => {
+        setSelectedCoverages(prev => {
+            if (prev.includes(covKey)) {
+                if (prev.length === 1) return prev; // mantener al menos 1 activa
+                return prev.filter(k => k !== covKey);
             }
-            // Mantener encuadre frontal limpio en selección individual o múltiple
-            const c = camRef.current;
-            if (next.length === 1) {
-                c.tYaw = 0.0;
-                c.tPitch = 0.20;
-                c.tRadius = 20.5;
-                setActivePreset('front');
-            } else if (prev.length === 1 && next.length !== 1) {
-                c.tYaw = 0.0;
-                c.tPitch = 0.22;
-                c.tRadius = 22.0;
-                setActivePreset('front');
-            }
-            return next;
+            return [...prev, covKey];
         });
         setFlowTrigger(t => t + 1);
     };
 
-    const handleResetAllSeries = () => {
+    const handleToggleModality = (modKey) => {
+        setSelectedModalities(prev => (
+            prev.includes(modKey) ? prev.filter(k => k !== modKey) : [...prev, modKey]
+        ));
+        setFlowTrigger(t => t + 1);
+    };
+
+    const handleResetCross = () => {
+        setSelectedCoverages(['all']);
+        setSelectedModalities([]);
         setSelectedKeys([]);
         const c = camRef.current;
         c.tYaw = 0.0;
         c.tPitch = 0.22;
         c.tRadius = 22.0;
-        setActivePreset('front');
         setFlowTrigger(t => t + 1);
     };
 
@@ -288,11 +292,120 @@ export default function DxiSuperficieTopografica3D({
     useEffect(() => { showWireRef.current = showWire; }, [showWire]);
     useEffect(() => { autoRotateRef.current = autoRotate; }, [autoRotate]);
 
-    // Todas las series disponibles (para la barra superior de píldoras)
+    const isCrossFocused = enableCrossStudio && (
+        selectedModalities.length > 0 ||
+        selectedCoverages.length > 1 ||
+        (selectedCoverages.length === 1 && selectedCoverages[0] !== 'all')
+    );
+
+    // Totales por modalidad (para mostrar cantidad en cada pill y en el panel de insights izquierdo)
+    const modalityBreakdown = useMemo(() => {
+        const res = {};
+        CROSS_MODALITIES.forEach(m => {
+            let total = 0, os = 0, part = 0, peakVal = 0, peakLabel = '';
+            data.forEach(d => {
+                const vAll = Number(d?.[m.key]) || 0;
+                const vOs = Number(d?.[`${m.key}_OS`]) || 0;
+                const vPart = Number(d?.[`${m.key}_PART`]) || 0;
+                total += vAll;
+                os += vOs;
+                part += vPart;
+                if (vAll > peakVal) {
+                    peakVal = vAll;
+                    peakLabel = d?.label || '';
+                }
+            });
+            const avg = data.length > 0 ? (total / data.length) : 0;
+            res[m.key] = {
+                ...m,
+                total,
+                os,
+                part,
+                osPct: total > 0 ? ((os * 100) / total).toFixed(1) : '0.0',
+                partPct: total > 0 ? ((part * 100) / total).toFixed(1) : '0.0',
+                peakVal,
+                peakLabel,
+                avg: avg.toFixed(1),
+            };
+        });
+        return res;
+    }, [data]);
+
+    // Totales generales de cobertura (para cuando no hay estudio específico seleccionado)
+    const generalBreakdown = useMemo(() => {
+        let total = 0, os = 0, part = 0, peakVal = 0, peakLabel = '';
+        data.forEach(d => {
+            const vAll = Number(d?.total) || 0;
+            total += vAll;
+            os += Number(d?.obraSocial) || 0;
+            part += Number(d?.particular) || 0;
+            if (vAll > peakVal) { peakVal = vAll; peakLabel = d?.label || ''; }
+        });
+        return {
+            total,
+            os,
+            part,
+            osPct: total > 0 ? ((os * 100) / total).toFixed(1) : '0.0',
+            partPct: total > 0 ? ((part * 100) / total).toFixed(1) : '0.0',
+            peakVal,
+            peakLabel,
+            avg: data.length > 0 ? (total / data.length).toFixed(1) : '0.0',
+        };
+    }, [data]);
+
+    // Series cruzadas en tiempo real (Estudios × Coberturas)
+    const effectiveSeriesInput = useMemo(() => {
+        if (!enableCrossStudio) return series || [];
+        const out = [];
+        if (selectedModalities.length > 0) {
+            selectedModalities.forEach(modKey => {
+                const modMeta = CROSS_MODALITIES.find(m => m.key === modKey);
+                if (!modMeta) return;
+                selectedCoverages.forEach(covKey => {
+                    if (covKey === 'all') {
+                        out.push({
+                            key: modKey,
+                            label: `${modMeta.label} · Todos`,
+                            shortLabel: selectedCoverages.length > 1 ? `${modMeta.label} (Todos)` : modMeta.label,
+                            color: modMeta.color,
+                        });
+                    } else if (covKey === 'os') {
+                        out.push({
+                            key: `${modKey}_OS`,
+                            label: `${modMeta.label} · Obra Social`,
+                            shortLabel: `${modMeta.label} (OS)`,
+                            color: selectedModalities.length === 1 ? '#0D9488' : modMeta.color,
+                        });
+                    } else if (covKey === 'part') {
+                        out.push({
+                            key: `${modKey}_PART`,
+                            label: `${modMeta.label} · Particulares`,
+                            shortLabel: `${modMeta.label} (Part.)`,
+                            color: selectedModalities.length === 1 ? '#EA580C' : '#EA580C',
+                        });
+                    }
+                });
+            });
+            return out;
+        }
+        // Sin modalidad elegida: si eligió coberturas específicas (OS / Particulares), mostrar esas curvas
+        if (selectedCoverages.length > 1 || selectedCoverages[0] !== 'all') {
+            selectedCoverages.forEach(covKey => {
+                if (covKey === 'all') out.push({ key: 'total', label: 'Total General', shortLabel: 'Todos', color: '#003B73' });
+                if (covKey === 'os') out.push({ key: 'obraSocial', label: 'Obra Social', shortLabel: 'Obra Social', color: '#0D9488' });
+                if (covKey === 'part') out.push({ key: 'particular', label: 'Particulares', shortLabel: 'Particulares', color: '#EA580C' });
+            });
+            return out;
+        }
+        // Vista general por defecto: mostrar las 6 modalidades + Total
+        return (series || []).filter(s => s && s.key);
+    }, [enableCrossStudio, series, selectedModalities, selectedCoverages]);
+
+    // Todas las series preparadas
     const allPreparedSeries = useMemo(() => {
-        const list = (series || []).filter(s => s && s.key);
+        const list = (effectiveSeriesInput || []).filter(s => s && s.key);
         return list.map((s) => {
-            const distinctColor = HIGH_CONTRAST_COLORS[s.key] || s.color || '#1D4ED8';
+            const distinctColor = s.color || HIGH_CONTRAST_COLORS[s.key] || '#003B73';
             const values = data.map(d => Number(d?.[s.key]) || 0);
             const sum = values.reduce((a, b) => a + b, 0);
             const maxVal = Math.max(1, ...values);
@@ -309,11 +422,11 @@ export default function DxiSuperficieTopografica3D({
                 peakVal: values[peakIdx] || 0
             };
         });
-    }, [data, series]);
+    }, [data, effectiveSeriesInput]);
 
     // Series activas que se renderizan en la escena 3D (centradas dinámicamente en Z)
     const preparedSeries = useMemo(() => {
-        const filtered = selectedKeys.length > 0
+        const filtered = !enableCrossStudio && selectedKeys.length > 0
             ? allPreparedSeries.filter(s => selectedKeys.includes(s.key))
             : allPreparedSeries;
         const list = filtered.length > 0 ? filtered : allPreparedSeries;
@@ -322,7 +435,7 @@ export default function DxiSuperficieTopografica3D({
             ...s,
             zSlot: count === 1 ? 0 : (idx - (count - 1) / 2)
         }));
-    }, [allPreparedSeries, selectedKeys]);
+    }, [allPreparedSeries, selectedKeys, enableCrossStudio]);
 
     const maxScaleVal = useMemo(() => {
         let maxV = 0;
@@ -1123,250 +1236,339 @@ export default function DxiSuperficieTopografica3D({
             display: 'flex',
             flexDirection: 'column',
         }}>
-            {/* ── BARRA SUPERIOR LIMPIA (FUERA DEL LIENZO 3D PARA NO TAPAR LOS PICOS) ── */}
+            {/* ── BARRA SUPERIOR DE 2 DIMENSIONES COMBINABLES (Cobertura × Estudios) — SIN BOTONES TÉCNICOS ── */}
             <div style={{
-                padding: '8px 12px',
+                padding: '10px 14px',
                 background: '#F8FAFC',
                 borderBottom: '1px solid #E2E8F0',
                 display: 'flex',
                 flexWrap: 'wrap',
                 alignItems: 'center',
                 justifyContent: 'space-between',
-                gap: '8px',
+                gap: '10px',
             }}>
-                {/* Píldoras interactivas de cada serie (clic para aislar o multi-seleccionar) */}
-                <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '5px', flex: '1 1 420px' }}>
-                    {allPreparedSeries.map((s) => {
-                        const hasCustomSelection = selectedKeys.length > 0;
-                        const isSelected = selectedKeys.includes(s.key);
-                        const isDimmed = hasCustomSelection && !isSelected;
+                {/* Grupo 1: Cobertura (Todos / Obra Social / Particulares) — Multi-selección combinable */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: '0.67rem', fontWeight: 800, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                        Cobertura:
+                    </span>
+                    <div style={{ display: 'inline-flex', background: '#FFFFFF', border: '1px solid #CBD5E1', borderRadius: '8px', padding: '2px', gap: '2px' }}>
+                        {CROSS_COVERAGES.map(cov => {
+                            const active = selectedCoverages.includes(cov.key);
+                            return (
+                                <button
+                                    key={cov.key}
+                                    type="button"
+                                    onClick={() => handleToggleCoverage(cov.key)}
+                                    style={{
+                                        border: 'none',
+                                        borderRadius: '6px',
+                                        padding: '4px 10px',
+                                        fontSize: '0.72rem',
+                                        fontWeight: 700,
+                                        cursor: 'pointer',
+                                        background: active ? '#003B73' : 'transparent',
+                                        color: active ? '#FFFFFF' : '#475569',
+                                        transition: 'all 0.15s ease',
+                                    }}
+                                >
+                                    {cov.label}
+                                </button>
+                            );
+                        })}
+                    </div>
+                </div>
+
+                {/* Grupo 2: Estudios / Modalidades — Multi-selección combinable */}
+                <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '5px', flex: '1 1 380px', justifyContent: 'flex-end' }}>
+                    {CROSS_MODALITIES.filter(m => (modalityBreakdown[m.key]?.total || 0) > 0).map((m) => {
+                        const isSelected = selectedModalities.includes(m.key);
+                        const isDimmed = selectedModalities.length > 0 && !isSelected;
+                        const cnt = modalityBreakdown[m.key]?.total || 0;
                         return (
                             <button
-                                key={s.key}
+                                key={m.key}
                                 type="button"
-                                onClick={() => handleToggleSeriesPill(s.key)}
-                                title={
-                                    !hasCustomSelection
-                                        ? `Clic para aislar "${s.label}" (${s.sum.toLocaleString('es-AR')})`
-                                        : isSelected
-                                            ? `Clic para quitar "${s.label}"`
-                                            : `Clic para sumar "${s.label}"`
-                                }
+                                onClick={() => handleToggleModality(m.key)}
                                 style={{
                                     display: 'inline-flex',
                                     alignItems: 'center',
                                     gap: '5px',
-                                    padding: '3px 8px',
-                                    borderRadius: '999px',
-                                    border: `1px solid ${isSelected ? s.color : '#CBD5E1'}`,
-                                    background: isSelected ? s.color : '#FFFFFF',
+                                    padding: '4px 10px',
+                                    borderRadius: '8px',
+                                    border: `1px solid ${isSelected ? '#003B73' : '#CBD5E1'}`,
+                                    background: isSelected ? '#003B73' : '#FFFFFF',
                                     color: isSelected ? '#FFFFFF' : '#1E293B',
-                                    opacity: isDimmed ? 0.45 : 1,
-                                    fontSize: '0.69rem',
+                                    opacity: isDimmed ? 0.55 : 1,
+                                    fontSize: '0.72rem',
                                     fontWeight: 700,
                                     cursor: 'pointer',
-                                    transition: 'all 0.15s ease',
+                                    transition: 'all 0.18s ease',
                                 }}
                             >
                                 <span style={{
                                     width: '7px',
                                     height: '7px',
                                     borderRadius: '50%',
-                                    background: isSelected ? '#FFFFFF' : s.color,
+                                    background: isSelected ? '#FFFFFF' : m.color,
                                     flexShrink: 0
                                 }} />
-                                <span>{s.shortLabel || s.label}</span>
+                                <span>{m.label}</span>
                                 <strong style={{
-                                    color: isSelected ? '#FFFFFF' : s.color,
+                                    color: isSelected ? '#BFDBFE' : '#003B73',
                                     fontVariantNumeric: 'tabular-nums',
                                 }}>
-                                    {s.sum.toLocaleString('es-AR')}
+                                    {cnt.toLocaleString('es-AR')}
                                 </strong>
                             </button>
                         );
                     })}
-                    {selectedKeys.length > 0 && (
+                    {isCrossFocused && (
                         <button
                             type="button"
-                            onClick={handleResetAllSeries}
+                            onClick={handleResetCross}
                             style={{
                                 border: '1px solid #BFDBFE',
                                 background: '#EFF6FF',
-                                color: '#1D4ED8',
-                                borderRadius: '999px',
-                                padding: '3px 8px',
-                                fontSize: '0.67rem',
+                                color: '#003B73',
+                                borderRadius: '8px',
+                                padding: '4px 9px',
+                                fontSize: '0.7rem',
                                 fontWeight: 800,
                                 cursor: 'pointer'
                             }}
                         >
-                            ↺ Todas
+                            ↺ Ver todo
                         </button>
                     )}
                 </div>
-
-                {/* Controles esenciales compactos */}
-                <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '4px' }}>
-                    <div style={{ display: 'inline-flex', background: '#FFFFFF', border: '1px solid #CBD5E1', borderRadius: '8px', padding: '2px', gap: '2px' }}>
-                        {[
-                            { id: 'ribbons', label: 'Crestas' },
-                            { id: 'bars', label: 'Columnas' },
-                            { id: 'surface', label: 'Superficie' }
-                        ].map(m => (
-                            <button
-                                key={m.id}
-                                type="button"
-                                onClick={() => setVisualMode(m.id)}
-                                style={{
-                                    border: 'none',
-                                    borderRadius: '6px',
-                                    padding: '3px 8px',
-                                    fontSize: '0.68rem',
-                                    fontWeight: 700,
-                                    cursor: 'pointer',
-                                    background: visualMode === m.id ? '#003B73' : 'transparent',
-                                    color: visualMode === m.id ? '#FFFFFF' : '#475569'
-                                }}
-                            >
-                                {m.label}
-                            </button>
-                        ))}
-                    </div>
-
-                    <button
-                        type="button"
-                        onClick={() => setScaleMode(prev => prev === 'global' ? 'normalized' : 'global')}
-                        title="Alternar entre Escala Real y Escala Comparativa (%)"
-                        style={{
-                            border: '1px solid #BFDBFE',
-                            borderRadius: '7px',
-                            padding: '4px 8px',
-                            fontSize: '0.68rem',
-                            fontWeight: 700,
-                            cursor: 'pointer',
-                            background: scaleMode === 'normalized' ? '#1D4ED8' : '#EFF6FF',
-                            color: scaleMode === 'normalized' ? '#FFFFFF' : '#1D4ED8'
-                        }}
-                    >
-                        {scaleMode === 'normalized' ? 'Escala %' : 'Escala Real'}
-                    </button>
-
-                    <div style={{ display: 'inline-flex', background: '#FFFFFF', border: '1px solid #CBD5E1', borderRadius: '8px', padding: '2px', gap: '2px' }}>
-                        {[
-                            { id: 'front', label: 'Frontal' },
-                            { id: 'iso', label: 'Iso' },
-                            { id: 'top', label: 'Cenital' }
-                        ].map(p => (
-                            <button
-                                key={p.id}
-                                type="button"
-                                onClick={() => applyPreset(p.id)}
-                                style={{
-                                    border: 'none',
-                                    borderRadius: '6px',
-                                    padding: '3px 7px',
-                                    fontSize: '0.68rem',
-                                    fontWeight: 700,
-                                    cursor: 'pointer',
-                                    background: activePreset === p.id ? '#0F172A' : 'transparent',
-                                    color: activePreset === p.id ? '#FFFFFF' : '#475569'
-                                }}
-                            >
-                                {p.label}
-                            </button>
-                        ))}
-                    </div>
-
-                    <button
-                        type="button"
-                        onClick={() => setFlowTrigger(t => t + 1)}
-                        title="Reproducir animación de flujo"
-                        style={{
-                            border: '1px solid #CBD5E1',
-                            background: '#FFFFFF',
-                            color: '#003B73',
-                            borderRadius: '7px',
-                            padding: '4px 8px',
-                            fontSize: '0.68rem',
-                            fontWeight: 800,
-                            cursor: 'pointer'
-                        }}
-                    >
-                        ▶ Flujo
-                    </button>
-                </div>
             </div>
 
-            {/* ── LIENZO WEBGL 3D DESPEJADO (0% SUPERPOSICIÓN CON BOTONES) ── */}
-            <div
-                ref={wrapRef}
-                onPointerDown={handlePointerDown}
-                onPointerMove={handlePointerMove}
-                onPointerUp={handlePointerUp}
-                onPointerLeave={handlePointerLeave}
-                style={{
-                    position: 'relative',
-                    width: '100%',
-                    height: `${Math.max(320, height - 48)}px`,
-                    background: 'linear-gradient(180deg, #F8FAFC 0%, #EFF6FF 55%, #E2E8F0 100%)',
-                    overflow: 'hidden',
-                    cursor: 'grab',
-                    userSelect: 'none',
-                    touchAction: 'none'
-                }}
-            >
-                <canvas ref={glCanvasRef} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', display: 'block' }} />
-                <canvas ref={hudCanvasRef} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', display: 'block', pointerEvents: 'none' }} />
-
-            {/* ── TOOLTIP CLÍNICO FLOTANTE EN HOVER ── */}
-            {hoveredRow && hoverState && (
+            {/* ── ESCENARIO ESPEJO: INSIGHTS PRECISOS A LA IZQUIERDA + GRÁFICO 3D DESPLAZADO A LA DERECHA ── */}
+            <div style={{
+                position: 'relative',
+                width: '100%',
+                height: `${Math.max(340, height - 48)}px`,
+                background: 'linear-gradient(180deg, #F8FAFC 0%, #EFF6FF 55%, #E2E8F0 100%)',
+                overflow: 'hidden',
+            }}>
+                {/* Panel de Insights Precisos a la IZQUIERDA (aparece suavemente al seleccionar estudios/coberturas) */}
                 <div style={{
                     position: 'absolute',
-                    left: `${Math.min(wrapW - 245, Math.max(12, hoverState.x + 16))}px`,
-                    top: `${Math.min(height - 190, Math.max(52, hoverState.y - 20))}px`,
-                    background: 'rgba(15, 23, 42, 0.95)',
-                    backdropFilter: 'blur(8px)',
-                    color: '#FFFFFF',
-                    borderRadius: '10px',
-                    padding: '10px 13px',
-                    minWidth: '225px',
-                    fontSize: '0.74rem',
-                    border: '1px solid rgba(255, 255, 255, 0.16)',
-                    boxShadow: '0 10px 26px rgba(15, 23, 42, 0.32)',
-                    pointerEvents: 'none',
-                    zIndex: 25
+                    top: 0,
+                    bottom: 0,
+                    left: 0,
+                    width: '39%',
+                    padding: '16px 18px',
+                    background: 'rgba(255, 255, 255, 0.96)',
+                    borderRight: '1px solid #E2E8F0',
+                    boxShadow: isCrossFocused ? '6px 0 24px rgba(15, 23, 42, 0.06)' : 'none',
+                    transform: isCrossFocused ? 'translateX(0)' : 'translateX(-100%)',
+                    opacity: isCrossFocused ? 1 : 0,
+                    pointerEvents: isCrossFocused ? 'auto' : 'none',
+                    transition: 'transform 0.44s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.34s cubic-bezier(0.22, 1, 0.36, 1)',
+                    zIndex: 12,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '10px',
+                    overflowY: 'auto',
                 }}>
-                    <div style={{
-                        fontWeight: 800,
-                        color: '#7DD3FC',
-                        borderBottom: '1px solid rgba(255,255,255,0.14)',
-                        paddingBottom: '5px',
-                        marginBottom: '6px',
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        gap: '8px'
-                    }}>
-                        <span>{granularity === 'dia' ? `Fecha: ${hoveredRow.fullDate || hoveredRow.label}` : `Período: ${hoveredRow.label}`}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #F1F5F9', paddingBottom: '8px' }}>
+                        <div>
+                            <div style={{ fontSize: '0.66rem', fontWeight: 800, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                                Insights de Selección
+                            </div>
+                            <div style={{ fontSize: '0.9rem', fontWeight: 800, color: '#003B73' }}>
+                                {selectedModalities.length > 0
+                                    ? selectedModalities.map(k => modalityBreakdown[k]?.label || k).join(' + ')
+                                    : 'Panorama General'}
+                            </div>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={handleResetCross}
+                            title="Volver a vista completa"
+                            style={{
+                                width: '26px', height: '26px', borderRadius: '6px',
+                                border: '1px solid #E2E8F0', background: '#F8FAFC',
+                                color: '#64748B', fontSize: '0.85rem', fontWeight: 700, cursor: 'pointer'
+                            }}
+                        >
+                            ×
+                        </button>
                     </div>
-                    {preparedSeries.map(s => (
-                        <div key={s.key} style={{
+
+                    {/* Desglose preciso por estudio seleccionado: Total, Obra Social y Particulares */}
+                    {selectedModalities.length > 0 ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                            {selectedModalities.map(modKey => {
+                                const info = modalityBreakdown[modKey];
+                                if (!info) return null;
+                                return (
+                                    <div key={modKey} style={{
+                                        background: '#F8FAFC',
+                                        border: '1px solid #E2E8F0',
+                                        borderLeft: `3.5px solid ${info.color}`,
+                                        borderRadius: '9px',
+                                        padding: '10px 12px',
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                        gap: '7px'
+                                    }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                                            <span style={{ fontSize: '0.82rem', fontWeight: 800, color: '#0F172A' }}>{info.label}</span>
+                                            <span style={{ fontSize: '0.7rem', color: '#64748B', fontWeight: 600 }}>
+                                                Prom. {info.avg}/{granularity === 'dia' ? 'día' : 'mes'}
+                                            </span>
+                                        </div>
+
+                                        {/* Grilla 3 columnas: Total | Obra Social | Particulares */}
+                                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px' }}>
+                                            <div style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: '7px', padding: '6px 8px' }}>
+                                                <div style={{ fontSize: '0.62rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>Todos</div>
+                                                <div style={{ fontSize: '0.98rem', fontWeight: 900, color: '#003B73' }}>{info.total.toLocaleString('es-AR')}</div>
+                                                <div style={{ fontSize: '0.62rem', color: '#475569', fontWeight: 600 }}>100%</div>
+                                            </div>
+                                            <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '7px', padding: '6px 8px' }}>
+                                                <div style={{ fontSize: '0.62rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>Obra Social</div>
+                                                <div style={{ fontSize: '0.98rem', fontWeight: 900, color: '#0F172A' }}>{info.os.toLocaleString('es-AR')}</div>
+                                                <div style={{ fontSize: '0.62rem', color: '#0D9488', fontWeight: 700 }}>{info.osPct}%</div>
+                                            </div>
+                                            <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '7px', padding: '6px 8px' }}>
+                                                <div style={{ fontSize: '0.62rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>Particulares</div>
+                                                <div style={{ fontSize: '0.98rem', fontWeight: 900, color: '#0F172A' }}>{info.part.toLocaleString('es-AR')}</div>
+                                                <div style={{ fontSize: '0.62rem', color: '#EA580C', fontWeight: 700 }}>{info.partPct}%</div>
+                                            </div>
+                                        </div>
+
+                                        {info.peakVal > 0 && (
+                                            <div style={{ fontSize: '0.71rem', color: '#475569' }}>
+                                                Pico máximo: <strong style={{ color: '#003B73' }}>{info.peakVal.toLocaleString('es-AR')}</strong> estudios ({info.peakLabel})
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })}
+
+                            {/* Insight comparativo cuando hay 2 o más estudios seleccionados */}
+                            {selectedModalities.length >= 2 && (() => {
+                                const sorted = [...selectedModalities]
+                                    .map(k => modalityBreakdown[k])
+                                    .filter(Boolean)
+                                    .sort((a, b) => b.total - a.total);
+                                if (sorted.length < 2) return null;
+                                const top = sorted[0], second = sorted[1];
+                                const diff = top.total - second.total;
+                                const sumPart = sorted.reduce((s, x) => s + x.part, 0);
+                                return (
+                                    <div style={{
+                                        background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: '8px',
+                                        padding: '9px 11px', fontSize: '0.74rem', color: '#1E293B', lineHeight: 1.45
+                                    }}>
+                                        <strong style={{ color: '#003B73' }}>Comparativa:</strong> {top.label} supera a {second.label} por <strong>{diff.toLocaleString('es-AR')}</strong> estudios. En conjunto suman <strong>{sumPart.toLocaleString('es-AR')}</strong> particulares en el período.
+                                    </div>
+                                );
+                            })()}
+                        </div>
+                    ) : (
+                        /* Vista filtrada solo por cobertura (sin estudio específico) */
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px' }}>
+                                <div style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: '7px', padding: '8px' }}>
+                                    <div style={{ fontSize: '0.63rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>Todos</div>
+                                    <div style={{ fontSize: '1rem', fontWeight: 900, color: '#003B73' }}>{generalBreakdown.total.toLocaleString('es-AR')}</div>
+                                </div>
+                                <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '7px', padding: '8px' }}>
+                                    <div style={{ fontSize: '0.63rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>Obra Social</div>
+                                    <div style={{ fontSize: '1rem', fontWeight: 900, color: '#0F172A' }}>{generalBreakdown.os.toLocaleString('es-AR')}</div>
+                                    <div style={{ fontSize: '0.64rem', color: '#0D9488', fontWeight: 700 }}>{generalBreakdown.osPct}%</div>
+                                </div>
+                                <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '7px', padding: '8px' }}>
+                                    <div style={{ fontSize: '0.63rem', fontWeight: 700, color: '#64748B', textTransform: 'uppercase' }}>Particulares</div>
+                                    <div style={{ fontSize: '1rem', fontWeight: 900, color: '#0F172A' }}>{generalBreakdown.part.toLocaleString('es-AR')}</div>
+                                    <div style={{ fontSize: '0.64rem', color: '#EA580C', fontWeight: 700 }}>{generalBreakdown.partPct}%</div>
+                                </div>
+                            </div>
+                            <div style={{ fontSize: '0.74rem', color: '#475569', lineHeight: 1.45 }}>
+                                Seleccioná uno o más estudios arriba (por ejemplo <strong>Ecografía</strong>) para cruzar y comparar su curva por cobertura.
+                            </div>
+                        </div>
+                    )}
+                </div>
+
+                {/* ── LIENZO WEBGL 3D DESPLAZADO SUAVEMENTE A LA DERECHA CUANDO HAY SELECCIÓN ── */}
+                <div
+                    ref={wrapRef}
+                    onPointerDown={handlePointerDown}
+                    onPointerMove={handlePointerMove}
+                    onPointerUp={handlePointerUp}
+                    onPointerLeave={handlePointerLeave}
+                    style={{
+                        position: 'absolute',
+                        top: 0,
+                        bottom: 0,
+                        right: 0,
+                        width: isCrossFocused ? '61%' : '100%',
+                        transition: 'width 0.45s cubic-bezier(0.22, 1, 0.36, 1)',
+                        overflow: 'hidden',
+                        cursor: 'grab',
+                        userSelect: 'none',
+                        touchAction: 'none'
+                    }}
+                >
+                    <canvas ref={glCanvasRef} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', display: 'block' }} />
+                    <canvas ref={hudCanvasRef} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', display: 'block', pointerEvents: 'none' }} />
+
+                {/* ── TOOLTIP CLÍNICO FLOTANTE EN HOVER ── */}
+                {hoveredRow && hoverState && (
+                    <div style={{
+                        position: 'absolute',
+                        left: `${Math.min(wrapW - 245, Math.max(12, hoverState.x + 16))}px`,
+                        top: `${Math.min(height - 190, Math.max(52, hoverState.y - 20))}px`,
+                        background: 'rgba(15, 23, 42, 0.95)',
+                        backdropFilter: 'blur(8px)',
+                        color: '#FFFFFF',
+                        borderRadius: '10px',
+                        padding: '10px 13px',
+                        minWidth: '225px',
+                        fontSize: '0.74rem',
+                        border: '1px solid rgba(255, 255, 255, 0.16)',
+                        boxShadow: '0 10px 26px rgba(15, 23, 42, 0.32)',
+                        pointerEvents: 'none',
+                        zIndex: 25
+                    }}>
+                        <div style={{
+                            fontWeight: 800,
+                            color: '#7DD3FC',
+                            borderBottom: '1px solid rgba(255,255,255,0.14)',
+                            paddingBottom: '5px',
+                            marginBottom: '6px',
                             display: 'flex',
                             justifyContent: 'space-between',
-                            alignItems: 'center',
-                            gap: '12px',
-                            margin: '3px 0'
+                            gap: '8px'
                         }}>
-                            <span style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#F1F5F9', fontWeight: 600 }}>
-                                <span style={{ width: '9px', height: '9px', borderRadius: '50%', background: s.color, boxShadow: `0 0 6px ${s.color}` }} />
-                                {s.shortLabel || s.label}
-                            </span>
-                            <strong style={{ color: '#FFFFFF', fontVariantNumeric: 'tabular-nums' }}>
-                                {(Number(hoveredRow[s.key]) || 0).toLocaleString('es-AR')}
-                            </strong>
+                            <span>{granularity === 'dia' ? `Fecha: ${hoveredRow.fullDate || hoveredRow.label}` : `Período: ${hoveredRow.label}`}</span>
                         </div>
-                    ))}
+                        {preparedSeries.map(s => (
+                            <div key={s.key} style={{
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center',
+                                gap: '12px',
+                                margin: '3px 0'
+                            }}>
+                                <span style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#F1F5F9', fontWeight: 600 }}>
+                                    <span style={{ width: '9px', height: '9px', borderRadius: '50%', background: s.color, boxShadow: `0 0 6px ${s.color}` }} />
+                                    {s.shortLabel || s.label}
+                                </span>
+                                <strong style={{ color: '#FFFFFF', fontVariantNumeric: 'tabular-nums' }}>
+                                    {(Number(hoveredRow[s.key]) || 0).toLocaleString('es-AR')}
+                                </strong>
+                            </div>
+                        ))}
+                    </div>
+                )}
                 </div>
-            )}
             </div>
         </div>
     );
