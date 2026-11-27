@@ -282,6 +282,7 @@ export default function DxiSuperficieTopografica3D({
     const camRef = useRef({
         yaw: 0.0, pitch: 0.22, radius: 22.0,
         tYaw: 0.0, tPitch: 0.22, tRadius: 22.0,
+        shiftX: 0,
         vYaw: 0, vPitch: 0,
         dragging: false, lx: 0, ly: 0,
         mx: -999, my: -999, hoveredIdx: -1
@@ -297,6 +298,13 @@ export default function DxiSuperficieTopografica3D({
         selectedCoverages.length > 1 ||
         (selectedCoverages.length === 1 && selectedCoverages[0] !== 'all')
     );
+
+    const isCrossFocusedRef = useRef(isCrossFocused);
+    useEffect(() => {
+        isCrossFocusedRef.current = isCrossFocused;
+        const c = camRef.current;
+        c.tRadius = isCrossFocused ? 28.5 : 22.0;
+    }, [isCrossFocused]);
 
     // Totales por modalidad (para mostrar cantidad en cada pill y en el panel de insights izquierdo)
     const modalityBreakdown = useMemo(() => {
@@ -835,10 +843,14 @@ export default function DxiSuperficieTopografica3D({
             }
             c.radius += (c.tRadius - c.radius) * 0.14;
 
+            // Desplazamiento horizontal 3D fluido hacia la DERECHA cuando el panel izquierdo está abierto (0 resize WebGL = 60fps)
+            const targetShiftX = isCrossFocusedRef.current ? -6.4 : 0;
+            c.shiftX = (c.shiftX || 0) + (targetShiftX - (c.shiftX || 0)) * 0.11;
+
             // AJUSTE DINÁMICO DE FOV Y DISTANCIA PARA LLENAR EL 92%+ DEL ANCHO Y ALTO DEL CONTENEDOR
             const aspect = w / Math.max(1, h);
             const effectiveRadius = c.radius * (aspect < 1.6 ? (1.6 / Math.max(0.9, aspect)) * 0.92 : 0.88);
-            const target = [0, WORLD_H * 0.36, 0];
+            const target = [c.shiftX, WORLD_H * 0.36, 0];
             const eye = [
                 target[0] + effectiveRadius * Math.cos(c.pitch) * Math.sin(c.yaw),
                 target[1] + effectiveRadius * Math.sin(c.pitch),
@@ -1496,7 +1508,7 @@ export default function DxiSuperficieTopografica3D({
                     )}
                 </div>
 
-                {/* ── LIENZO WEBGL 3D DESPLAZADO SUAVEMENTE A LA DERECHA CUANDO HAY SELECCIÓN ── */}
+                {/* ── LIENZO WEBGL 3D SIEMPRE 100% WIDTH (el desplazamiento a la derecha ocurre en cámara 3D a 60fps sin cuelgues) ── */}
                 <div
                     ref={wrapRef}
                     onPointerDown={handlePointerDown}
@@ -1505,11 +1517,8 @@ export default function DxiSuperficieTopografica3D({
                     onPointerLeave={handlePointerLeave}
                     style={{
                         position: 'absolute',
-                        top: 0,
-                        bottom: 0,
-                        right: 0,
-                        width: isCrossFocused ? '61%' : '100%',
-                        transition: 'width 0.45s cubic-bezier(0.22, 1, 0.36, 1)',
+                        inset: 0,
+                        width: '100%',
                         overflow: 'hidden',
                         cursor: 'grab',
                         userSelect: 'none',

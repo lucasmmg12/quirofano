@@ -86,6 +86,18 @@ const MODALIDADES_TABS = [
     { id: 'ECOCARDIO', label: 'Ecocardiograma', icon: Activity, badgeColor: '#E11D48', note: '4 Agendas Cardiólogos' }
 ];
 
+const TOPO_DEFAULT_SERIES = [
+    { key: 'total', label: 'Total General', shortLabel: 'Total', color: '#003B73' },
+    { key: 'obraSocial', label: 'Obra Social', shortLabel: 'Obra Social', color: '#0D9488' },
+    { key: 'ECOGRAFIA', label: 'Ecografía', shortLabel: 'Ecografía', color: '#0284C7' },
+    { key: 'RADIOLOGIA', label: 'Radiología (RX)', shortLabel: 'Radiología', color: '#7C3AED' },
+    { key: 'MAMOGRAFIA', label: 'Mamografía', shortLabel: 'Mamografía', color: '#DB2777' },
+    { key: 'TOMOGRAFIA', label: 'Tomografía (TC)', shortLabel: 'Tomografía', color: '#D97706' },
+    { key: 'DENSITOMETRIA', label: 'Densitometría', shortLabel: 'Densitometría', color: '#16A34A' },
+    { key: 'ECOCARDIO', label: 'Ecocardiograma', shortLabel: 'Ecocardio', color: '#E11D48' },
+    { key: 'particular', label: 'Particulares', shortLabel: 'Particulares', color: '#EA580C' },
+];
+
 export default function DiagnosticoImagenesDashboard({
     fechaDesde,
     fechaHasta,
@@ -2326,17 +2338,7 @@ export default function DiagnosticoImagenesDashboard({
                     ) : (
                         <DxiSuperficieTopografica3D
                             data={progressionChartData}
-                            series={[
-                                { key: 'total', label: 'Total General', shortLabel: 'Total', color: '#003B73' },
-                                { key: 'obraSocial', label: 'Obra Social', shortLabel: 'Obra Social', color: '#0D9488' },
-                                { key: 'ECOGRAFIA', label: 'Ecografía', shortLabel: 'Ecografía', color: '#0284C7' },
-                                { key: 'RADIOLOGIA', label: 'Radiología (RX)', shortLabel: 'Radiología', color: '#7C3AED' },
-                                { key: 'MAMOGRAFIA', label: 'Mamografía', shortLabel: 'Mamografía', color: '#DB2777' },
-                                { key: 'TOMOGRAFIA', label: 'Tomografía (TC)', shortLabel: 'Tomografía', color: '#D97706' },
-                                { key: 'DENSITOMETRIA', label: 'Densitometría', shortLabel: 'Densitometría', color: '#16A34A' },
-                                { key: 'ECOCARDIO', label: 'Ecocardiograma', shortLabel: 'Ecocardio', color: '#E11D48' },
-                                { key: 'particular', label: 'Particulares', shortLabel: 'Particulares', color: '#EA580C' },
-                            ]}
+                            series={TOPO_DEFAULT_SERIES}
                             granularity={activeGranularity}
                             height={470}
                             enableCrossStudio
