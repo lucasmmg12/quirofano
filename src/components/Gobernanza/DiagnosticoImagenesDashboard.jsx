@@ -2597,7 +2597,6 @@ export default function DiagnosticoImagenesDashboard({
                     .sort((a, b) => b.value - a.value);
                 if (!segs.length) return null;
                 const totMod = segs.reduce((s, x) => s + x.value, 0);
-                const topMod = segs[0];
 
                 // Pre-agregar métricas reales por modalidad en 0ms desde scopedData.agendas
                 const modStats = {};
@@ -2623,9 +2622,6 @@ export default function DiagnosticoImagenesDashboard({
                     <AnilloToroidal3D
                         title="Anillo 3D — Mix de Modalidades de Diagnóstico por Imágenes"
                         subtitle="Distribución volumétrica de estudios realizados por modalidad en el período activo"
-                        badgeRightLabel="Modalidad Líder"
-                        badgeRightValue={topMod.label}
-                        badgeRightSub={`${((topMod.value * 100) / totMod).toFixed(1)}% (${topMod.value.toLocaleString('es-AR')} est.)`}
                         segments={segs.map((s, idx) => {
                             const pctStr = `${((s.value * 100) / totMod).toFixed(1)}%`;
                             const st = modStats[s.key] || { total: s.value, os: s.value, part: 0, inf: 0, centros: {}, agendas: {} };
